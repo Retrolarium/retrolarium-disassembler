@@ -1,0 +1,31 @@
+# Build output
+build/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# Editors and operating systems
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+Desktop.ini
+
+# Open-game fixtures: upstream checkouts, work copies and built ROMs are
+# fetched or built locally; manifests, locks and patches stay tracked.
+fixtures/**/upstream-source/
+fixtures/.cache/
+fixtures/.state/
+fixtures/.work/
+fixtures/*/bin/
+fixtures/synthetic/**/*.sfc
+
+# The pinned Ghidra install (rldisasm ghidra install)
+.tools/

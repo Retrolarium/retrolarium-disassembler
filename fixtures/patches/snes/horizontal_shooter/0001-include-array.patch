@@ -1,0 +1,12 @@
+diff --git a/untech/tools/untech-editor/src/models/snes/palette.h b/untech/tools/untech-editor/src/models/snes/palette.h
+index 5cf8f27..191b8ac 100644
+--- a/untech/tools/untech-editor/src/models/snes/palette.h
++++ b/untech/tools/untech-editor/src/models/snes/palette.h
+@@ -7,6 +7,7 @@
+ 
+ #include "snescolor.h"
+ #include "../common/ms8aabb.h"
++#include <array>
+ #include <cstdint>
+ #include <memory>
+ #include <vector>

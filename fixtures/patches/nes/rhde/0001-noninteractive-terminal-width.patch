@@ -1,0 +1,15 @@
+diff --git a/tools/donut.py b/tools/donut.py
+--- a/tools/donut.py
++++ b/tools/donut.py
+@@ -342,7 +342,10 @@ def main(argv=None):
+             parser.print_usage(file=sys.stderr)
+         sys.exit(1)
+ 
+-    screen_width = os.get_terminal_size(sys.stderr.fileno()).columns
++    try:
++        screen_width = os.get_terminal_size(sys.stderr.fileno()).columns
++    except OSError:
++        screen_width = 80
+ 
+     output_file_mode = 'wb' if options.force else 'xb'
+     ask_for_overwrite = not options.quiet and sys.stdin.isatty()

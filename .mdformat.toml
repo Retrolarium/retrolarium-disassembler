@@ -1,0 +1,4 @@
+# Markdown in this repository: run `mdformat <files>` (with the mdformat-gfm
+# plugin, so tables survive) before committing documentation.
+wrap = 80
+number = true

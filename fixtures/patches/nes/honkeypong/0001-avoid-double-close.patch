@@ -1,0 +1,25 @@
+diff --git a/src/text2data.cpp b/src/text2data.cpp
+--- a/src/text2data.cpp
++++ b/src/text2data.cpp
+@@ -164,7 +164,7 @@ bool text_open(char *filename)
+ 
+ 	if(text_src) free(text_src);
+ 
+-	text_src=(char*)malloc(size);
++	text_src=(char*)malloc(size+1);
+ 
+ 	ps=0;
+ 	pd=0;
+@@ -2028,7 +2028,11 @@ int output_instruments(void)
+ 
+ void output_close(void)
+ {
+-	if(outfile) fclose(outfile);
++	if(outfile)
++	{
++		fclose(outfile);
++		outfile=NULL;
++	}
+ }
+ 
+ 

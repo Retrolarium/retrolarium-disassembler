@@ -1,0 +1,2 @@
+# Fixture patches apply to upstream sources byte for byte.
+fixtures/patches/**/*.patch -whitespace

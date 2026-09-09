@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "output_policy": {
+    "root_pattern": "{platform}/bin",
+    "allowed_extensions": {
+      "nes": [".nes"],
+      "megadrive": [".bin", ".md"],
+      "snes": [".sfc", ".smc"]
+    }
+  },
+  "toolchains": {
+    "nes": {
+      "image": "retrolarium-fixtures-nes:2026-09-09",
+      "context": "docker/nes"
+    },
+    "megadrive": {
+      "image": "retrolarium-fixtures-megadrive:2026-09-09",
+      "context": "docker/megadrive"
+    },
+    "snes": {
+      "image": "retrolarium-fixtures-snes:2026-09-09",
+      "context": "docker/snes"
+    }
+  },
+  "builders": {
+    "nes-ophis": {
+      "toolchain": "nes",
+      "command": ["make", "all", "debugrom"]
+    },
+    "nes-cc65": {
+      "toolchain": "nes",
+      "command": ["make", "all"]
+    },
+    "megadrive-5stars": {
+      "toolchain": "megadrive",
+      "command": ["asm68k", "/p", "build.68k,5stars.bin"]
+    },
+    "megadrive-dragons-castle": {
+      "toolchain": "megadrive",
+      "command": ["asm68k", "/p", "buildme.68k,witch.bin,,listing.txt"]
+    },
+    "megadrive-miniplanets": {
+      "toolchain": "megadrive",
+      "command": ["sh", "-c", "asm68k /p 'buildme.68k,Miniplanets.bin,,listing.txt' && romfix -d -z Miniplanets.bin"]
+    },
+    "snes-cc65": {
+      "toolchain": "snes",
+      "command": ["make", "all"]
+    },
+    "snes-untech": {
+      "toolchain": "snes",
+      "command": ["make", "untech-editor", "bass", "all"]
+    }
+  },
+  "projects": [
+    {
+      "id": "nes.honkeypong",
+      "platform": "nes",
+      "source": "nes/honkeypong/upstream-source",
+      "commit": "f9ab7ad450ffebabec15623aa811a7564f079168",
+      "builder": "nes-ophis",
+      "patches": [
+        "patches/nes/honkeypong/0001-avoid-double-close.patch"
+      ],
+      "source_output": "bin/HonkeyPong.nes",
+      "output": "nes/bin/HonkeyPong.nes",
+      "expected_size": 24592,
+      "expected_sha256": "cce7bf2f71eb9e63de0dba15098679dde06a1da9d7553f2319aa60ea57a1193b"
+    },
+    {
+      "id": "nes.rhde",
+      "platform": "nes",
+      "source": "nes/rhde/upstream-source",
+      "commit": "376204907155d15bb13018e5f9b231c8511d5333",
+      "builder": "nes-cc65",
+      "patches": [
+        "patches/nes/rhde/0001-noninteractive-terminal-width.patch"
+      ],
+      "source_output": "rhde.nes",
+      "output": "nes/bin/rhde.nes",
+      "expected_size": 32784,
+      "expected_sha256": "a6131a45fe5ec5f8e5778abfcd2031477231a023f30af8533c6d25acf8297a43"
+    },
+    {
+      "id": "nes.thwaite",
+      "platform": "nes",
+      "source": "nes/thwaite/upstream-source",
+      "commit": "00e36745188bc165990f60eed6b093c3ce6ad0e3",
+      "builder": "nes-cc65",
+      "source_output": "thwaite.nes",
+      "output": "nes/bin/thwaite.nes",
+      "expected_size": 40976,
+      "expected_sha256": "ee51cd9562f28195ba015d9857c6c4fc9bf67cdfb213e95f655e586b92195173"
+    },
+    {
+      "id": "megadrive.5stars",
+      "platform": "megadrive",
+      "source": "megadrive/5stars/upstream-source",
+      "commit": "3379a1fbba025336b8bd0a405956f3a1d46871a3",
+      "builder": "megadrive-5stars",
+      "source_output": "5stars.bin",
+      "output": "megadrive/bin/5stars.bin",
+      "expected_size": 10967,
+      "expected_sha256": "11597a4de58b686f6b21bf347d6b1818cbfd86196cfa06c39bc70f700e169ef9"
+    },
+    {
+      "id": "megadrive.dragons_castle",
+      "platform": "megadrive",
+      "source": "megadrive/dragons_castle/upstream-source",
+      "commit": "72ef51b648ee1e5bd1a7e9c6731b95f16cce7f28",
+      "builder": "megadrive-dragons-castle",
+      "adapters": ["asm68k-clownassembler"],
+      "source_output": "witch.bin",
+      "output": "megadrive/bin/dragons-castle.bin",
+      "expected_size": 175708,
+      "expected_sha256": "c44c1d349ac7835b9a410ef3f58e9800897726c72be646208cf62dc9c8e0b975"
+    },
+    {
+      "id": "megadrive.miniplanets",
+      "platform": "megadrive",
+      "source": "megadrive/miniplanets/upstream-source",
+      "commit": "0ac9c395289cc5d0837c96d45e61a27300e8eebc",
+      "builder": "megadrive-miniplanets",
+      "adapters": ["asm68k-clownassembler"],
+      "source_output": "Miniplanets.bin",
+      "output": "megadrive/bin/miniplanets-remix-rev04.bin",
+      "expected_size": 524288,
+      "expected_sha256": "6e35e1d7703cd3cec0c1c8c403ed74fea915a2d01b3ca496907e1ff6588b70a7"
+    },
+    {
+      "id": "snes.castle_platformer",
+      "platform": "snes",
+      "source": "snes/castle_platformer/upstream-source",
+      "commit": "79e2eb4e74702693b4248e15e00c7e6beebd271f",
+      "builder": "snes-cc65",
+      "source_output": "bin/Castle_Platformer.sfc",
+      "output": "snes/bin/Castle_Platformer.sfc",
+      "expected_size": 131072,
+      "expected_sha256": "1f674609e2fb05cb3e062796a10798a11e8bb0859e1b461f1a26727720c4bdf0"
+    },
+    {
+      "id": "snes.horizontal_shooter",
+      "platform": "snes",
+      "source": "snes/horizontal_shooter/upstream-source",
+      "commit": "747111b1a46a7e6e540fa0b5dd36d1d017f7111e",
+      "builder": "snes-untech",
+      "patches": [
+        "patches/snes/horizontal_shooter/0001-include-array.patch"
+      ],
+      "source_output": "bin/horizontal-shooter.sfc",
+      "output": "snes/bin/horizontal-shooter.sfc",
+      "expected_size": 131072,
+      "expected_sha256": "9214dfb43a96f187d88aa12a6bf661a32521c0de9fc6870cbccba9653cb67a6e"
+    }
+  ]
+}

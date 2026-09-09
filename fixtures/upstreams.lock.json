@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "captured_on": "2026-09-09",
+  "repositories": [
+    {
+      "id": "nes.honkeypong",
+      "url": "https://github.com/HonkeyKong/HonkeyPong.git",
+      "commit": "f9ab7ad450ffebabec15623aa811a7564f079168",
+      "branch_at_clone": "master",
+      "path": "nes/honkeypong/upstream-source",
+      "submodules": []
+    },
+    {
+      "id": "nes.rhde",
+      "url": "https://github.com/pinobatch/rhde-nes.git",
+      "commit": "376204907155d15bb13018e5f9b231c8511d5333",
+      "branch_at_clone": "master",
+      "path": "nes/rhde/upstream-source",
+      "submodules": []
+    },
+    {
+      "id": "nes.thwaite",
+      "url": "https://github.com/pinobatch/thwaite-nes.git",
+      "commit": "00e36745188bc165990f60eed6b093c3ce6ad0e3",
+      "branch_at_clone": "master",
+      "path": "nes/thwaite/upstream-source",
+      "submodules": []
+    },
+    {
+      "id": "megadrive.dragons_castle",
+      "url": "https://github.com/sikthehedgehog/dragon.git",
+      "commit": "72ef51b648ee1e5bd1a7e9c6731b95f16cce7f28",
+      "branch_at_clone": "master",
+      "path": "megadrive/dragons_castle/upstream-source",
+      "submodules": []
+    },
+    {
+      "id": "megadrive.miniplanets",
+      "url": "https://github.com/sikthehedgehog/miniplanets.git",
+      "commit": "0ac9c395289cc5d0837c96d45e61a27300e8eebc",
+      "branch_at_clone": "master",
+      "path": "megadrive/miniplanets/upstream-source",
+      "submodules": []
+    },
+    {
+      "id": "megadrive.5stars",
+      "url": "https://github.com/sikthehedgehog/5stars.git",
+      "commit": "3379a1fbba025336b8bd0a405956f3a1d46871a3",
+      "branch_at_clone": "master",
+      "path": "megadrive/5stars/upstream-source",
+      "submodules": []
+    },
+    {
+      "id": "snes.castle_platformer",
+      "url": "https://github.com/undisbeliever/castle_platformer.git",
+      "commit": "79e2eb4e74702693b4248e15e00c7e6beebd271f",
+      "branch_at_clone": "master",
+      "path": "snes/castle_platformer/upstream-source",
+      "submodules": [
+        {
+          "path": "snesdev-common",
+          "commit": "aeefd05495cbe78910c1f402cdb0a132d4c169ac"
+        }
+      ]
+    },
+    {
+      "id": "snes.horizontal_shooter",
+      "url": "https://github.com/undisbeliever/horizontal-shooter.git",
+      "commit": "747111b1a46a7e6e540fa0b5dd36d1d017f7111e",
+      "branch_at_clone": "master",
+      "path": "snes/horizontal_shooter/upstream-source",
+      "submodules": [
+        {
+          "path": "untech",
+          "commit": "021c7dea0e17eddcbd649b080e678865449e1f7c"
+        },
+        {
+          "path": "untech/tools/bass-untech",
+          "commit": "8c96a526bd1f973881826675512e56057cf46c6d"
+        },
+        {
+          "path": "untech/tools/untech-editor",
+          "commit": "8fc482e7143c4b25bcdf8ac73c287c66d1543ea5"
+        },
+        {
+          "path": "untech/tools/untech-editor/src/vendor/lodepng",
+          "commit": "bd647f3bde7d662b382ed67ea915009ec526ce70"
+        },
+        {
+          "path": "untech/tools/untech-editor/src/vendor/lz4",
+          "commit": "3d67671559be723b0912bbee2fcd2eb14783a721"
+        }
+      ]
+    }
+  ]
+}
