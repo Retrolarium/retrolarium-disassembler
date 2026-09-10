@@ -192,24 +192,24 @@
       "platform": "snes",
       "source_kind": "local",
       "source": "synthetic/snes/mapping_probe",
-      "source_sha256": "4059e2e4a4e26f49d71e27a5dbe3e232b965b50d53b082ca20cc18429fdeeea3",
+      "source_sha256": "976ff960fed6b695b3f9a07e9d101bc5fc38ec279f5b69a4f71fab610c758866",
       "builder": "snes-probe-lorom",
       "source_output": "snes-lorom-probe.sfc",
       "output": "snes/bin/snes-lorom-probe.sfc",
       "expected_size": 131072,
-      "expected_sha256": "be1a371894ffa04a025343c1541217137651eed3ab9313946d617b2abc53507c"
+      "expected_sha256": "5dc904609e07c74d5ad21f02be215e08f3f742eaa42cc436a9afdc9cd83d6574"
     },
     {
       "id": "snes.hirom_probe",
       "platform": "snes",
       "source_kind": "local",
       "source": "synthetic/snes/mapping_probe",
-      "source_sha256": "4059e2e4a4e26f49d71e27a5dbe3e232b965b50d53b082ca20cc18429fdeeea3",
+      "source_sha256": "976ff960fed6b695b3f9a07e9d101bc5fc38ec279f5b69a4f71fab610c758866",
       "builder": "snes-probe-hirom",
       "source_output": "snes-hirom-probe.sfc",
       "output": "snes/bin/snes-hirom-probe.sfc",
       "expected_size": 131072,
-      "expected_sha256": "aa9929238e42fe02bb151593c5bfbc57c342b3f6d43e837c901684ea6a7430d1"
+      "expected_sha256": "acb319fa6129aedf28b91031a4c6d3693af4e550f9f8cd2c1c3f6d548ff31f6a"
     },
     {
       "id": "snes.castle_platformer",

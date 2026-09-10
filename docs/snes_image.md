@@ -63,15 +63,17 @@ program into different physical layouts. The source exercises emulation-to-
 native transition, `REP`/`SEP` M/X changes, 8/16-bit immediates, near and far
 calls, branches, native/emulation vectors, and four pointer encodings:
 current-bank u16le, far u24le, split low/high/bank and signed table-relative
-u16le. `oracle.json` binds logical truth to each ROM hash, but is never an
+u16le. It also performs an explicit fixed-size upload of a six-byte SPC700
+program through the SNES APU I/O ports. `oracle.json` binds logical truth to
+each ROM hash, but is never an
 input to blind analysis.
 
 The pinned fixture build produces:
 
 | Fixture | Mapping | Size | SHA-256 |
 | --- | --- | ---: | --- |
-| `snes.lorom_probe` | LoROM | 131,072 | `be1a371894ffa04a025343c1541217137651eed3ab9313946d617b2abc53507c` |
-| `snes.hirom_probe` | HiROM | 131,072 | `aa9929238e42fe02bb151593c5bfbc57c342b3f6d43e837c901684ea6a7430d1` |
+| `snes.lorom_probe` | LoROM | 131,072 | `5dc904609e07c74d5ad21f02be215e08f3f742eaa42cc436a9afdc9cd83d6574` |
+| `snes.hirom_probe` | HiROM | 131,072 | `acb319fa6129aedf28b91031a4c6d3693af4e550f9f8cd2c1c3f6d548ff31f6a` |
 
 Both have valid mirrored checksums and rebuild from one ca65 object through a
 deterministic packer. Generated ROMs, Docker images and working directories
@@ -141,3 +143,47 @@ Stable logical names are derived from evidence rather than discovery order:
 `Tbl_SNES_AAAAAA`, `Vec_SNES_AAAAAA` and `Off_SNES_AAAAAA`. Vector-specific
 names remain aliases. The LoROM and HiROM probes therefore produce the same ten
 logical symbols while retaining different physical offsets.
+
+## Exact-first source emission
+
+`rltool snes disassemble` emits a complete ca65 project with one source unit
+per physical 32 KiB LoROM bank or 64 KiB HiROM bank. `header.asm` owns the
+internal header, stored checksum/complement and symbolic vectors;
+`symbols.inc` separates stable 24-bit logical names from physical source
+labels. Accepted tables use `.word`, `.faraddr`, `.lobytes`, `.hibytes`,
+`.bankbytes` and relocatable signed expressions. Independently decoded
+instructions use W65C816 mnemonics with explicit `.a8/.a16` and `.i8/.i16`
+context; an unsupported encoding falls back only for that instruction.
+
+Every remaining byte is explicit `.byte` data in its bank module. The coverage
+report proves that instruction, instruction-fallback, pointer, header and raw
+ranges partition the ROM exactly once. There is no whole-ROM `incbin`; only an
+optional 512-byte copier header is allowed as a separate hashed container
+asset. The pinned Docker ca65/ld65 build reproduces both synthetic ROMs
+byte-for-byte with their original SHA-256 and a valid SNES checksum.
+
+## SPC700 program boundary
+
+`rltool ghidra install` also pins the MIT-licensed
+`Raikaru/ghidra-spc700` processor at commit
+`af628ce1a8e86ae1382dcec4c03d4412e013890c`, installs it as
+`RetrolariumSPC700`, and compiles language `SPC700:LE:16:default` with the
+same Ghidra 12.1.3 SLEIGH compiler.
+
+SPC700 extraction is deliberately evidence-gated. Version 1 recognizes an
+explicit `PHK; PLB` data-bank setup followed by a 16-bit destination write to
+`$2142/$2143` and a fixed-count indexed ROM copy through `$2141`, with the
+counter written through `$2140`. Source mapping, destination, count, loop-back,
+non-overlap with decoded 65816 code and every payload byte must all be proven.
+A coincidental byte sequence that merely decodes as SPC700 is never promoted.
+
+Every accepted upload produces a hashed payload, a
+`retrolarium.cross-cpu-evidence` edge and an independent Ghidra Program in the
+`spc700-ram` address space. Bytes without complete upload evidence remain raw,
+opaque source assets. Blind LoROM and HiROM runs each recover one six-byte
+program at SPC RAM `$0200`, decode three SPC700 instructions, and still rebuild
+the complete cartridge exactly with a valid checksum.
+
+The completed project manifest, Qt API, operation and blind holdout boundary is
+specified in
+[`Retrolarium_SNES_Integration_Contract.md`](Retrolarium_SNES_Integration_Contract.md).

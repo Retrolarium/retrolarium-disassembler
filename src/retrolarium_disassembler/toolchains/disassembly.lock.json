@@ -30,5 +30,18 @@
     "size": 359349,
     "sha256": "dd3721fb642d6d07a3f2da7ff19e883bb92bb34185dc80053be6a0ff8088c4b0",
     "source_directory": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756"
+  },
+  "spc700_backend": {
+    "name": "RetrolariumSPC700",
+    "upstream": "Raikaru/ghidra-spc700",
+    "upstream_version": "0.1.1",
+    "commit": "af628ce1a8e86ae1382dcec4c03d4412e013890c",
+    "license": "MIT",
+    "language_id": "SPC700:LE:16:default",
+    "archive": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c.zip",
+    "url": "https://github.com/Raikaru/ghidra-spc700/archive/af628ce1a8e86ae1382dcec4c03d4412e013890c.zip",
+    "size": 21965,
+    "sha256": "b812013570d850e2cb3cf2be7ebb13a9979b97b4d145ae28ad7c5c3f5a94fffd",
+    "source_directory": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c"
   }
 }

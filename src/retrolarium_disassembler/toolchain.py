@@ -109,6 +109,7 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
     ghidra = entry(lock, "ghidra")
     loader = entry(lock, "nes_loader")
     snes_backend = entry(lock, "snes_backend")
+    spc700_backend = entry(lock, "spc700_backend")
     application = ghidra_home / "Ghidra" / "application.properties"
     extension = ghidra_home / "Ghidra" / "Extensions" / "GhidraNes" / "extension.properties"
     snes_root = (
@@ -121,6 +122,16 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
     snes_language = snes_root / "data" / "languages" / "65816.ldefs"
     snes_compiled = snes_root / "data" / "languages" / "65816.sla"
     snes_license = snes_root / "LICENSE.upstream"
+    spc700_root = (
+        ghidra_home
+        / "Ghidra"
+        / "Extensions"
+        / str(spc700_backend["name"])
+    )
+    spc700_properties = spc700_root / "extension.properties"
+    spc700_language = spc700_root / "data" / "languages" / "spc700.ldefs"
+    spc700_compiled = spc700_root / "data" / "languages" / "spc700.sla"
+    spc700_license = spc700_root / "LICENSE.upstream"
     headless = ghidra_home / "support" / ("analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless")
     for path in (
         application,
@@ -130,6 +141,10 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
         snes_language,
         snes_compiled,
         snes_license,
+        spc700_properties,
+        spc700_language,
+        spc700_compiled,
+        spc700_license,
     ):
         if not path.is_file():
             raise ToolchainError(f"installed component not found: {path}")
@@ -148,6 +163,14 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
         encoding="utf-8"
     ):
         raise ToolchainError("installed SNES language id does not match lock")
+    if property_value(spc700_properties, "name") != spc700_backend["name"]:
+        raise ToolchainError("installed SPC700 backend identity does not match lock")
+    if property_value(spc700_properties, "retrolarium.sourceCommit") != spc700_backend["commit"]:
+        raise ToolchainError("installed SPC700 backend commit does not match lock")
+    if str(spc700_backend["language_id"]) not in spc700_language.read_text(
+        encoding="utf-8"
+    ):
+        raise ToolchainError("installed SPC700 language id does not match lock")
     return {
         "status": "ready",
         "ghidra_home": str(ghidra_home.resolve()),
@@ -157,6 +180,9 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
         "snes_backend": snes_backend["name"],
         "snes_backend_commit": snes_backend["commit"],
         "snes_language": snes_backend["language_id"],
+        "spc700_backend": spc700_backend["name"],
+        "spc700_backend_commit": spc700_backend["commit"],
+        "spc700_language": spc700_backend["language_id"],
         "headless": str(headless.resolve()),
     }
 
@@ -168,6 +194,45 @@ def install_snes_backend(
     staging: Path,
 ) -> None:
     """Install only the pinned MIT 65816 processor files, not its ROM loader."""
+    install_processor_backend(
+        ghidra_home,
+        archive,
+        expected,
+        staging,
+        specification_name="65816.slaspec",
+        language_definition_name="65816.ldefs",
+        description="Pinned W65C816 language for Retrolarium SNES analysis",
+    )
+
+
+def install_spc700_backend(
+    ghidra_home: Path,
+    archive: Path,
+    expected: dict[str, object],
+    staging: Path,
+) -> None:
+    """Install the pinned MIT SPC700 processor language."""
+    install_processor_backend(
+        ghidra_home,
+        archive,
+        expected,
+        staging,
+        specification_name="spc700.slaspec",
+        language_definition_name="spc700.ldefs",
+        description="Pinned SPC700 language for proven SNES audio programs",
+    )
+
+
+def install_processor_backend(
+    ghidra_home: Path,
+    archive: Path,
+    expected: dict[str, object],
+    staging: Path,
+    *,
+    specification_name: str,
+    language_definition_name: str,
+    description: str,
+) -> None:
     destination = (
         ghidra_home / "Ghidra" / "Extensions" / str(expected["name"])
     )
@@ -182,12 +247,12 @@ def install_snes_backend(
         languages = source / "data" / "languages"
         license_path = source / "LICENSE"
         if not languages.is_dir() or not license_path.is_file():
-            raise ToolchainError("SNES backend archive layout does not match lock")
+            raise ToolchainError("processor backend archive layout does not match lock")
         destination.mkdir(parents=True)
         shutil.copytree(languages, destination / "data" / "languages")
         shutil.copyfile(license_path, destination / "LICENSE.upstream")
         (destination / "Module.manifest").write_text(
-            "MODULE NAME: Retrolarium65816\nMODULE DEPENDENCIES:\n    Ghidra\n",
+            f"MODULE NAME: {expected['name']}\nMODULE DEPENDENCIES:\n    Ghidra\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -195,8 +260,8 @@ def install_snes_backend(
             "\n".join(
                 (
                     f"name={expected['name']}",
-                    "description=Pinned W65C816 language for Retrolarium SNES analysis",
-                    "author=Arnaud Rouyer; packaged by Retrolarium",
+                    f"description={description}",
+                    "author=upstream authors; packaged by Retrolarium",
                     "createdOn=2026-09-10",
                     f"version={load_lock()['ghidra']['version']}",
                     f"retrolarium.sourceCommit={expected['commit']}",
@@ -209,9 +274,16 @@ def install_snes_backend(
         )
         suffix = ".bat" if os.name == "nt" else ""
         compiler = ghidra_home / "support" / f"sleigh{suffix}"
-        specification = destination / "data" / "languages" / "65816.slaspec"
-        if not compiler.is_file() or not specification.is_file():
-            raise ToolchainError("Ghidra SLEIGH compiler or 65816 source is missing")
+        specification = destination / "data" / "languages" / specification_name
+        language_definition = (
+            destination / "data" / "languages" / language_definition_name
+        )
+        if (
+            not compiler.is_file()
+            or not specification.is_file()
+            or not language_definition.is_file()
+        ):
+            raise ToolchainError("Ghidra SLEIGH compiler or processor source is missing")
         result = subprocess.run(
             [str(compiler.resolve()), str(specification.resolve())],
             stdout=subprocess.PIPE,
@@ -223,7 +295,7 @@ def install_snes_backend(
         if result.returncode or not compiled.is_file():
             tail = "\n".join(result.stdout.splitlines()[-60:])
             raise ToolchainError(
-                f"65816 SLEIGH compilation failed with exit code "
+                f"processor SLEIGH compilation failed with exit code "
                 f"{result.returncode}\n{tail}"
             )
     except Exception:
@@ -243,18 +315,27 @@ def install_toolchain(tool_root: Path) -> dict[str, object]:
     ghidra_entry = entry(lock, "ghidra")
     loader_entry = entry(lock, "nes_loader")
     snes_entry = entry(lock, "snes_backend")
+    spc700_entry = entry(lock, "spc700_backend")
     if ghidra_home.exists():
         snes_archive = download(snes_entry, cache)
+        spc700_archive = download(spc700_entry, cache)
         install_snes_backend(
             ghidra_home,
             snes_archive,
             snes_entry,
             tool_root / "snes-extension-staging",
         )
+        install_spc700_backend(
+            ghidra_home,
+            spc700_archive,
+            spc700_entry,
+            tool_root / "spc700-extension-staging",
+        )
         return toolchain_status(ghidra_home)
     ghidra_archive = download(ghidra_entry, cache)
     loader_archive = download(loader_entry, cache)
     snes_archive = download(snes_entry, cache)
+    spc700_archive = download(spc700_entry, cache)
     staging = tool_root / "install-staging"
     extension_staging = tool_root / "extension-staging"
     if staging.exists():
@@ -282,6 +363,12 @@ def install_toolchain(tool_root: Path) -> dict[str, object]:
             snes_archive,
             snes_entry,
             tool_root / "snes-extension-staging",
+        )
+        install_spc700_backend(
+            source,
+            spc700_archive,
+            spc700_entry,
+            tool_root / "spc700-extension-staging",
         )
         source.replace(ghidra_home)
     finally:

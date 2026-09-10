@@ -29,6 +29,10 @@ def labels(path: Path) -> dict[str, int]:
         "Pointer24",
         "PointerSplit",
         "RelativePointers",
+        "ApuUpload",
+        "ApuUploadLoop",
+        "ApuProgram",
+        "ApuProgramEnd",
     }
     missing = sorted(required - result.keys())
     if missing:

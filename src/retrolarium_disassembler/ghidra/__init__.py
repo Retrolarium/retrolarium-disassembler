@@ -109,6 +109,44 @@ def run_z80_analysis(
     )
 
 
+def run_spc700_analysis(
+    image: Path,
+    workspace: Path,
+    ghidra_home: Path,
+    script_directory: Path,
+    *,
+    base_address: int = 0,
+) -> GhidraArtifacts:
+    image = image.resolve()
+    if not image.is_file():
+        raise GhidraError(f"SPC700 payload not found: {image}")
+    if not 0 <= base_address <= 0xFFFF:
+        raise GhidraError("SPC700 base address exceeds the 16-bit address space")
+    if image.stat().st_size > 0x10000 - base_address:
+        raise GhidraError("SPC700 payload exceeds the 64 KiB address space")
+    return _run_analysis(
+        image,
+        workspace,
+        ghidra_home,
+        script_directory,
+        project_name="retrolarium_snes_spc700",
+        project_prefix="snes_spc700_",
+        expected_language="SPC700:LE:16:default",
+        import_arguments=(
+            "-loader",
+            "BinaryLoader",
+            "-loader-blockName",
+            "SPC700_RAM",
+            "-loader-baseAddr",
+            f"0x{base_address:04X}",
+            "-processor",
+            "SPC700:LE:16:default",
+        ),
+        seed_script="SeedSpc700Entry.java",
+        export_block="SPC700_RAM",
+    )
+
+
 def run_snes_bank_analysis(
     image: Path,
     workspace: Path,

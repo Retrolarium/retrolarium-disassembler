@@ -126,6 +126,27 @@ def load_z80_ghidra_facts(
     )
 
 
+def load_spc700_ghidra_facts(
+    path: Path, payload: bytes, *, base_address: int = 0
+) -> dict[int, InstructionFact]:
+    def project(address: int) -> int:
+        offset = address - base_address
+        if not 0 <= offset < len(payload):
+            raise FactError(
+                f"SPC700 address ${address:04X} is outside the extracted payload"
+            )
+        return offset
+
+    return _load_ghidra_facts(
+        path,
+        payload,
+        project,
+        bank=0,
+        address_label="SPC700",
+        expected_block="SPC700_RAM",
+    )
+
+
 def load_snes_ghidra_facts(
     path: Path, image: SnesImage, *, physical_bank: int
 ) -> dict[int, InstructionFact]:

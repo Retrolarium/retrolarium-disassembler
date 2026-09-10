@@ -12,11 +12,13 @@ emits a complete modular ASM68K project, and proves an exact rebuild. Stable
 symbols, big-endian/relative pointer candidates and cross-CPU copy evidence are
 published through a versioned project manifest.
 
-The SNES pipeline is being brought to the same boundary. Its versioned image
-component already parses plain LoROM/HiROM containers, optional copier headers,
+The SNES pipeline now reaches the same integration boundary. Its versioned
+image component parses plain LoROM/HiROM containers, optional copier headers,
 mirrored checksums, native/emulation vectors and ROM/WRAM/SRAM bus windows. A
 project-owned ca65 probe builds the same W65C816 state and pointer cases as
-both LoROM and HiROM; ExROM layouts and enhancement chips are rejected in v1.
+both LoROM and HiROM. Statically proven APU uploads are extracted and analyzed
+as independent SPC700 Programs; ExROM layouts and enhancement chips are
+rejected in v1.
 
 The generated source is deliberately conservative: Ghidra-recognized official
 6502 instructions become assembly, accepted pointer tables and interrupt
@@ -64,9 +66,10 @@ python retrolarium/kit/rltool.py nes disassemble `
 sizes and SHA-256 values, rejects unsafe ZIP members and installs into the
 ignored `retrolarium/kit/.tools/` directory. An existing compatible install can
 be selected with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`.
-The same command installs the pinned MIT W65C816 language as
-`Retrolarium65816`, compiles it with Ghidra's SLEIGH compiler and preserves its
-upstream license; it does not install the upstream SNES cartridge loader.
+The same command installs the pinned MIT W65C816 and SPC700 languages as
+`Retrolarium65816` and `RetrolariumSPC700`, compiles them with Ghidra's SLEIGH
+compiler and preserves their upstream licenses; it does not install the
+upstream SNES cartridge loader.
 
 ### Mega Drive / Genesis
 
@@ -94,14 +97,22 @@ python retrolarium/kit/rltool.py snes inspect `
 python retrolarium/kit/rltool.py snes analyze `
   retrolarium/fixtures/snes/bin/snes-lorom-probe.sfc `
   --output retrolarium/build/snes-lorom-analysis
+python retrolarium/kit/rltool.py snes disassemble `
+  retrolarium/fixtures/snes/bin/snes-lorom-probe.sfc `
+  --output retrolarium/build/snes-lorom-disassembly `
+  --build-container retrolarium-fixtures-snes:2026-09-09
 ```
 
 Inspection and independent state-aware W65C816 decoding are available. Full
-analysis also writes evidence-bearing pointer and stable-symbol reports. Full
-headless bank orchestration, exact source emission, SPC700 extraction and the
-final Qt/MAME project contract are the next SNES stages; the component boundary
-is documented in
-[`Retrolarium_SNES_Container_Contract.md`](../docs/Retrolarium_SNES_Container_Contract.md).
+analysis writes evidence-bearing pointer, stable-symbol and cross-CPU reports.
+The modular ca65 emitter has exact rebuild proof for both synthetic mappings
+and two open-game holdouts. The strict project schema, Qt 5.15 importer and
+common build/verify/MAME operations are complete. The required `spc700.rom` is
+hash-pinned under `mame_testing/roms` and installed into a local MAME checkout
+by `mame_testing/install-required-roms.ps1`. See
+[`Retrolarium_SNES_Container_Contract.md`](../docs/Retrolarium_SNES_Container_Contract.md)
+and
+[`Retrolarium_SNES_Integration_Contract.md`](../docs/Retrolarium_SNES_Integration_Contract.md).
 
 The output directory contains:
 
