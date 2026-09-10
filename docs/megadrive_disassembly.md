@@ -33,8 +33,8 @@ the 68000 instructions supporting the copy inference.
 - `analysis/cross-cpu-evidence.json` binds recovered Z80 payloads to exact ROM
   slices. An unproven byte run is not promoted to a Z80 program.
 - `assets.items` declares the cartridge header and recovered Z80 programs as
-  hashed `incbin` assets with non-overlapping ROM ranges.
-- `source.units` enumerates the complete modular ASM68K project. Coverage is a
+  hashed AS `binclude` assets with non-overlapping ROM ranges.
+- `source.units` enumerates the complete modular AS project. Coverage is a
   partition of the ROM into vectors, instructions, accepted pointers, assets
   and raw bytes; a whole-ROM fallback is not used.
 - `verification` records independent size/SHA-256 equality and the parsed Sega
@@ -53,29 +53,30 @@ rebuilt artifact.
 ## Commands and operations
 
 ```powershell
-python retrolarium/kit/rltool.py megadrive inspect game.bin
-python retrolarium/kit/rltool.py megadrive analyze game.bin `
-  --output retrolarium/build/game-analysis
-python retrolarium/kit/rltool.py megadrive disassemble game.bin `
-  --output retrolarium/build/game-disassembly `
-  --build-container retrolarium-fixtures-megadrive:2026-09-09
-python retrolarium/kit/rltool.py project validate `
-  retrolarium/build/game-disassembly/retrolarium-project.json
-python retrolarium/kit/rltool.py project build `
-  retrolarium/build/game-disassembly/retrolarium-project.json
-python retrolarium/kit/rltool.py project verify `
-  retrolarium/build/game-disassembly/retrolarium-project.json
-python retrolarium/kit/rltool.py project launch `
-  retrolarium/build/game-disassembly/retrolarium-project.json `
+python retrolarium_kit/rltool.py megadrive inspect game.bin
+python retrolarium_kit/rltool.py megadrive analyze game.bin `
+  --output retrolarium_kit/build/game-analysis
+python retrolarium_kit/rltool.py megadrive disassemble game.bin `
+  --output retrolarium_kit/build/game-disassembly
+python retrolarium_kit/rltool.py project validate `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json
+python retrolarium_kit/rltool.py project build `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json
+python retrolarium_kit/rltool.py project verify `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json
+python retrolarium_kit/rltool.py project launch `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json `
   --mame mame_testing/mame/consoles.exe --machine genesis --seconds 2
 ```
 
-The build operation executes only the manifest's explicit argv array in the
-pinned Docker image; no shell expression is evaluated. Launch supports only
-MAME `genesis` (NTSC) and `megadriv` (PAL). `launch-plan` returns a versioned
-`retrolarium.process-spec`, which the Qt bridge checks against the MAME path
-selected by the user before passing program and arguments separately to
-`QProcess`.
+The default build operation resolves the hash-pinned AS/p2bin suite shipped in
+the `retrolarium-kit` wheel and executes the versioned `asl-p2bin-v1` recipe
+without a shell. A caller can still select a pinned compatibility container
+explicitly with `project build --container IMAGE`; its argv remains a literal
+array. Launch supports only MAME `genesis` (NTSC) and `megadriv` (PAL).
+`launch-plan` returns a versioned `retrolarium.process-spec`, which the Qt
+bridge checks against the MAME path selected by the user before passing
+program and arguments separately to `QProcess`.
 
 ## Qt consumer
 

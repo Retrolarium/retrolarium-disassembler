@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import os
 import sys
 from pathlib import Path
 import tempfile
@@ -9,11 +10,13 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from retrolarium_kit.build_toolchains import materialize_build_toolchain
 from retrolarium_kit.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_emit import emit_project
 from retrolarium_kit.megadrive_pointers import detect_pointer_candidates
 from retrolarium_kit.megadrive_symbols import generate_symbols
 from retrolarium_kit.megadrive_z80 import CrossCpuCopy
+from retrolarium_kit.project import _asl_build
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 
@@ -76,13 +79,25 @@ class MegaDriveEmitTests(unittest.TestCase):
             self.assertEqual(z80_payload, (root / "assets/z80-program00.bin").read_bytes())
             self.assertIn("dc.l    Entry_M68K_000200", source)
             self.assertIn("dc.w    Entry_M68K_000200-Tbl_M68K_000250", source)
-            self.assertIn('incbin  "assets/z80-program00.bin"', source)
+            self.assertIn('binclude "assets/z80-program00.bin"', source)
             self.assertEqual(len(image.data), 0x200 + sum((
                 result.instruction_bytes,
                 result.pointer_bytes,
                 result.asset_bytes - 0x100,
                 result.raw_bytes,
             )))
+            if os.name == "nt":
+                suite = materialize_build_toolchain(
+                    "megadrive", cache_root=root / "toolchains"
+                )
+                rebuilt = root / "rebuilt.bin"
+                _asl_build(
+                    {"source": "main.68k", "object": "build/main.p"},
+                    root,
+                    rebuilt,
+                    suite,
+                )
+                self.assertEqual(image.data, rebuilt.read_bytes())
 
 
 if __name__ == "__main__":

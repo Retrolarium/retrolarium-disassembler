@@ -372,8 +372,14 @@ def disassemble_snes(
         "operations": {
             "build": {
                 "id": "retrolarium.project.build",
-                "runner": "docker",
+                "runner": "retrolarium-kit",
+                "toolchain_suite": "nes",
+                "recipe": "ca65-ld65-v1",
                 "project_directory": "generated",
+                "source": "main.asm",
+                "linker_config": "linker.cfg",
+                "object": "build/main.o",
+                "map": "build/rebuilt.map",
                 "argv": ["make", "all"],
                 "output": "generated/build/rebuilt.sfc",
                 "default_container": build_container,

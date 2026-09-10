@@ -410,7 +410,7 @@ def disassemble_megadrive(
         },
         "assets": _emitted_assets(emitted),
         "source": {
-            "dialect": "asm68k-exact-first",
+            "dialect": "asl-exact-first",
             "directory": "generated",
             "units": [f"generated/{unit}" for unit in emitted.source_units],
             "coverage": {
@@ -426,9 +426,13 @@ def disassemble_megadrive(
         "operations": {
             "build": {
                 "id": "retrolarium.project.build",
-                "runner": "docker",
+                "runner": "retrolarium-kit",
+                "toolchain_suite": "megadrive",
+                "recipe": "asl-p2bin-v1",
                 "default_container": build_container,
                 "project_directory": "generated",
+                "source": "main.68k",
+                "object": "build/main.p",
                 "argv": ["asm68k", "/p", "main.68k,rebuilt.bin"],
                 "output": "generated/rebuilt.bin",
             },

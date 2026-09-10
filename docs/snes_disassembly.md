@@ -56,28 +56,29 @@ invariants and the exact rebuilt artifact.
 ## Commands and operations
 
 ```powershell
-python retrolarium/kit/rltool.py snes inspect game.sfc
-python retrolarium/kit/rltool.py snes analyze game.sfc `
-  --output retrolarium/build/game-analysis
-python retrolarium/kit/rltool.py snes disassemble game.sfc `
-  --output retrolarium/build/game-disassembly `
-  --build-container retrolarium-fixtures-snes:2026-09-09
-python retrolarium/kit/rltool.py project validate `
-  retrolarium/build/game-disassembly/retrolarium-project.json
-python retrolarium/kit/rltool.py project build `
-  retrolarium/build/game-disassembly/retrolarium-project.json
-python retrolarium/kit/rltool.py project verify `
-  retrolarium/build/game-disassembly/retrolarium-project.json
-python retrolarium/kit/rltool.py project launch `
-  retrolarium/build/game-disassembly/retrolarium-project.json `
+python retrolarium_kit/rltool.py snes inspect game.sfc
+python retrolarium_kit/rltool.py snes analyze game.sfc `
+  --output retrolarium_kit/build/game-analysis
+python retrolarium_kit/rltool.py snes disassemble game.sfc `
+  --output retrolarium_kit/build/game-disassembly
+python retrolarium_kit/rltool.py project validate `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json
+python retrolarium_kit/rltool.py project build `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json
+python retrolarium_kit/rltool.py project verify `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json
+python retrolarium_kit/rltool.py project launch `
+  retrolarium_kit/build/game-disassembly/retrolarium-project.json `
   --mame mame_testing/mame/consoles.exe --machine snes --seconds 2
 ```
 
-The build operation executes only the manifest's explicit argv array in the
-pinned Docker image. Launch accepts only MAME `snes` and `snespal` machines.
-`launch-plan` returns a versioned `retrolarium.process-spec`; the Qt bridge
-checks its platform, machine, executable and separate argument array before
-passing it to `QProcess`.
+The default build operation resolves ca65/ld65 from the installed
+`retrolarium-kit` wheel and executes the fixed `ca65-ld65-v1` recipe without
+Make or Docker. A pinned compatibility image remains an explicit override via
+`project build --container IMAGE`. Launch accepts only MAME `snes` and
+`snespal` machines. `launch-plan` returns a versioned
+`retrolarium.process-spec`; the Qt bridge checks its platform, machine,
+executable and separate argument array before passing it to `QProcess`.
 
 MAME's SNES driver requires the 64-byte `spc700.rom` device ROM in its ROM path.
 The hash-pinned project copy is installed into the ignored local MAME checkout

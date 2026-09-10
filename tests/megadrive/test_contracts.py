@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -183,6 +184,42 @@ def write_megadrive_project(root: Path) -> Path:
 
 
 class MegaDriveContractTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "bundled PE smoke runs on Windows")
+    def test_bundled_runner_builds_as_source_without_docker(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = write_megadrive_project(root)
+            generated = root / "generated"
+            expected = (generated / "rebuilt.bin").read_bytes()
+            lines = ["    org     $000000"]
+            for offset in range(0, len(expected), 16):
+                values = ", ".join(
+                    f"${value:02X}" for value in expected[offset:offset + 16]
+                )
+                lines.append(f"    dc.b    {values}")
+            (generated / "main.68k").write_text(
+                "\n".join(lines) + "\n", encoding="ascii", newline="\n"
+            )
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["operations"]["build"].update(
+                {
+                    "runner": "retrolarium-kit",
+                    "toolchain_suite": "megadrive",
+                    "recipe": "asl-p2bin-v1",
+                    "source": "main.68k",
+                    "object": "build/main.p",
+                }
+            )
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            (generated / "rebuilt.bin").unlink()
+
+            result = build_project(path, toolchain_cache=root / "toolchains")
+
+            self.assertEqual("retrolarium-kit", result["runner"]["kind"])
+            self.assertEqual("asl-p2bin-v1", result["runner"]["recipe"])
+            self.assertEqual(expected, (generated / "rebuilt.bin").read_bytes())
+            self.assertEqual("exact", verify_project(path)["status"])
+
     def test_contract_loads_exact_portable_project(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = write_megadrive_project(Path(directory))

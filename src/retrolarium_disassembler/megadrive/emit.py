@@ -163,7 +163,7 @@ def _emit_payload_module(
         asset = asset_ranges.get(offset)
         if asset is not None:
             size, asset_path = asset
-            lines.append(f'    incbin  "{asset_path}"')
+            lines.append(f'    binclude "{asset_path}"')
             lines.append("")
             asset_bytes += size
             offset += size
@@ -237,7 +237,7 @@ def emit_project(
     header_asset.write_bytes(image.header_data)
     header_source = source_root / "header.68k"
     header_source.write_text(
-        '    incbin  "assets/header.bin"\n', encoding="utf-8", newline="\n"
+        '    binclude "assets/header.bin"\n', encoding="utf-8", newline="\n"
     )
     assets: list[dict[str, object]] = [
         {
@@ -247,7 +247,7 @@ def emit_project(
             "rom_file_offset": 0x100,
             "size": len(image.header_data),
             "sha256": _sha256(image.header_data),
-            "emit": "incbin",
+            "emit": "binclude",
         }
     ]
 
@@ -270,7 +270,7 @@ def emit_project(
                 "rom_file_offset": offset,
                 "size": copy.size,
                 "sha256": copy.payload_sha256,
-                "emit": "incbin",
+                "emit": "binclude",
                 "address": {
                     "space": "z80",
                     "start": copy.target_start,

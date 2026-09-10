@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 import tempfile
@@ -9,6 +10,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from retrolarium_kit.build_toolchains import materialize_build_toolchain
 from retrolarium_kit.ca65 import emit_project, prg_source
 from retrolarium_kit.facts import load_ghidra_facts
 from retrolarium_kit.ines import InesError, parse_ines
@@ -19,6 +21,7 @@ from retrolarium_kit.pipeline import (
     verify_exact,
 )
 from retrolarium_kit.pointers import detect_banked_pointer_candidates
+from retrolarium_kit.project import _ca65_build
 from helpers import nrom16_image, write_facts
 
 
@@ -137,6 +140,24 @@ class DisassemblyTests(unittest.TestCase):
             self.assertEqual(image.header, (root / "generated/assets/header.bin").read_bytes())
             self.assertEqual(image.chr, (root / "generated/assets/chr.bin").read_bytes())
             self.assertIn('.include "src/prg.asm"', (root / "generated/main.asm").read_text())
+            if os.name == "nt":
+                project = root / "generated"
+                suite = materialize_build_toolchain(
+                    "nes", cache_root=root / "toolchains"
+                )
+                rebuilt = project / "build/rebuilt.nes"
+                _ca65_build(
+                    {
+                        "source": "main.asm",
+                        "linker_config": "linker.cfg",
+                        "object": "build/main.o",
+                        "map": "build/rebuilt.map",
+                    },
+                    project,
+                    rebuilt,
+                    suite,
+                )
+                self.assertEqual(image.data, rebuilt.read_bytes())
 
     def test_branch_into_instruction_uses_relocatable_expression(self) -> None:
         rom = bytearray(nrom16_image())
