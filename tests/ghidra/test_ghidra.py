@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from retrolarium_kit.ghidra import (
     run_megadrive_analysis,
     run_nes_analysis,
+    run_snes_bank_analysis,
     run_z80_analysis,
 )
 
@@ -151,6 +152,49 @@ class GhidraBackendTests(unittest.TestCase):
             )
             facts_index = command.index("ExportInstructionFacts.java")
             self.assertEqual("Z80_RAM", command[facts_index + 2])
+
+    def test_snes_uses_pinned_24_bit_language_and_context_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image, ghidra_home, scripts = self.fake_layout(root)
+            context = root / "context.tsv"
+            context.write_text("009000\t009001\t1\t1\t1\n", encoding="utf-8")
+
+            def complete(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                report = Path(command[command.index("InspectProgram.java") + 1])
+                facts = Path(command[command.index("ExportInstructionFacts.java") + 1])
+                report.write_text(
+                    json.dumps(
+                        {"language": "65816:LE:24:snes", "compiler": "default"}
+                    ),
+                    encoding="utf-8",
+                )
+                facts.write_text("facts", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "ok")
+
+            with patch(
+                "retrolarium_kit.ghidra.subprocess.run", side_effect=complete
+            ) as run:
+                run_snes_bank_analysis(
+                    image,
+                    root / "analysis",
+                    ghidra_home,
+                    scripts,
+                    base_address=0x009000,
+                    entry_address=0x009000,
+                    context_plan=context,
+                )
+
+            command = run.call_args.args[0]
+            self.assertEqual(
+                "65816:LE:24:snes", command[command.index("-processor") + 1]
+            )
+            seed = command.index("SeedSnesBank.java")
+            self.assertEqual("SNES_ROM", command[seed + 1])
+            self.assertEqual("009000", command[seed + 2])
+            self.assertEqual(str(context.resolve()), command[seed + 3])
 
 
 if __name__ == "__main__":

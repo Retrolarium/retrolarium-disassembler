@@ -54,6 +54,14 @@
     "snes-untech": {
       "toolchain": "snes",
       "command": ["make", "untech-editor", "bass", "all"]
+    },
+    "snes-probe-lorom": {
+      "toolchain": "snes",
+      "command": ["make", "lorom"]
+    },
+    "snes-probe-hirom": {
+      "toolchain": "snes",
+      "command": ["make", "hirom"]
     }
   },
   "projects": [
@@ -178,6 +186,30 @@
       "output": "megadrive/bin/miniplanets-remix-rev04.bin",
       "expected_size": 524288,
       "expected_sha256": "6e35e1d7703cd3cec0c1c8c403ed74fea915a2d01b3ca496907e1ff6588b70a7"
+    },
+    {
+      "id": "snes.lorom_probe",
+      "platform": "snes",
+      "source_kind": "local",
+      "source": "synthetic/snes/mapping_probe",
+      "source_sha256": "4059e2e4a4e26f49d71e27a5dbe3e232b965b50d53b082ca20cc18429fdeeea3",
+      "builder": "snes-probe-lorom",
+      "source_output": "snes-lorom-probe.sfc",
+      "output": "snes/bin/snes-lorom-probe.sfc",
+      "expected_size": 131072,
+      "expected_sha256": "be1a371894ffa04a025343c1541217137651eed3ab9313946d617b2abc53507c"
+    },
+    {
+      "id": "snes.hirom_probe",
+      "platform": "snes",
+      "source_kind": "local",
+      "source": "synthetic/snes/mapping_probe",
+      "source_sha256": "4059e2e4a4e26f49d71e27a5dbe3e232b965b50d53b082ca20cc18429fdeeea3",
+      "builder": "snes-probe-hirom",
+      "source_output": "snes-hirom-probe.sfc",
+      "output": "snes/bin/snes-hirom-probe.sfc",
+      "expected_size": 131072,
+      "expected_sha256": "aa9929238e42fe02bb151593c5bfbc57c342b3f6d43e837c901684ea6a7430d1"
     },
     {
       "id": "snes.castle_platformer",

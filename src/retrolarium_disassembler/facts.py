@@ -10,6 +10,7 @@ from typing import Callable
 
 from .ines import InesImage, InesError, cpu_to_prg_offset
 from .megadrive import MegaDriveError, MegaDriveImage, m68k_to_rom_offset
+from .snes import SnesError, SnesImage, snes_to_rom_offset
 
 
 class FactError(ValueError):
@@ -122,6 +123,37 @@ def load_z80_ghidra_facts(
         bank=0,
         address_label="Z80",
         expected_block="Z80_RAM",
+    )
+
+
+def load_snes_ghidra_facts(
+    path: Path, image: SnesImage, *, physical_bank: int
+) -> dict[int, InstructionFact]:
+    bank_size = 0x8000 if image.header.map_mode == "lorom" else 0x10000
+    bank_start = physical_bank * bank_size
+    bank_end = min(bank_start + bank_size, len(image.data))
+    if bank_start >= len(image.data):
+        raise FactError(f"SNES physical bank {physical_bank} is outside the ROM")
+
+    def project(address: int) -> int:
+        try:
+            offset = snes_to_rom_offset(image, address)
+        except SnesError as exc:
+            raise FactError(str(exc)) from exc
+        if not bank_start <= offset < bank_end:
+            raise FactError(
+                f"SNES address ${address:06X} projects outside physical bank "
+                f"{physical_bank}"
+            )
+        return offset
+
+    return _load_ghidra_facts(
+        path,
+        image.data,
+        project,
+        bank=physical_bank,
+        address_label="SNES",
+        expected_block="SNES_ROM",
     )
 
 

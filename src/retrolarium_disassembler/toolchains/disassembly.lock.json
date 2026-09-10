@@ -16,5 +16,19 @@
     "url": "https://github.com/kylewlacy/GhidraNes/releases/download/v20260531/ghidra_12.1_4c41964_20260531_GhidraNes.zip",
     "size": 67741,
     "sha256": "d73b5671ed12904fc8daeda65ca6910d7e441cca3e2d9d0a19389e7f08b9caf3"
+  },
+  "snes_backend": {
+    "name": "Retrolarium65816",
+    "upstream": "joshleaves/ghidra-snes",
+    "upstream_version": "1.3.2",
+    "upstream_ghidra_compatibility": "12.0.4",
+    "commit": "d33ce5dbfbc3645f00449be1c7ca1c1c65e81756",
+    "license": "MIT",
+    "language_id": "65816:LE:24:snes",
+    "archive": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756.zip",
+    "url": "https://github.com/joshleaves/ghidra-snes/archive/d33ce5dbfbc3645f00449be1c7ca1c1c65e81756.zip",
+    "size": 359349,
+    "sha256": "dd3721fb642d6d07a3f2da7ff19e883bb92bb34185dc80053be6a0ff8088c4b0",
+    "source_directory": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756"
   }
 }

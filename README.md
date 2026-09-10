@@ -12,6 +12,12 @@ emits a complete modular ASM68K project, and proves an exact rebuild. Stable
 symbols, big-endian/relative pointer candidates and cross-CPU copy evidence are
 published through a versioned project manifest.
 
+The SNES pipeline is being brought to the same boundary. Its versioned image
+component already parses plain LoROM/HiROM containers, optional copier headers,
+mirrored checksums, native/emulation vectors and ROM/WRAM/SRAM bus windows. A
+project-owned ca65 probe builds the same W65C816 state and pointer cases as
+both LoROM and HiROM; ExROM layouts and enhancement chips are rejected in v1.
+
 The generated source is deliberately conservative: Ghidra-recognized official
 6502 instructions become assembly, accepted pointer tables and interrupt
 vectors become symbolic entries, and every unclassified or unsupported byte
@@ -58,6 +64,9 @@ python retrolarium/kit/rltool.py nes disassemble `
 sizes and SHA-256 values, rejects unsafe ZIP members and installs into the
 ignored `retrolarium/kit/.tools/` directory. An existing compatible install can
 be selected with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`.
+The same command installs the pinned MIT W65C816 language as
+`Retrolarium65816`, compiles it with Ghidra's SLEIGH compiler and preserves its
+upstream license; it does not install the upstream SNES cartridge loader.
 
 ### Mega Drive / Genesis
 
@@ -74,6 +83,25 @@ python retrolarium/kit/rltool.py project launch `
   retrolarium/build/megadrive-disassembly/retrolarium-project.json `
   --mame mame_testing/mame/consoles.exe --machine genesis --seconds 2
 ```
+
+### SNES / Super Famicom foundation
+
+```powershell
+python retrolarium/fixtures/scripts/build_fixtures.py build `
+  snes.lorom_probe snes.hirom_probe
+python retrolarium/kit/rltool.py snes inspect `
+  retrolarium/fixtures/snes/bin/snes-lorom-probe.sfc
+python retrolarium/kit/rltool.py snes analyze `
+  retrolarium/fixtures/snes/bin/snes-lorom-probe.sfc `
+  --output retrolarium/build/snes-lorom-analysis
+```
+
+Inspection and independent state-aware W65C816 decoding are available. Full
+analysis also writes evidence-bearing pointer and stable-symbol reports. Full
+headless bank orchestration, exact source emission, SPC700 extraction and the
+final Qt/MAME project contract are the next SNES stages; the component boundary
+is documented in
+[`Retrolarium_SNES_Container_Contract.md`](../docs/Retrolarium_SNES_Container_Contract.md).
 
 The output directory contains:
 

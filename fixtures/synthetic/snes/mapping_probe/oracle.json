@@ -1,0 +1,82 @@
+{
+  "schema": "retrolarium.snes.mapping-probe-oracle",
+  "schema_version": 1,
+  "source_cpu": "w65c816",
+  "program": {
+    "cpu_bank": 0,
+    "logical_start": 36864,
+    "logical_end": 36939,
+    "entry_points": [
+      {"name": "Reset", "address": 36864, "initial_e": 1, "initial_m": 1, "initial_x": 1},
+      {"name": "NativeNmi", "address": 36900},
+      {"name": "NativeIrq", "address": 36901}
+    ],
+    "symbols": {
+      "Reset": 36864,
+      "NearSub": 36888,
+      "FarSub": 36896,
+      "LocalTarget": 36897,
+      "NativeNmi": 36900,
+      "NativeIrq": 36901,
+      "Pointer16": 36902,
+      "Pointer24": 36910,
+      "PointerSplit": 36919,
+      "RelativePointers": 36931
+    },
+    "state_transitions": [
+      {"address": 36866, "mnemonic": "xce", "e_after": 0, "m_after": 1, "x_after": 1},
+      {"address": 36867, "mnemonic": "rep", "e_after": 0, "m_after": 0, "x_after": 0},
+      {"address": 36875, "mnemonic": "sep", "e_after": 0, "m_after": 1, "x_after": 0},
+      {"address": 36888, "mnemonic": "rep", "e_after": 0, "m_after": 0, "x_after": 0},
+      {"address": 36893, "mnemonic": "sep", "e_after": 0, "m_after": 1, "x_after": 0}
+    ],
+    "control_flow": [
+      {"source": 36879, "kind": "call_near", "target": 36888},
+      {"source": 36882, "kind": "call_far", "target": 36896},
+      {"source": 36886, "kind": "branch", "target": 36897},
+      {"source": 36898, "kind": "branch", "target": 36897}
+    ]
+  },
+  "pointer_tables": [
+    {
+      "name": "Pointer16",
+      "schema_id": "snes.u16le.current-bank",
+      "logical_start": 36902,
+      "targets": [36864, 36888, 36897, 36900]
+    },
+    {
+      "name": "Pointer24",
+      "schema_id": "snes.u24le.far",
+      "logical_start": 36910,
+      "targets": [36864, 36896, 36900]
+    },
+    {
+      "name": "PointerSplit",
+      "schema_id": "snes.split-lo-hi-bank",
+      "logical_start": 36919,
+      "targets": [36864, 36888, 36897, 36900]
+    },
+    {
+      "name": "RelativePointers",
+      "schema_id": "snes.s16le.table-base",
+      "logical_start": 36931,
+      "targets": [36864, 36888, 36897, 36900]
+    }
+  ],
+  "images": {
+    "lorom": {
+      "fixture_id": "snes.lorom_probe",
+      "sha256": "be1a371894ffa04a025343c1541217137651eed3ab9313946d617b2abc53507c",
+      "program_rom_start": 4096,
+      "pointer_rom_starts": [4134, 4142, 4151, 4163],
+      "header_offset": 32704
+    },
+    "hirom": {
+      "fixture_id": "snes.hirom_probe",
+      "sha256": "aa9929238e42fe02bb151593c5bfbc57c342b3f6d43e837c901684ea6a7430d1",
+      "program_rom_start": 36864,
+      "pointer_rom_starts": [36902, 36910, 36919, 36931],
+      "header_offset": 65472
+    }
+  }
+}

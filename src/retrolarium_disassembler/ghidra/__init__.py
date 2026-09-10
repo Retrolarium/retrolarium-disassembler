@@ -109,6 +109,51 @@ def run_z80_analysis(
     )
 
 
+def run_snes_bank_analysis(
+    image: Path,
+    workspace: Path,
+    ghidra_home: Path,
+    script_directory: Path,
+    *,
+    base_address: int,
+    entry_address: int,
+    context_plan: Path,
+) -> GhidraArtifacts:
+    if not 0 <= base_address <= 0xFFFFFF:
+        raise GhidraError("SNES bank base exceeds the 24-bit address space")
+    if not base_address <= entry_address <= 0xFFFFFF:
+        raise GhidraError("SNES entry precedes its bank or exceeds 24 bits")
+    context_plan = context_plan.resolve()
+    if not context_plan.is_file():
+        raise GhidraError(f"SNES context plan not found: {context_plan}")
+    return _run_analysis(
+        image,
+        workspace,
+        ghidra_home,
+        script_directory,
+        project_name="retrolarium_snes_w65c816",
+        project_prefix="snes_w65c816_",
+        expected_language="65816:LE:24:snes",
+        import_arguments=(
+            "-loader",
+            "BinaryLoader",
+            "-loader-blockName",
+            "SNES_ROM",
+            "-loader-baseAddr",
+            f"0x{base_address:06X}",
+            "-processor",
+            "65816:LE:24:snes",
+        ),
+        seed_script="SeedSnesBank.java",
+        seed_arguments=(
+            "SNES_ROM",
+            f"{entry_address:06X}",
+            str(context_plan),
+        ),
+        export_block="SNES_ROM",
+    )
+
+
 def _run_analysis(
     image: Path,
     workspace: Path,
@@ -121,6 +166,7 @@ def _run_analysis(
     import_arguments: tuple[str, ...],
     seed_script: str,
     export_block: str | None,
+    seed_arguments: tuple[str, ...] = (),
 ) -> GhidraArtifacts:
     image = image.resolve()
     if not image.is_file():
@@ -152,6 +198,7 @@ def _run_analysis(
             str(script_directory),
             "-preScript",
             seed_script,
+            *seed_arguments,
             "-postScript",
             "InspectProgram.java",
             str(report.resolve()),

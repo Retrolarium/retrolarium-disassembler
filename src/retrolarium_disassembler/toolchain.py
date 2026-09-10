@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import stat
+import subprocess
 import urllib.request
 import zipfile
 
@@ -107,10 +108,29 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
     lock = load_lock()
     ghidra = entry(lock, "ghidra")
     loader = entry(lock, "nes_loader")
+    snes_backend = entry(lock, "snes_backend")
     application = ghidra_home / "Ghidra" / "application.properties"
     extension = ghidra_home / "Ghidra" / "Extensions" / "GhidraNes" / "extension.properties"
+    snes_root = (
+        ghidra_home
+        / "Ghidra"
+        / "Extensions"
+        / str(snes_backend["name"])
+    )
+    snes_properties = snes_root / "extension.properties"
+    snes_language = snes_root / "data" / "languages" / "65816.ldefs"
+    snes_compiled = snes_root / "data" / "languages" / "65816.sla"
+    snes_license = snes_root / "LICENSE.upstream"
     headless = ghidra_home / "support" / ("analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless")
-    for path in (application, extension, headless):
+    for path in (
+        application,
+        extension,
+        headless,
+        snes_properties,
+        snes_language,
+        snes_compiled,
+        snes_license,
+    ):
         if not path.is_file():
             raise ToolchainError(f"installed component not found: {path}")
     actual_version = property_value(application, "application.version")
@@ -120,28 +140,121 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
         )
     if property_value(extension, "name") != loader["name"]:
         raise ToolchainError("installed NES loader identity does not match lock")
+    if property_value(snes_properties, "name") != snes_backend["name"]:
+        raise ToolchainError("installed SNES backend identity does not match lock")
+    if property_value(snes_properties, "retrolarium.sourceCommit") != snes_backend["commit"]:
+        raise ToolchainError("installed SNES backend commit does not match lock")
+    if str(snes_backend["language_id"]) not in snes_language.read_text(
+        encoding="utf-8"
+    ):
+        raise ToolchainError("installed SNES language id does not match lock")
     return {
         "status": "ready",
         "ghidra_home": str(ghidra_home.resolve()),
         "ghidra_version": actual_version,
         "nes_loader": loader["name"],
         "nes_loader_version": loader["version"],
+        "snes_backend": snes_backend["name"],
+        "snes_backend_commit": snes_backend["commit"],
+        "snes_language": snes_backend["language_id"],
         "headless": str(headless.resolve()),
     }
+
+
+def install_snes_backend(
+    ghidra_home: Path,
+    archive: Path,
+    expected: dict[str, object],
+    staging: Path,
+) -> None:
+    """Install only the pinned MIT 65816 processor files, not its ROM loader."""
+    destination = (
+        ghidra_home / "Ghidra" / "Extensions" / str(expected["name"])
+    )
+    if destination.exists():
+        return
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    try:
+        safe_extract(archive, staging)
+        source = staging / str(expected["source_directory"])
+        languages = source / "data" / "languages"
+        license_path = source / "LICENSE"
+        if not languages.is_dir() or not license_path.is_file():
+            raise ToolchainError("SNES backend archive layout does not match lock")
+        destination.mkdir(parents=True)
+        shutil.copytree(languages, destination / "data" / "languages")
+        shutil.copyfile(license_path, destination / "LICENSE.upstream")
+        (destination / "Module.manifest").write_text(
+            "MODULE NAME: Retrolarium65816\nMODULE DEPENDENCIES:\n    Ghidra\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        (destination / "extension.properties").write_text(
+            "\n".join(
+                (
+                    f"name={expected['name']}",
+                    "description=Pinned W65C816 language for Retrolarium SNES analysis",
+                    "author=Arnaud Rouyer; packaged by Retrolarium",
+                    "createdOn=2026-09-10",
+                    f"version={load_lock()['ghidra']['version']}",
+                    f"retrolarium.sourceCommit={expected['commit']}",
+                    f"retrolarium.languageId={expected['language_id']}",
+                    "",
+                )
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        suffix = ".bat" if os.name == "nt" else ""
+        compiler = ghidra_home / "support" / f"sleigh{suffix}"
+        specification = destination / "data" / "languages" / "65816.slaspec"
+        if not compiler.is_file() or not specification.is_file():
+            raise ToolchainError("Ghidra SLEIGH compiler or 65816 source is missing")
+        result = subprocess.run(
+            [str(compiler.resolve()), str(specification.resolve())],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+        )
+        compiled = specification.with_suffix(".sla")
+        if result.returncode or not compiled.is_file():
+            tail = "\n".join(result.stdout.splitlines()[-60:])
+            raise ToolchainError(
+                f"65816 SLEIGH compilation failed with exit code "
+                f"{result.returncode}\n{tail}"
+            )
+    except Exception:
+        if destination.exists():
+            shutil.rmtree(destination)
+        raise
+    finally:
+        if staging.exists():
+            shutil.rmtree(staging)
 
 
 def install_toolchain(tool_root: Path) -> dict[str, object]:
     tool_root = tool_root.resolve()
     cache = tool_root / "cache"
     ghidra_home = tool_root / "ghidra"
-    if ghidra_home.exists():
-        return toolchain_status(ghidra_home)
-
     lock = load_lock()
     ghidra_entry = entry(lock, "ghidra")
     loader_entry = entry(lock, "nes_loader")
+    snes_entry = entry(lock, "snes_backend")
+    if ghidra_home.exists():
+        snes_archive = download(snes_entry, cache)
+        install_snes_backend(
+            ghidra_home,
+            snes_archive,
+            snes_entry,
+            tool_root / "snes-extension-staging",
+        )
+        return toolchain_status(ghidra_home)
     ghidra_archive = download(ghidra_entry, cache)
     loader_archive = download(loader_entry, cache)
+    snes_archive = download(snes_entry, cache)
     staging = tool_root / "install-staging"
     extension_staging = tool_root / "extension-staging"
     if staging.exists():
@@ -164,6 +277,12 @@ def install_toolchain(tool_root: Path) -> dict[str, object]:
         destination = source / "Ghidra" / "Extensions" / "GhidraNes"
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(candidates[0].parent), destination)
+        install_snes_backend(
+            source,
+            snes_archive,
+            snes_entry,
+            tool_root / "snes-extension-staging",
+        )
         source.replace(ghidra_home)
     finally:
         if staging.exists():
