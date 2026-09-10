@@ -1,16 +1,25 @@
-"""Deterministic, full-coverage ca65 emitter for the initial NES/NROM slice."""
+"""Deterministic, full-coverage ca65 emitter for profiled NES PRG banks."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 import json
 from pathlib import Path
 import re
 import struct
 
 from .facts import InstructionFact
-from .ines import InesImage, canonical_prg_start, cpu_to_prg_offset
-from .pointers import PointerCandidate, accepted_pointer_tables
+from .ines import (
+    InesImage,
+    canonical_prg_start,
+    cpu_to_prg_offset,
+    prg_analysis_targets,
+)
+from .pointers import (
+    PointerCandidate,
+    accepted_pointer_tables,
+    relocate_pointer_candidate,
+)
 
 
 OFFICIAL_6502 = {
@@ -40,10 +49,35 @@ class EmitResult:
     pointer_bytes: int
     raw_bytes: int
     labels: int
+    symbols: tuple[SymbolRecord, ...]
     diagnostics: tuple[str, ...]
 
 
-def technical_name(kind: str, address: int) -> str:
+@dataclass(frozen=True)
+class SymbolRecord:
+    symbol_id: str
+    name: str
+    kind: str
+    bank: int
+    cpu_address: int
+    physical_offset: int
+    source_unit: str
+
+
+SYMBOL_KINDS = {
+    "Func": "function",
+    "Loc": "location",
+    "PtrTable": "pointer_table",
+    "PtrTableHi": "pointer_table_high",
+    "Data": "data",
+}
+
+
+def symbol_kind(name: str) -> str:
+    return SYMBOL_KINDS[name.split("_", 1)[0]]
+
+
+def technical_name(kind: str, address: int, bank: int = 0) -> str:
     prefixes = {
         "function": "Func",
         "location": "Loc",
@@ -52,7 +86,7 @@ def technical_name(kind: str, address: int) -> str:
         "data": "Data",
     }
     prefix = prefixes[kind]
-    return f"{prefix}_B00_{address:04X}"
+    return f"{prefix}_B{bank:02d}_{address:04X}"
 
 
 def internal_address(image: InesImage, address: int) -> bool:
@@ -67,6 +101,8 @@ def label_plan(
     image: InesImage,
     facts: dict[int, InstructionFact],
     pointer_candidates: tuple[PointerCandidate, ...] = (),
+    *,
+    bank: int = 0,
 ) -> tuple[dict[int, str], tuple[str, ...]]:
     priorities: dict[int, int] = {}
     labels: dict[int, str] = {}
@@ -80,6 +116,12 @@ def label_plan(
             pointer_interiors.update(
                 entry.physical_offset + 1 for entry in candidate.entries
             )
+    # The interrupt-vector emitter consumes the final six bytes as one
+    # architecture-defined block and cannot attach a symbol inside it.  In
+    # particular, erased/padding banks commonly contain $FFFF vectors; do not
+    # manufacture a reference to an un-emittable label at the final byte.
+    if len(image.prg) >= 6:
+        pointer_interiors.update(range(len(image.prg) - 6, len(image.prg)))
 
     def propose(address: int, kind: str, priority: int) -> None:
         if not internal_address(image, address):
@@ -87,16 +129,18 @@ def label_plan(
         offset = cpu_to_prg_offset(image, address)
         if offset in interiors:
             diagnostics.append(
-                f"control target ${address:04X} falls inside an instruction; kept numeric"
+                f"bank {bank:02d} control target ${address:04X} falls inside "
+                "an instruction; kept numeric"
             )
             return
         if offset in pointer_interiors:
             diagnostics.append(
-                f"target ${address:04X} falls inside an encoded pointer; kept numeric"
+                f"bank {bank:02d} target ${address:04X} falls inside an "
+                "encoded pointer; kept numeric"
             )
             return
         if priority > priorities.get(address, -1):
-            labels[address] = technical_name(kind, address)
+            labels[address] = technical_name(kind, address, bank)
             priorities[address] = priority
 
     for fact in facts.values():
@@ -198,8 +242,11 @@ def prg_source(
     image: InesImage,
     facts: dict[int, InstructionFact],
     pointer_candidates: tuple[PointerCandidate, ...] = (),
+    *,
+    bank: int = 0,
+    segment: str = "PRG",
 ) -> tuple[str, EmitResult]:
-    labels, diagnostics = label_plan(image, facts, pointer_candidates)
+    labels, diagnostics = label_plan(image, facts, pointer_candidates, bank=bank)
     pointer_tables = {
         candidate.physical_start: candidate
         for candidate in accepted_pointer_tables(pointer_candidates)
@@ -226,7 +273,7 @@ def prg_source(
         lines.append(f"{name} = ${address:04X}")
     if aliases:
         lines.append("")
-    lines.extend(['.segment "PRG"', ''])
+    lines.extend([f'.segment "{segment}"', ''])
 
     offset = 0
     instruction_count = 0
@@ -248,7 +295,12 @@ def prg_source(
                 if index:
                     lines.append("")
                 operand = labels.get(target, f"${target:04X}")
-                lines.append(f"{name}Vector:")
+                vector_name = (
+                    f"{name}Vector"
+                    if segment == "PRG"
+                    else f"{name}Vector_B{bank:02d}"
+                )
+                lines.append(f"{vector_name}:")
                 lines.append(f"    .addr {operand}")
             offset += 6
             pointer_bytes += 6
@@ -317,12 +369,25 @@ def prg_source(
         lines.append(data_line(payload))
         raw_bytes += len(payload)
 
+    symbols = tuple(
+        SymbolRecord(
+            symbol_id=name,
+            name=name,
+            kind=symbol_kind(name),
+            bank=bank,
+            cpu_address=address,
+            physical_offset=cpu_to_prg_offset(image, address),
+            source_unit="",
+        )
+        for address, name in sorted(labels.items())
+    )
     result = EmitResult(
         instruction_count=instruction_count,
         instruction_bytes=instruction_bytes,
         pointer_bytes=pointer_bytes,
         raw_bytes=raw_bytes,
         labels=len(labels),
+        symbols=symbols,
         diagnostics=diagnostics,
     )
     if result.instruction_bytes + result.pointer_bytes + result.raw_bytes != len(image.prg):
@@ -331,7 +396,7 @@ def prg_source(
 
 
 def linker_config(image: InesImage) -> str:
-    prg_start = canonical_prg_start(image)
+    targets = prg_analysis_targets(image)
     memory = [
         '    HEADER: start = $0000, size = $0010, file = %O, fill = yes;',
     ]
@@ -339,10 +404,22 @@ def linker_config(image: InesImage) -> str:
     if image.trainer:
         memory.append('    TRAINER: start = $0000, size = $0200, file = %O, fill = yes;')
         segments.append('    TRAINER: load = TRAINER, type = ro;')
-    memory.append(
-        f"    PRG: start = ${prg_start:04X}, size = ${len(image.prg):04X}, file = %O, fill = yes;"
-    )
-    segments.append('    PRG: load = PRG, type = ro;')
+    if len(targets) == 1:
+        prg_start = canonical_prg_start(image)
+        memory.append(
+            f"    PRG: start = ${prg_start:04X}, "
+            f"size = ${len(image.prg):04X}, file = %O, fill = yes;"
+        )
+        segments.append('    PRG: load = PRG, type = ro;')
+    else:
+        for target in targets:
+            name = f"PRG{target.bank:02d}"
+            size = target.physical_end - target.physical_start + 1
+            memory.append(
+                f"    {name}: start = ${target.cpu_start:04X}, "
+                f"size = ${size:04X}, file = %O, fill = yes;"
+            )
+            segments.append(f"    {name}: load = {name}, type = ro;")
     if image.chr:
         memory.append(
             f"    CHR: start = $0000, size = ${len(image.chr):04X}, file = %O, fill = yes;"
@@ -371,23 +448,98 @@ def emit_project(
     if image.chr:
         (assets / "chr.bin").write_bytes(image.chr)
 
-    prg, result = prg_source(image, facts, pointer_candidates)
+    targets = prg_analysis_targets(image)
+    results: list[EmitResult] = []
+    source_names: list[str] = []
+    for target in targets:
+        local_facts = {
+            offset - target.physical_start: replace(
+                fact,
+                physical_offset=offset - target.physical_start,
+            )
+            for offset, fact in facts.items()
+            if target.physical_start <= offset <= target.physical_end
+        }
+        local_candidates = tuple(
+            relocate_pointer_candidate(
+                candidate,
+                bank=target.bank,
+                physical_delta=-target.physical_start,
+            )
+            for candidate in pointer_candidates
+            if candidate.bank == target.bank
+            and target.physical_start <= candidate.physical_start
+            and candidate.physical_end <= target.physical_end + 1
+        )
+        if len(targets) == 1:
+            source_name = "prg.asm"
+            segment = "PRG"
+        else:
+            source_name = f"prg-bank{target.bank:02d}.asm"
+            segment = f"PRG{target.bank:02d}"
+        prg, bank_result = prg_source(
+            target.image,
+            local_facts,
+            local_candidates,
+            bank=target.bank,
+            segment=segment,
+        )
+        (source / source_name).write_text(prg, encoding="utf-8", newline="\n")
+        source_names.append(source_name)
+        results.append(
+            replace(
+                bank_result,
+                symbols=tuple(
+                    replace(
+                        symbol,
+                        physical_offset=(
+                            symbol.physical_offset + target.physical_start
+                        ),
+                        source_unit=f"src/{source_name}",
+                    )
+                    for symbol in bank_result.symbols
+                ),
+            )
+        )
+    result = EmitResult(
+        instruction_count=sum(item.instruction_count for item in results),
+        instruction_bytes=sum(item.instruction_bytes for item in results),
+        pointer_bytes=sum(item.pointer_bytes for item in results),
+        raw_bytes=sum(item.raw_bytes for item in results),
+        labels=sum(item.labels for item in results),
+        symbols=tuple(symbol for item in results for symbol in item.symbols),
+        diagnostics=tuple(
+            diagnostic
+            for item in results
+            for diagnostic in item.diagnostics
+        ),
+    )
+    if result.instruction_bytes + result.pointer_bytes + result.raw_bytes != len(
+        image.prg
+    ):
+        raise EmitError("combined PRG coverage is not complete")
     main_lines = [
         '.segment "HEADER"',
         '    .incbin "assets/header.bin"',
     ]
     if image.trainer:
         main_lines.extend(['', '.segment "TRAINER"', '    .incbin "assets/trainer.bin"'])
-    main_lines.extend(['', '.include "src/prg.asm"'])
+    for source_name in source_names:
+        main_lines.extend(['', f'.include "src/{source_name}"'])
     if image.chr:
         main_lines.extend(['', '.segment "CHR"', '    .incbin "assets/chr.bin"'])
     (output / "main.asm").write_text("\n".join(main_lines) + "\n", encoding="utf-8", newline="\n")
-    (source / "prg.asm").write_text(prg, encoding="utf-8", newline="\n")
     (output / "linker.cfg").write_text(linker_config(image), encoding="utf-8", newline="\n")
-    makefile = """.PHONY: all clean
+    dependencies = [*(f"src/{name}" for name in source_names), "assets/header.bin"]
+    if image.trainer:
+        dependencies.append("assets/trainer.bin")
+    if image.chr:
+        dependencies.append("assets/chr.bin")
+    source_dependencies = " ".join(dependencies)
+    makefile = f""".PHONY: all clean
 all: build/rebuilt.nes
 
-build/main.o: main.asm src/prg.asm assets/header.bin linker.cfg
+build/main.o: main.asm {source_dependencies} linker.cfg
 	mkdir -p build
 	ca65 -g -o $@ main.asm
 
@@ -399,9 +551,11 @@ clean:
 """
     (output / "Makefile").write_text(makefile, encoding="utf-8", newline="\n")
     metadata = {
+        "schema": "retrolarium.nes.emission",
         "schema_version": 1,
         "input_sha256": image.sha256,
         "mapper": image.mapper,
+        "prg_banks": len(targets),
         "prg_size": len(image.prg),
         "chr_size": len(image.chr),
         "instruction_count": result.instruction_count,
@@ -413,6 +567,17 @@ clean:
     }
     (output / "emission.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    symbols_document = {
+        "schema": "retrolarium.nes.symbols",
+        "schema_version": 1,
+        "input_sha256": image.sha256,
+        "symbols": [asdict(symbol) for symbol in result.symbols],
+    }
+    (output / "symbols.json").write_text(
+        json.dumps(symbols_document, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
         newline="\n",
     )

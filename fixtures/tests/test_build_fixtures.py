@@ -23,16 +23,60 @@ class FixtureBuildTests(unittest.TestCase):
     def test_config_contains_unique_projects(self) -> None:
         config = build_fixtures.load_config()
         projects = build_fixtures.project_map(config)
-        self.assertEqual(8, len(projects))
+        self.assertGreaterEqual(len(projects), 8)
 
     def test_lock_matches_project_sources(self) -> None:
         config = build_fixtures.load_config()
         lock = build_fixtures.load_lock()
         build_fixtures.validate_lock(config, lock)
-        self.assertEqual(
-            set(build_fixtures.project_map(config)),
-            set(build_fixtures.repository_map(lock)),
-        )
+        upstream_ids = {
+            project_id
+            for project_id, project in build_fixtures.project_map(config).items()
+            if project.get("source_kind", "upstream") == "upstream"
+        }
+        self.assertEqual(upstream_ids, set(build_fixtures.repository_map(lock)))
+
+    def test_local_source_needs_a_hash(self) -> None:
+        config = {
+            "projects": [
+                {
+                    "id": "nes.local",
+                    "source_kind": "local",
+                }
+            ]
+        }
+        lock = {"repositories": []}
+        with self.assertRaisesRegex(
+            build_fixtures.FixtureError, "local source needs source_sha256"
+        ):
+            build_fixtures.validate_lock(config, lock)
+
+    def test_unknown_source_kind_is_rejected(self) -> None:
+        config = {
+            "projects": [
+                {
+                    "id": "nes.unknown",
+                    "source_kind": "generated-ish",
+                }
+            ]
+        }
+        lock = {"repositories": []}
+        with self.assertRaisesRegex(build_fixtures.FixtureError, "unknown source kind"):
+            build_fixtures.validate_lock(config, lock)
+
+    def test_local_source_tree_hash_includes_paths_and_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "a.txt").write_text("one", encoding="utf-8")
+            first = build_fixtures.source_tree_sha256(root)
+            (root / "a.txt").write_text("two", encoding="utf-8")
+            second = build_fixtures.source_tree_sha256(root)
+            (root / "a.txt").rename(root / "b.txt")
+            third = build_fixtures.source_tree_sha256(root)
+
+        self.assertEqual(64, len(first))
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(second, third)
 
     def test_within_rejects_parent_escape(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

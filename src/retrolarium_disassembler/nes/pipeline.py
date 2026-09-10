@@ -9,14 +9,23 @@ from pathlib import Path
 import subprocess
 
 from .ca65 import emit_project
-from .facts import load_ghidra_facts
+from .contracts import validate_disassembly_manifest
+from .facts import InstructionFact, load_ghidra_facts
 from .ghidra import run_nes_analysis
-from .ines import InesImage, load_ines, nrom_projections
+from .ines import (
+    InesImage,
+    load_ines,
+    mapper_profile,
+    mapper_projections,
+    nrom_projections,
+    prg_analysis_targets,
+)
 from .pointers import (
     accepted_pointer_tables,
-    detect_pointer_candidates,
+    detect_banked_pointer_candidates,
     write_pointer_report,
 )
+from .toolchain import toolchain_status
 
 
 class PipelineError(RuntimeError):
@@ -90,14 +99,200 @@ def image_manifest(image: InesImage) -> dict[str, object]:
         "size": len(image.data),
         "format": "ines",
         "mapper": image.mapper,
+        "mapper_profile": mapper_profile(image).profile_id,
         "mirroring": image.mirroring,
         "battery": image.battery,
         "regions": [asdict(item) for item in image.regions],
-        "projections": [asdict(item) for item in nrom_projections(image)],
+        "projections": [asdict(item) for item in mapper_projections(image)],
     }
 
 
-def disassemble_nrom(
+def asset_manifest(image: InesImage) -> dict[str, object]:
+    regions = {region.name: region for region in image.regions}
+    items: list[dict[str, object]] = [
+        {
+            "id": "nes.container.header",
+            "kind": "container_header",
+            "path": "generated/assets/header.bin",
+            "asset_file_offset": 0,
+            "rom_file_offset": regions["header"].file_offset,
+            "size": len(image.header),
+            "sha256": regions["header"].sha256,
+        }
+    ]
+    if image.trainer:
+        items.append(
+            {
+                "id": "nes.container.trainer",
+                "kind": "trainer",
+                "path": "generated/assets/trainer.bin",
+                "asset_file_offset": 0,
+                "rom_file_offset": regions["trainer"].file_offset,
+                "size": len(image.trainer),
+                "sha256": regions["trainer"].sha256,
+            }
+        )
+    chr_region = regions.get("chr")
+    if chr_region is not None:
+        for projection in mapper_projections(image):
+            if projection.region != "chr":
+                continue
+            payload = image.chr[
+                projection.physical_start:projection.physical_end + 1
+            ]
+            items.append(
+                {
+                    "id": f"nes.chr.bank{projection.bank:02d}",
+                    "kind": "chr_bank",
+                    "path": "generated/assets/chr.bin",
+                    "asset_file_offset": projection.physical_start,
+                    "rom_file_offset": (
+                        chr_region.file_offset + projection.physical_start
+                    ),
+                    "size": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "address": {
+                        "space": projection.cpu_space,
+                        "start": projection.cpu_start,
+                        "end": projection.cpu_end,
+                        "bank": projection.bank,
+                        "selector": projection.selector,
+                    },
+                }
+            )
+    return {
+        "schema": "retrolarium.assets",
+        "schema_version": 1,
+        "items": items,
+    }
+
+
+def _write_instruction_facts(
+    path: Path, image: InesImage, facts: dict[int, InstructionFact]
+) -> None:
+    instructions = []
+    for fact in (facts[offset] for offset in sorted(facts)):
+        instructions.append(
+            {
+                "id": (
+                    f"nes.prg.bank{fact.bank:02d}."
+                    f"{fact.cpu_address:04X}"
+                ),
+                "physical_offset": fact.physical_offset,
+                "bank": fact.bank,
+                "cpu_address": fact.cpu_address,
+                "length": fact.length,
+                "bytes": fact.raw.hex(" ").upper(),
+                "mnemonic": fact.mnemonic,
+                "operands": fact.operands,
+                "flows": [
+                    {"bank": fact.bank, "cpu_address": target}
+                    for target in fact.flows
+                ],
+                "flow_type": fact.flow_type,
+                "backend_space": fact.backend_space,
+                "backend_block": fact.backend_block,
+                "backend_symbol": fact.backend_symbol,
+                "backend_function": fact.backend_function,
+            }
+        )
+    document = {
+        "schema": "retrolarium.nes.instructions",
+        "schema_version": 1,
+        "input_sha256": image.sha256,
+        "instructions": instructions,
+    }
+    path.write_text(
+        json.dumps(document, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _analyze_prg_banks(
+    image: InesImage,
+    output: Path,
+    ghidra_home: Path,
+) -> tuple[dict[int, InstructionFact], list[dict[str, object]], Path]:
+    targets = prg_analysis_targets(image)
+    toolchain_status(ghidra_home)
+    script_directory = Path(__file__).resolve().parent / "ghidra_scripts"
+    combined_facts: dict[int, InstructionFact] = {}
+    banks: list[dict[str, object]] = []
+    for target in targets:
+        bank_directory = output / "banks" / f"bank{target.bank:02d}"
+        bank_directory.mkdir(parents=True, exist_ok=True)
+        analysis_input = bank_directory / "analysis-input.nes"
+        analysis_input.write_bytes(target.image.data)
+        artifacts = run_nes_analysis(
+            analysis_input,
+            bank_directory,
+            ghidra_home.resolve(),
+            script_directory,
+        )
+        bank_facts = load_ghidra_facts(artifacts.facts, image, bank=target.bank)
+        overlap = set(combined_facts) & set(bank_facts)
+        if overlap:
+            first = min(overlap)
+            raise PipelineError(f"PRG analyses overlap at physical offset {first:#x}")
+        combined_facts.update(bank_facts)
+        report = json.loads(artifacts.report.read_text(encoding="utf-8"))
+        banks.append(
+            {
+                "bank": target.bank,
+                "physical_start": target.physical_start,
+                "physical_end": target.physical_end,
+                "cpu_start": target.cpu_start,
+                "analysis_input": analysis_input.relative_to(output).as_posix(),
+                "analysis_input_sha256": target.image.sha256,
+                "synthesized_mapper_zero_view": target.synthesized,
+                "language": report["language"],
+                "compiler": report["compiler"],
+                "instruction_count": len(bank_facts),
+                "facts": artifacts.facts.relative_to(output).as_posix(),
+                "facts_sha256": sha256_file(artifacts.facts),
+            }
+        )
+    facts_path = output / "instructions.json"
+    output.mkdir(parents=True, exist_ok=True)
+    _write_instruction_facts(facts_path, image, combined_facts)
+    return combined_facts, banks, facts_path
+
+
+def analyze_mapper_banks(
+    rom: Path,
+    output: Path,
+    ghidra_home: Path,
+) -> dict[str, object]:
+    """Analyze every canonical PRG projection in an isolated Ghidra Program."""
+    rom = rom.resolve()
+    output = output.resolve()
+    image = load_ines(rom)
+    combined_facts, banks, facts_path = _analyze_prg_banks(
+        image, output, ghidra_home
+    )
+    manifest = {
+        "schema": "retrolarium.nes.analysis",
+        "schema_version": 1,
+        "task": "nes.analyze",
+        "mode": "blind",
+        "input": image_manifest(image),
+        "backend": {"id": "ghidra", "banks": banks},
+        "facts": {
+            "instruction_count": len(combined_facts),
+            "path": facts_path.relative_to(output).as_posix(),
+            "sha256": sha256_file(facts_path),
+        },
+    }
+    (output / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return manifest
+
+
+def disassemble_nes(
     rom: Path,
     output: Path,
     ghidra_home: Path,
@@ -107,40 +302,56 @@ def disassemble_nrom(
     rom = rom.resolve()
     output = output.resolve()
     image = load_ines(rom)
-    # Reject unsupported containers and mappers before starting the expensive
-    # external analysis backend.
-    nrom_projections(image)
     analysis_dir = output / "analysis"
     generated_dir = output / "generated"
-    script_directory = Path(__file__).resolve().parent / "ghidra_scripts"
-    artifacts = run_nes_analysis(
-        rom, analysis_dir, ghidra_home.resolve(), script_directory
+    facts, banks, facts_path = _analyze_prg_banks(
+        image, analysis_dir, ghidra_home
     )
-    facts = load_ghidra_facts(artifacts.facts, image)
-    pointer_candidates = detect_pointer_candidates(image, facts)
+    pointer_candidates = detect_banked_pointer_candidates(image, facts)
     write_pointer_report(analysis_dir / "pointers.json", image, pointer_candidates)
     emission = emit_project(generated_dir, image, facts, pointer_candidates)
-    report = json.loads(artifacts.report.read_text(encoding="utf-8"))
+    targets = prg_analysis_targets(image)
+    source_units = (
+        ["generated/src/prg.asm"]
+        if len(targets) == 1
+        else [
+            f"generated/src/prg-bank{target.bank:02d}.asm"
+            for target in targets
+        ]
+    )
+    symbols_path = generated_dir / "symbols.json"
     manifest: dict[str, object] = {
+        "schema": "retrolarium.nes.disassembly",
         "schema_version": 1,
         "task": "nes.disassemble",
         "mode": "blind",
         "input": image_manifest(image),
         "backend": {
             "id": "ghidra",
-            "language": report["language"],
-            "compiler": report["compiler"],
-            "facts_sha256": sha256_file(artifacts.facts),
+            "analysis_root": "analysis",
+            "banks": banks,
         },
         "facts": {
             "instruction_count": len(facts),
+            "path": "analysis/instructions.json",
+            "sha256": sha256_file(facts_path),
             "instruction_bytes": emission.instruction_bytes,
             "pointer_bytes": emission.pointer_bytes,
             "raw_prg_bytes": emission.raw_bytes,
             "labels": emission.labels,
             "diagnostics": list(emission.diagnostics),
         },
+        "assets": asset_manifest(image),
+        "symbols": {
+            "schema": "retrolarium.nes.symbols",
+            "schema_version": 1,
+            "count": len(emission.symbols),
+            "path": "generated/symbols.json",
+            "sha256": sha256_file(symbols_path),
+        },
         "pointers": {
+            "schema": "retrolarium.nes.pointers",
+            "schema_version": 1,
             "candidate_count": sum(
                 candidate.schema_id != "nes.interrupt_vectors"
                 for candidate in pointer_candidates
@@ -154,12 +365,37 @@ def disassemble_nrom(
                 for schema_id in ("nes.u16le", "nes.split_lo_hi")
             },
             "report": "analysis/pointers.json",
+            "path": "analysis/pointers.json",
+            "sha256": sha256_file(analysis_dir / "pointers.json"),
         },
         "source": {
             "dialect": "ca65",
             "directory": "generated",
+            "units": source_units,
             "coverage": "complete",
             "whole_rom_fallback": False,
+        },
+        "operations": {
+            "build": {
+                "id": "retrolarium.project.build",
+                "project_directory": "generated",
+                "output": "generated/build/rebuilt.nes",
+                "default_container": build_container,
+            },
+            "verify": {
+                "id": "retrolarium.project.verify",
+                "artifact": "generated/build/rebuilt.nes",
+                "expected_sha256": image.sha256,
+                "expected_size": len(image.data),
+            },
+            "launch": {
+                "id": "retrolarium.project.launch",
+                "artifact": "generated/build/rebuilt.nes",
+                "platform": "nes",
+                "default_machine": "nes",
+                "supported_machines": ["famicom", "nes", "nespal"],
+                "supported_modes": ["interactive-plan", "smoke"],
+            },
         },
         "verification": {"status": "not-run"},
     }
@@ -167,6 +403,7 @@ def disassemble_nrom(
         rebuilt = build_in_container(generated_dir, build_container)
         manifest["verification"] = verify_exact(rom, rebuilt)
     output.mkdir(parents=True, exist_ok=True)
+    validate_disassembly_manifest(manifest, output)
     manifest_path = output / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
@@ -174,3 +411,21 @@ def disassemble_nrom(
         newline="\n",
     )
     return manifest
+
+
+def disassemble_nrom(
+    rom: Path,
+    output: Path,
+    ghidra_home: Path,
+    *,
+    build_container: str | None = None,
+) -> dict[str, object]:
+    """Compatibility entry point that retains the mapper-0 precondition."""
+    image = load_ines(rom.resolve())
+    nrom_projections(image)
+    return disassemble_nes(
+        rom,
+        output,
+        ghidra_home,
+        build_container=build_container,
+    )

@@ -9,13 +9,23 @@ import re
 import struct
 
 from .facts import InstructionFact
-from .ines import InesImage, canonical_prg_start, cpu_to_prg_offset
+from .ines import (
+    InesImage,
+    canonical_prg_start,
+    cpu_to_prg_offset,
+    prg_analysis_targets,
+)
 
 
 MIN_CANDIDATE_ENTRIES = 3
 MIN_ACCEPTED_ENTRIES = 4
 MAX_ACCEPTED_TARGET_SPAN = 0x800
 MAX_UNREFERENCED_TARGET_SPAN = 0x100
+MAX_ANCHORED_FIELD_OFFSET = 3
+MAX_ANCHORED_ENTRIES = 8
+MAX_INTERLEAVED_ENTRIES = 32
+MAX_INTERLEAVED_LANE_SPAN = 0x400
+MAX_INTERLEAVED_TARGET_DISTANCE = 0x2000
 OPERAND_HEX_RE = re.compile(r"0x([0-9a-fA-F]+)")
 
 
@@ -26,12 +36,14 @@ class PointerEntry:
     target: int
     high_physical_offset: int | None = None
     high_cpu_address: int | None = None
+    bank: int = 0
 
     def as_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
             "physical_offset": self.physical_offset,
             "cpu_address": self.cpu_address,
             "target": self.target,
+            "bank": self.bank,
         }
         if self.high_physical_offset is not None:
             result["high_physical_offset"] = self.high_physical_offset
@@ -51,6 +63,7 @@ class PointerCandidate:
     entries: tuple[PointerEntry, ...]
     evidence: tuple[str, ...]
     contradictions: tuple[str, ...]
+    bank: int = 0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -59,6 +72,7 @@ class PointerCandidate:
             "physical_start": self.physical_start,
             "physical_end": self.physical_end,
             "cpu_start": self.cpu_start,
+            "bank": self.bank,
             "status": self.status,
             "score": self.score,
             "entries": [entry.as_dict() for entry in self.entries],
@@ -376,6 +390,201 @@ def _split_lo_hi_candidates(
     return candidates
 
 
+def _interleaved_u16le_candidates(
+    image: InesImage, facts: dict[int, InstructionFact]
+) -> list[PointerCandidate]:
+    occupied, interiors, instruction_starts, control_targets = _instruction_sets(
+        image, facts
+    )
+    scan_end = max(0, len(image.prg) - 6)
+    cpu_base = canonical_prg_start(image)
+    candidates: list[PointerCandidate] = []
+
+    for alignment in (0, 1):
+        for start in range(alignment, scan_end - 1, 2):
+            entries: list[PointerEntry] = []
+            offset = start
+            while offset + 1 < scan_end and len(entries) < MAX_INTERLEAVED_ENTRIES:
+                if offset in occupied or offset + 1 in occupied:
+                    break
+                target = int.from_bytes(image.prg[offset:offset + 2], "little")
+                if not _mapped_target(image, target):
+                    break
+                entries.append(PointerEntry(offset, cpu_base + offset, target))
+                offset += 2
+            if len(entries) < 6:
+                continue
+
+            selected: tuple[PointerEntry, ...] | None = None
+            selected_evidence: tuple[str, ...] = ()
+            for count in range(len(entries), 5, -1):
+                window = tuple(entries[:count])
+                targets = tuple(entry.target for entry in window)
+                if all(left < right for left, right in zip(targets, targets[1:])):
+                    continue
+                even_lane = targets[0::2]
+                odd_lane = targets[1::2]
+                if not all(
+                    left < right for left, right in zip(even_lane, even_lane[1:])
+                ):
+                    continue
+                if not all(
+                    left < right for left, right in zip(odd_lane, odd_lane[1:])
+                ):
+                    continue
+                even_span = max(even_lane) - min(even_lane)
+                odd_span = max(odd_lane) - min(odd_lane)
+                if (
+                    even_span > MAX_INTERLEAVED_LANE_SPAN
+                    or odd_span > MAX_INTERLEAVED_LANE_SPAN
+                ):
+                    continue
+                end = start + count * 2
+                target_offsets = tuple(
+                    cpu_to_prg_offset(image, target) for target in targets
+                )
+                if any(
+                    target_offset < end
+                    or target_offset - end > MAX_INTERLEAVED_TARGET_DISTANCE
+                    for target_offset in target_offsets
+                ):
+                    continue
+                if any(target_offset in interiors for target_offset in target_offsets):
+                    continue
+                if any(start < target < end for target in control_targets):
+                    continue
+                selected = window
+                instruction_target_count = sum(
+                    target_offset in instruction_starts
+                    for target_offset in target_offsets
+                )
+                selected_evidence = (
+                    "all_entries_map_to_prg",
+                    f"entry_count={count}",
+                    "two_interleaved_strictly_increasing_lanes",
+                    f"even_lane_span={even_span}",
+                    f"odd_lane_span={odd_span}",
+                    "targets_follow_table",
+                    f"instruction_targets={instruction_target_count}",
+                )
+                break
+            if selected is None:
+                continue
+            end = selected[-1].physical_offset + 2
+            candidates.append(
+                PointerCandidate(
+                    candidate_id=(
+                        f"PtrTableInterleaved_B00_{cpu_base + start:04X}_{len(selected):02X}"
+                    ),
+                    schema_id="nes.u16le",
+                    physical_start=start,
+                    physical_end=end,
+                    cpu_start=cpu_base + start,
+                    status="accepted",
+                    score=min(100, 95 + len(selected)),
+                    entries=selected,
+                    evidence=selected_evidence,
+                    contradictions=(),
+                )
+            )
+    return candidates
+
+
+def _anchored_u16le_candidates(
+    image: InesImage,
+    facts: dict[int, InstructionFact],
+    accepted: tuple[PointerCandidate, ...],
+) -> list[PointerCandidate]:
+    occupied, interiors, instruction_starts, control_targets = _instruction_sets(
+        image, facts
+    )
+    scan_end = max(0, len(image.prg) - 6)
+    cpu_base = canonical_prg_start(image)
+    anchors: set[int] = set()
+    for candidate in accepted:
+        for entry in candidate.entries:
+            try:
+                anchors.add(cpu_to_prg_offset(image, entry.target))
+            except ValueError:
+                pass
+
+    candidates_by_range: dict[tuple[int, int], PointerCandidate] = {}
+    for anchor in sorted(anchors):
+        for field_offset in range(MAX_ANCHORED_FIELD_OFFSET + 1):
+            start = anchor + field_offset
+            if start + MIN_CANDIDATE_ENTRIES * 2 > scan_end:
+                continue
+            entries: list[PointerEntry] = []
+            offset = start
+            while offset + 1 < scan_end and len(entries) < MAX_ANCHORED_ENTRIES:
+                if offset in occupied or offset + 1 in occupied:
+                    break
+                target = int.from_bytes(image.prg[offset:offset + 2], "little")
+                if not _mapped_target(image, target):
+                    break
+                entries.append(PointerEntry(offset, cpu_base + offset, target))
+                offset += 2
+            if len(entries) < MIN_CANDIDATE_ENTRIES:
+                continue
+
+            selected: tuple[PointerEntry, ...] | None = None
+            for count in range(len(entries), MIN_CANDIDATE_ENTRIES - 1, -1):
+                window = tuple(entries[:count])
+                end = start + count * 2
+                target_offsets = tuple(
+                    cpu_to_prg_offset(image, entry.target) for entry in window
+                )
+                span = max(target_offsets) - min(target_offsets)
+                if span > MAX_UNREFERENCED_TARGET_SPAN:
+                    continue
+                if any(target_offset < end for target_offset in target_offsets):
+                    continue
+                if any(target_offset in interiors for target_offset in target_offsets):
+                    continue
+                if any(start < target < end for target in control_targets):
+                    continue
+                selected = window
+                break
+            if selected is None:
+                continue
+
+            end = selected[-1].physical_offset + 2
+            target_offsets = tuple(
+                cpu_to_prg_offset(image, entry.target) for entry in selected
+            )
+            instruction_target_count = sum(
+                target_offset in instruction_starts for target_offset in target_offsets
+            )
+            evidence = (
+                "all_entries_map_to_prg",
+                f"entry_count={len(selected)}",
+                f"anchored_record_start={cpu_base + anchor:04X}",
+                f"record_field_offset={field_offset}",
+                f"compact_target_span={max(target_offsets) - min(target_offsets)}",
+                "targets_follow_table",
+                f"instruction_targets={instruction_target_count}",
+            )
+            candidate = PointerCandidate(
+                candidate_id=(
+                    f"PtrTableAnchored_B00_{cpu_base + start:04X}_{len(selected):02X}"
+                ),
+                schema_id="nes.u16le",
+                physical_start=start,
+                physical_end=end,
+                cpu_start=cpu_base + start,
+                status="accepted",
+                score=min(100, 85 + len(selected)),
+                entries=selected,
+                evidence=evidence,
+                contradictions=(),
+            )
+            key = (start, end)
+            existing = candidates_by_range.get(key)
+            if existing is None or candidate.score > existing.score:
+                candidates_by_range[key] = candidate
+    return list(candidates_by_range.values())
+
+
 def _interrupt_vectors(image: InesImage) -> PointerCandidate:
     start = len(image.prg) - 6
     cpu_start = canonical_prg_start(image) + start
@@ -435,9 +644,16 @@ def _resolve_overlaps(
 def detect_pointer_candidates(
     image: InesImage, facts: dict[int, InstructionFact]
 ) -> tuple[PointerCandidate, ...]:
-    candidates = _resolve_overlaps(
-        _u16le_candidates(image, facts) + _split_lo_hi_candidates(image, facts)
+    initial = (
+        _u16le_candidates(image, facts)
+        + _split_lo_hi_candidates(image, facts)
+        + _interleaved_u16le_candidates(image, facts)
     )
+    initial_resolved = _resolve_overlaps(initial)
+    anchored = _anchored_u16le_candidates(
+        image, facts, accepted_pointer_tables(tuple(initial_resolved))
+    )
+    candidates = _resolve_overlaps(initial + anchored)
     candidates.append(_interrupt_vectors(image))
     return tuple(
         sorted(candidates, key=lambda candidate: (candidate.physical_start, candidate.schema_id))
@@ -448,6 +664,7 @@ def pointer_report(
     image: InesImage, candidates: tuple[PointerCandidate, ...]
 ) -> dict[str, object]:
     return {
+        "schema": "retrolarium.nes.pointers",
         "schema_version": 1,
         "input_sha256": image.sha256,
         "registry": [
@@ -463,6 +680,11 @@ def pointer_report(
                     "increasing targets, a direct table reference, or at least "
                     "two instruction targets"
                 ),
+                "accepted_evidence_patterns": [
+                    "strictly increasing compact targets",
+                    "two interleaved monotonic lanes whose targets follow the table",
+                    "compact pointer fields near a target of an accepted table",
+                ],
             },
             {
                 "id": "nes.interrupt_vectors",
@@ -491,4 +713,70 @@ def write_pointer_report(
         json.dumps(pointer_report(image, candidates), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
         newline="\n",
+    )
+
+
+BANK_ID_RE = re.compile(r"_B\d{2}_")
+
+
+def relocate_pointer_candidate(
+    candidate: PointerCandidate, *, bank: int, physical_delta: int
+) -> PointerCandidate:
+    """Move a bank-local candidate into or out of the physical ROM address space."""
+    entries = tuple(
+        replace(
+            entry,
+            physical_offset=entry.physical_offset + physical_delta,
+            high_physical_offset=(
+                None
+                if entry.high_physical_offset is None
+                else entry.high_physical_offset + physical_delta
+            ),
+            bank=bank,
+        )
+        for entry in candidate.entries
+    )
+    return replace(
+        candidate,
+        candidate_id=BANK_ID_RE.sub(f"_B{bank:02d}_", candidate.candidate_id),
+        physical_start=candidate.physical_start + physical_delta,
+        physical_end=candidate.physical_end + physical_delta,
+        entries=entries,
+        bank=bank,
+    )
+
+
+def detect_banked_pointer_candidates(
+    image: InesImage, facts: dict[int, InstructionFact]
+) -> tuple[PointerCandidate, ...]:
+    """Run existing pointer schemas independently in each canonical PRG bank."""
+    candidates: list[PointerCandidate] = []
+    for target in prg_analysis_targets(image):
+        local_facts = {
+            offset - target.physical_start: replace(
+                fact,
+                physical_offset=offset - target.physical_start,
+                bank=0,
+            )
+            for offset, fact in facts.items()
+            if target.physical_start <= offset <= target.physical_end
+        }
+        local_candidates = detect_pointer_candidates(target.image, local_facts)
+        candidates.extend(
+            relocate_pointer_candidate(
+                candidate,
+                bank=target.bank,
+                physical_delta=target.physical_start,
+            )
+            for candidate in local_candidates
+        )
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate.physical_start,
+                candidate.schema_id,
+                candidate.candidate_id,
+            ),
+        )
     )

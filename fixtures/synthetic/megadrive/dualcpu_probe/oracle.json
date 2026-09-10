@@ -1,0 +1,21 @@
+{
+  "schema": "retrolarium.megadrive.dualcpu-oracle",
+  "schema_version": 1,
+  "m68k": {
+    "entry": 512,
+    "copy_routine": 518,
+    "copy_loop": 548,
+    "absolute_pointer_table": 576,
+    "absolute_pointer_count": 4,
+    "relative_pointer_table": 592,
+    "relative_pointer_count": 4
+  },
+  "z80": {
+    "cpu_address": 0,
+    "copy_destination": 10485760,
+    "rom_start": 600,
+    "rom_end": 610,
+    "payload_hex": "f331ff1faf3200403c18fd",
+    "payload_size": 11
+  }
+}

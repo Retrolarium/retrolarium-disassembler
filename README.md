@@ -1,8 +1,10 @@
 # Retrolarium Kit
 
 Retrolarium Kit is the reproducible command-line layer used by the Retrolarium
-application. The first working slice turns an iNES NROM image into a complete
-ca65 project, rebuilds it and can prove that the result is byte-identical.
+application. The NES pipeline turns a profiled iNES image into a complete ca65
+project, rebuilds it and can prove that the result is byte-identical. Mapper
+profiles describe the physical-to-logical projections used for independent
+bank analysis and source emission.
 
 The generated source is deliberately conservative: Ghidra-recognized official
 6502 instructions become assembly, accepted pointer tables and interrupt
@@ -13,7 +15,11 @@ separate binary assets. A whole-ROM `.incbin` fallback is never used.
 ## Current NES boundary
 
 - iNES 1.0 containers;
-- mapper 0 (NROM), with 16 or 32 KiB PRG;
+- inspect/projection profiles for mapper 0 (NROM), 3 (CNROM) and 66
+  (GNROM/GxROM);
+- independent headless analysis of every canonical PRG bank through generated
+  mapper-0 views, with bank-qualified neutral instruction facts;
+- exact disassembly and rebuild for mapper 0, 3 and 66;
 - headless Ghidra 12.1.3 plus GhidraNes v20260531;
 - complete physical PRG coverage and overlap checks;
 - stable technical labels for functions and control-flow targets;
@@ -21,8 +27,9 @@ separate binary assets. A whole-ROM `.incbin` fallback is never used.
 - conservative pointer promotion with evidence, contradictions and overlap checks;
 - exact ca65/ld65 rebuild verification in the fixture Docker image.
 
-NES 2.0 and bank-switched mappers are rejected explicitly until their address
-projection profiles are implemented.
+NES 2.0 and unprofiled mappers are rejected explicitly. Overlapping PRG windows
+are analyzed independently and emitted as ordered ca65 segments with
+bank-qualified symbols.
 
 ## Quick start
 
@@ -31,7 +38,8 @@ Run the source-checkout launcher from the repository root. Python 3.11+, Java
 
 ```powershell
 python retrolarium/fixtures/scripts/build_fixtures.py toolchain nes
-python retrolarium/fixtures/scripts/build_fixtures.py build nes.honkeypong nes.rhde
+python retrolarium/fixtures/scripts/build_fixtures.py build `
+  nes.honkeypong nes.rhde nes.cnrom_probe nes.gnrom_probe
 python retrolarium/kit/rltool.py ghidra install
 python retrolarium/kit/rltool.py nes disassemble `
   retrolarium/fixtures/nes/bin/HonkeyPong.nes `
@@ -48,18 +56,22 @@ be selected with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`.
 The output directory contains:
 
 ```text
-analysis/instructions.tsv       neutral instruction facts
-analysis/pointers.json           candidates, evidence and schema registry
-analysis/program.json           backend metadata
-analysis/headless.log           reproducible analysis log
-generated/main.asm              container and asset assembly
-generated/src/prg.asm           full-coverage PRG source
-generated/assets/               header, optional trainer and CHR
-generated/linker.cfg             exact memory layout
-generated/Makefile               ca65/ld65 rebuild recipe
-generated/emission.json          source coverage statistics
-generated/build/rebuilt.nes      rebuilt image (when verification is requested)
-manifest.json                    input, backend, coverage and verification result
+analysis/instructions.json              merged bank-qualified neutral facts
+analysis/pointers.json                  candidates, evidence and schema registry
+analysis/banks/bankNN/analysis-input.nes exact analysis projection
+analysis/banks/bankNN/instructions.tsv  backend facts for one PRG bank
+analysis/banks/bankNN/program.json      backend metadata for one PRG bank
+analysis/banks/bankNN/headless.log      reproducible analysis log
+generated/main.asm                      container and asset assembly
+generated/src/prg.asm                   single-bank full-coverage PRG source
+generated/src/prg-bankNN.asm            multi-bank full-coverage PRG sources
+generated/assets/                       header, optional trainer and CHR
+generated/linker.cfg                    exact ordered memory layout
+generated/Makefile                      ca65/ld65 rebuild recipe
+generated/emission.json                 source coverage statistics
+generated/symbols.json                  bank-qualified integration symbols
+generated/build/rebuilt.nes             rebuilt image when verification is requested
+manifest.json                           input, backend, coverage and verification result
 ```
 
 All of these are reproducible build artifacts and should stay below an ignored
@@ -69,6 +81,17 @@ All of these are reproducible build artifacts and should stay below an ignored
 
 ```powershell
 python retrolarium/kit/rltool.py nes inspect game.nes
+python retrolarium/kit/rltool.py nes analyze game.nes `
+  --output retrolarium/build/game-analysis
+python retrolarium/kit/rltool.py project validate `
+  retrolarium/build/game-disassembly/manifest.json
+python retrolarium/kit/rltool.py project build `
+  retrolarium/build/game-disassembly/manifest.json
+python retrolarium/kit/rltool.py project verify `
+  retrolarium/build/game-disassembly/manifest.json
+python retrolarium/kit/rltool.py project launch `
+  retrolarium/build/game-disassembly/manifest.json `
+  --mame mame_testing/mame/consoles.exe --seconds 2
 python retrolarium/kit/rltool.py ghidra status
 python retrolarium/kit/rltool.py verify original.nes rebuilt.nes
 python retrolarium/kit/rltool.py benchmark pointers `
@@ -77,9 +100,19 @@ python retrolarium/kit/rltool.py benchmark pointers `
 python -m unittest discover retrolarium/kit/tests -v
 ```
 
+`nes analyze` writes one isolated `banks/bankNN/` workspace per canonical PRG
+projection plus a merged `instructions.json`. Every instruction and flow has an
+explicit bank context, while `physical_offset` remains unique across the source
+ROM. For mappers not understood by GhidraNes directly, the workspace records
+the exact generated mapper-0 analysis input and its SHA-256.
+
 The package can also be installed in editable mode with
 `python -m pip install -e retrolarium/kit`, after which the entry point is
 available as `rltool`.
+
+The versioned manifest contract consumed by the Retrolarium application is
+documented in
+[`Retrolarium_NES_Integration_Contract.md`](../docs/Retrolarium_NES_Integration_Contract.md).
 
 ## Trust boundary
 
@@ -92,6 +125,8 @@ relative expression and recorded as a diagnostic.
 
 Oracle metadata is never an analyzer input. The separate benchmark command
 first checks that the report and oracle name the same ROM hash, then measures
-accepted table ranges and decoded targets. The initial HonkeyPong baseline has
-precision 1.0 and recall 0.5: both promoted music tables are correct, while two
-non-monotonic/repeated tables intentionally remain unpromoted for now.
+accepted table ranges and decoded targets. The current HonkeyPong development
+baseline has precision 1.0 and recall 1.0 across four tables. Besides compact
+monotonic tables, it exercises two generic evidence patterns: pointer fields in
+a record reached from an accepted table, and two interleaved monotonic lanes.
+RHDE remains a source-isolated holdout and retains exact rebuild verification.

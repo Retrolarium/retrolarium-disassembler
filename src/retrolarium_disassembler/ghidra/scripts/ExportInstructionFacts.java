@@ -1,4 +1,4 @@
-// Export instruction facts without assuming a particular NES PRG size.
+// Export instruction facts from a selected executable memory block.
 //@category Retrolarium
 
 import ghidra.app.script.GhidraScript;
@@ -29,22 +29,35 @@ public class ExportInstructionFacts extends GhidraScript {
             && space.startsWith("PRG") && !space.contains("MIRROR");
     }
 
+    private static boolean isSelectedCode(MemoryBlock block, String selector) {
+        if (selector.equals("NES_PRG")) {
+            return isCanonicalPrg(block);
+        }
+        return block.isInitialized() && block.isExecute()
+            && block.getName().equalsIgnoreCase(selector);
+    }
+
     @Override
     public void run() throws Exception {
         String[] args = getScriptArgs();
-        if (args.length != 1) {
-            throw new IllegalArgumentException("expected output TSV path");
+        if (args.length < 1 || args.length > 2) {
+            throw new IllegalArgumentException(
+                "expected output TSV path and optional block selector"
+            );
         }
+        String selector = args.length == 2 ? args[1] : "NES_PRG";
 
         List<MemoryBlock> blocks = new ArrayList<>();
         for (MemoryBlock block : currentProgram.getMemory().getBlocks()) {
-            if (isCanonicalPrg(block)) {
+            if (isSelectedCode(block, selector)) {
                 blocks.add(block);
             }
         }
         blocks.sort(Comparator.comparing(block -> block.getStart().toString()));
         if (blocks.isEmpty()) {
-            throw new IllegalStateException("no canonical initialized PRG blocks found");
+            throw new IllegalStateException(
+                "no selected initialized executable blocks found: " + selector
+            );
         }
 
         List<String> lines = new ArrayList<>();

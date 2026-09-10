@@ -43,6 +43,10 @@
       "toolchain": "megadrive",
       "command": ["sh", "-c", "asm68k /p 'buildme.68k,Miniplanets.bin,,listing.txt' && romfix -d -z Miniplanets.bin"]
     },
+    "megadrive-dualcpu-probe": {
+      "toolchain": "megadrive",
+      "command": ["asm68k", "/p", "build.68k,megadrive_dualcpu_probe.bin,,listing.txt"]
+    },
     "snes-cc65": {
       "toolchain": "snes",
       "command": ["make", "all"]
@@ -91,6 +95,54 @@
       "output": "nes/bin/thwaite.nes",
       "expected_size": 40976,
       "expected_sha256": "ee51cd9562f28195ba015d9857c6c4fc9bf67cdfb213e95f655e586b92195173"
+    },
+    {
+      "id": "nes.nrom_probe",
+      "platform": "nes",
+      "source_kind": "local",
+      "source": "synthetic/nes/nrom_probe",
+      "source_sha256": "308e0035b31b8650795f1fdcb6506b347fbb973b824f8f36813174a9613063aa",
+      "builder": "nes-cc65",
+      "source_output": "nrom_probe.nes",
+      "output": "nes/bin/nrom-probe.nes",
+      "expected_size": 24592,
+      "expected_sha256": "edbf71e50b19413b8f7486cf6a9dc5f29699caeeb39160d14e9cdfa6e1c313a4"
+    },
+    {
+      "id": "nes.cnrom_probe",
+      "platform": "nes",
+      "source_kind": "local",
+      "source": "synthetic/nes/cnrom_probe",
+      "source_sha256": "3592c739cfc020c508def1f213747b81c7090e0647245a55ad5e92a8091cd6fb",
+      "builder": "nes-cc65",
+      "source_output": "cnrom_probe.nes",
+      "output": "nes/bin/cnrom-probe.nes",
+      "expected_size": 65552,
+      "expected_sha256": "3e68373630a3317681df7fff3888c74f11011183666ec7c9ab0e598d46d19bd6"
+    },
+    {
+      "id": "nes.gnrom_probe",
+      "platform": "nes",
+      "source_kind": "local",
+      "source": "synthetic/nes/gnrom_probe",
+      "source_sha256": "f1d94f2555435aea9546ed63575d24b46e63cdb75cd414b867ace6113474cffd",
+      "builder": "nes-cc65",
+      "source_output": "gnrom_probe.nes",
+      "output": "nes/bin/gnrom-probe.nes",
+      "expected_size": 163856,
+      "expected_sha256": "e55019bac08ffa961f7a885adc0e28a35de9c675da99e7ef0105c52d7bc92e42"
+    },
+    {
+      "id": "megadrive.dualcpu_probe",
+      "platform": "megadrive",
+      "source_kind": "local",
+      "source": "synthetic/megadrive/dualcpu_probe",
+      "source_sha256": "df83d9471d89983480a032619e4d7007311222f60bb27c9719ca9a1d4bd691dd",
+      "builder": "megadrive-dualcpu-probe",
+      "source_output": "megadrive_dualcpu_probe.bin",
+      "output": "megadrive/bin/megadrive-dualcpu-probe.bin",
+      "expected_size": 1024,
+      "expected_sha256": "969f7bbf6d4177896a0a6b1faf85ece26b8ed424a0947dde148366f2a14251d1"
     },
     {
       "id": "megadrive.5stars",

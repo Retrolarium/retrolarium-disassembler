@@ -6,7 +6,6 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 
@@ -36,6 +35,62 @@ def run_nes_analysis(
     ghidra_home: Path,
     script_directory: Path,
 ) -> GhidraArtifacts:
+    return _run_analysis(
+        image,
+        workspace,
+        ghidra_home,
+        script_directory,
+        project_name="retrolarium_nes",
+        project_prefix="nes_",
+        expected_language="6502:LE:16:default",
+        import_arguments=(),
+        seed_script="SeedNesVectors.java",
+        export_block=None,
+    )
+
+
+def run_megadrive_analysis(
+    image: Path,
+    workspace: Path,
+    ghidra_home: Path,
+    script_directory: Path,
+) -> GhidraArtifacts:
+    return _run_analysis(
+        image,
+        workspace,
+        ghidra_home,
+        script_directory,
+        project_name="retrolarium_megadrive_m68k",
+        project_prefix="megadrive_m68k_",
+        expected_language="68000:BE:32:default",
+        import_arguments=(
+            "-loader",
+            "BinaryLoader",
+            "-loader-blockName",
+            "ROM",
+            "-loader-baseAddr",
+            "0",
+            "-processor",
+            "68000:BE:32:default",
+        ),
+        seed_script="SeedMegaDriveVectors.java",
+        export_block="ROM",
+    )
+
+
+def _run_analysis(
+    image: Path,
+    workspace: Path,
+    ghidra_home: Path,
+    script_directory: Path,
+    *,
+    project_name: str,
+    project_prefix: str,
+    expected_language: str,
+    import_arguments: tuple[str, ...],
+    seed_script: str,
+    export_block: str | None,
+) -> GhidraArtifacts:
     image = image.resolve()
     if not image.is_file():
         raise GhidraError(f"input ROM not found: {image}")
@@ -48,26 +103,30 @@ def run_nes_analysis(
     facts = workspace / "instructions.tsv"
     report = workspace / "program.json"
     log = workspace / "headless.log"
-    projects = workspace / "ghidra-projects"
-    projects.mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="nes_", dir=projects) as project_dir:
+    export_arguments = [str(facts.resolve())]
+    if export_block is not None:
+        export_arguments.append(export_block)
+    with tempfile.TemporaryDirectory(prefix=project_prefix) as project_dir:
         command = [
             str(headless),
             project_dir,
-            "retrolarium_nes",
+            project_name,
             "-import",
             str(image),
+            *import_arguments,
             "-overwrite",
             "-analysisTimeoutPerFile",
             "600",
             "-scriptPath",
             str(script_directory),
+            "-preScript",
+            seed_script,
             "-postScript",
             "InspectProgram.java",
             str(report.resolve()),
             "-postScript",
             "ExportInstructionFacts.java",
-            str(facts.resolve()),
+            *export_arguments,
             "-deleteProject",
         ]
         result = subprocess.run(
@@ -90,10 +149,6 @@ def run_nes_analysis(
         metadata = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise GhidraError(f"invalid Ghidra program report: {exc}") from exc
-    if metadata.get("language") != "6502:LE:16:default":
+    if metadata.get("language") != expected_language:
         raise GhidraError(f"unexpected Ghidra language: {metadata.get('language')}")
-    try:
-        shutil.rmtree(projects)
-    except OSError:
-        pass
     return GhidraArtifacts(facts=facts, report=report, log=log)

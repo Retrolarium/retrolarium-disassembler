@@ -81,6 +81,28 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def source_tree_sha256(root: Path) -> str:
+    if not root.is_dir():
+        raise FixtureError(f"local source directory not found: {root}")
+    digest = hashlib.sha256()
+    files = sorted(
+        (path for path in root.rglob("*") if path.is_file()),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
+    if not files:
+        raise FixtureError(f"local source directory is empty: {root}")
+    for path in files:
+        if path.is_symlink():
+            raise FixtureError(f"local source must not contain symlinks: {path}")
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        payload = path.read_bytes()
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    return digest.hexdigest()
+
+
 def project_map(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     projects = config.get("projects")
     if not isinstance(projects, list):
@@ -112,7 +134,17 @@ def repository_map(lock: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def validate_lock(config: dict[str, Any], lock: dict[str, Any]) -> None:
-    projects = project_map(config)
+    for project_id, project in project_map(config).items():
+        source_kind = project.get("source_kind", "upstream")
+        if source_kind not in {"upstream", "local"}:
+            raise FixtureError(f"{project_id}: unknown source kind: {source_kind}")
+        if source_kind == "local" and not project.get("source_sha256"):
+            raise FixtureError(f"{project_id}: local source needs source_sha256")
+    projects = {
+        project_id: project
+        for project_id, project in project_map(config).items()
+        if project.get("source_kind", "upstream") == "upstream"
+    }
     repositories = repository_map(lock)
     if projects.keys() != repositories.keys():
         raise FixtureError("projects.json and upstreams.lock.json ids differ")
@@ -139,6 +171,14 @@ def selected_projects(
 
 def source_status(project: dict[str, Any]) -> tuple[Path, str, bool]:
     source = within(FIXTURES_ROOT, project["source"])
+    if project.get("source_kind", "upstream") == "local":
+        actual = source_tree_sha256(source)
+        expected = project.get("source_sha256")
+        if actual != expected:
+            raise FixtureError(
+                f"{project['id']}: local source sha256 is {actual}, expected {expected}"
+            )
+        return source, actual, False
     if not (source / ".git").exists():
         raise FixtureError(f"{project['id']}: upstream source is not cloned")
     actual = capture(["git", "rev-parse", "HEAD"], cwd=source)
@@ -380,7 +420,7 @@ def build_toolchain(config: dict[str, Any], toolchain_id: str) -> None:
 
 def build_project(config: dict[str, Any], project: dict[str, Any]) -> dict[str, Any]:
     validate_output_policy(config)
-    source, commit, dirty = source_status(project)
+    source, source_identity, dirty = source_status(project)
     if dirty:
         raise FixtureError(f"{project['id']}: upstream checkout is dirty")
     builder = config["builders"][project["builder"]]
@@ -412,12 +452,17 @@ def build_project(config: dict[str, Any], project: dict[str, Any]) -> dict[str, 
     result.update(
         {
             "id": project["id"],
-            "source_commit": commit,
             "builder": project["builder"],
             "toolchain_image": toolchain["image"],
             "output": project["output"],
         }
     )
+    identity_key = (
+        "source_sha256"
+        if project.get("source_kind", "upstream") == "local"
+        else "source_commit"
+    )
+    result[identity_key] = source_identity
     print(
         f"OK {project['id']}: {result['size']} bytes "
         f"sha256={result['sha256']}",
@@ -455,12 +500,13 @@ def doctor(config: dict[str, Any], lock: dict[str, Any]) -> None:
     repositories = repository_map(lock)
     validate_output_policy(config)
     for project in config["projects"]:
-        source, commit, dirty = source_status(project)
-        verify_submodules(repositories[project["id"]], source)
+        source, source_identity, dirty = source_status(project)
+        if project.get("source_kind", "upstream") == "upstream":
+            verify_submodules(repositories[project["id"]], source)
         builder = config["builders"][project["builder"]]
         state = "ready" if builder.get("toolchain") and builder.get("command") else "pending"
         print(
-            f"{project['id']}: source={source} commit={commit[:12]} "
+            f"{project['id']}: source={source} snapshot={source_identity[:12]} "
             f"dirty={str(dirty).lower()} builder={state}"
         )
 
@@ -492,7 +538,15 @@ def main(argv: list[str] | None = None) -> int:
             repositories = repository_map(lock)
             projects = selected_projects(config, args.project)
             for project in projects:
-                fetch_repository(repositories[project["id"]])
+                if project.get("source_kind", "upstream") == "local":
+                    source, identity, _ = source_status(project)
+                    print(
+                        f"OK {project['id']}: local source={source} "
+                        f"sha256={identity}",
+                        flush=True,
+                    )
+                else:
+                    fetch_repository(repositories[project["id"]])
         elif args.subcommand == "toolchain":
             build_toolchain(config, args.id)
         elif args.subcommand == "build":

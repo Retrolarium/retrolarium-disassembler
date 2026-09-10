@@ -1,0 +1,82 @@
+; Retrolarium project-owned Mega Drive dual-CPU analysis fixture.
+
+; 68000 vectors
+    dc.l    $01000000, EntryPoint, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, VBlank, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+    dc.l    Crash, Crash, Crash, Crash
+
+; Cartridge header
+    dc.b    "SEGA MEGA DRIVE "
+    dc.b    "(C)RETROLARIUM26"
+    dc.b    "RETROLARIUM DUAL CPU PROBE"
+    dcb.b   $150-*, $20
+    dc.b    "RETROLARIUM DUAL CPU PROBE"
+    dcb.b   $180-*, $20
+    dc.b    "GM RTK-PRB1-00"
+    dc.w    $D7DD
+    dc.b    "J"
+    dcb.b   $1A0-*, $20
+    dc.l    $000000, $0003FF
+    dc.l    $FF0000, $FFFFFF
+    dcb.b   12, $20
+    dcb.b   12, $20
+    dcb.b   $1F0-*, $20
+    dc.b    "JUE"
+    dcb.b   $200-*, $20
+
+; 68000 program. The copy loop gives the analyzer observable cross-CPU evidence:
+; source ROM range Z80Payload..Z80PayloadEnd is copied to Z80 RAM at $A00000.
+EntryPoint:
+    bsr.w   CopyZ80Program
+MainLoop:
+    bra.s   MainLoop
+
+CopyZ80Program:
+    move.w  #$0100, ($A11100).l
+    move.w  #$0100, ($A11200).l
+    lea     Z80Payload(pc), a0
+    lea     ($A00000).l, a1
+    move.w  #Z80PayloadEnd-Z80Payload-1, d0
+CopyByte:
+    move.b  (a0)+, (a1)+
+    dbf     d0, CopyByte
+    move.w  #$0000, ($A11200).l
+    move.w  #$0000, ($A11100).l
+    rts
+
+Crash:
+    bra.s   Crash
+
+VBlank:
+    rte
+
+; Known big-endian and PC-relative pointer material for schema benchmarks.
+AbsolutePointers:
+    dc.l    EntryPoint, CopyZ80Program, Crash, VBlank
+RelativePointers:
+    dc.w    EntryPoint-RelativePointers
+    dc.w    CopyZ80Program-RelativePointers
+    dc.w    Crash-RelativePointers
+    dc.w    VBlank-RelativePointers
+
+; Z80 program at logical address $0000:
+;   di; ld sp,$1FFF; xor a; ld ($4000),a; inc a; jr $0008
+Z80Payload:
+    dc.b    $F3, $31, $FF, $1F, $AF, $32, $00, $40, $3C, $18, $FD
+Z80PayloadEnd:
+    even
+
+    dcb.b   $400-*, $FF

@@ -136,6 +136,53 @@ class PointerDetectionTests(unittest.TestCase):
         self.assertEqual([0xC100], [candidate.cpu_start for candidate in accepted])
         self.assertIn("table_start_referenced_by_instruction", accepted[0].evidence)
 
+    def test_anchored_record_and_interleaved_lanes_recover_nonmonotonic_tables(self) -> None:
+        rom = bytearray(nrom16_image())
+        rom[16:20] = bytes.fromhex("AD 00 C1 60")
+        rom[16 + 0x100:16 + 0x108] = bytes.fromhex(
+            "00 C2 00 C3 00 C4 00 C5"
+        )
+        rom[16 + 0x200:16 + 0x208] = bytes.fromhex(
+            "70 08 C2 10 C2 10 C2 00"
+        )
+        rom[16 + 0x300:16 + 0x30C] = bytes.fromhex(
+            "10 C3 10 C4 20 C3 20 C4 30 C3 30 C4"
+        )
+        image = parse_ines(bytes(rom))
+        with tempfile.TemporaryDirectory() as directory:
+            facts_path = Path(directory) / "facts.tsv"
+            facts_path.write_text(
+                "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
+                "PRG0\tPRG0\tC000\t3\tAD 00 C1\tLDA\t0xc100\t\tFALL_THROUGH\t\tFUN_PRG0__c000\n"
+                "PRG0\tPRG0\tC003\t1\t60\tRTS\t\t\tTERMINATOR\t\t\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            facts = load_ghidra_facts(facts_path, image)
+            candidates = detect_pointer_candidates(image, facts)
+            source, _ = prg_source(image, facts, candidates)
+
+        accepted = {
+            candidate.cpu_start: candidate
+            for candidate in accepted_pointer_tables(candidates)
+        }
+        self.assertIn(0xC201, accepted)
+        self.assertIn(0xC300, accepted)
+        self.assertTrue(
+            any(item.startswith("anchored_record_start=") for item in accepted[0xC201].evidence)
+        )
+        self.assertIn(
+            "two_interleaved_strictly_increasing_lanes",
+            accepted[0xC300].evidence,
+        )
+        weaker_overlap = next(
+            candidate for candidate in candidates if candidate.cpu_start == 0xC302
+        )
+        self.assertEqual("rejected", weaker_overlap.status)
+        self.assertIn("overlaps_stronger_candidate", weaker_overlap.contradictions)
+        self.assertIn("PtrTable_B00_C201:", source)
+        self.assertIn("PtrTable_B00_C300:", source)
+
 
 if __name__ == "__main__":
     unittest.main()

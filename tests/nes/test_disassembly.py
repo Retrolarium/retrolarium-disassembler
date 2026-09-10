@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 import tempfile
@@ -10,12 +11,103 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from retrolarium_kit.ca65 import emit_project, prg_source
 from retrolarium_kit.facts import load_ghidra_facts
-from retrolarium_kit.ines import parse_ines
-from retrolarium_kit.pipeline import PipelineError, verify_exact
+from retrolarium_kit.ines import InesError, parse_ines
+from retrolarium_kit.pipeline import (
+    PipelineError,
+    asset_manifest,
+    disassemble_nrom,
+    verify_exact,
+)
+from retrolarium_kit.pointers import detect_banked_pointer_candidates
 from helpers import nrom16_image, write_facts
 
 
 class DisassemblyTests(unittest.TestCase):
+    def test_banked_emitter_uses_independent_segments_and_symbols(self) -> None:
+        header = b"NES\x1a" + bytes((8, 4, 0x20, 0x40)) + bytes(8)
+        banks = []
+        for bank_number in range(4):
+            bank = bytearray(0x8000)
+            bank[0] = 0x60
+            bank[1] = bank_number
+            bank[-6:] = bytes.fromhex("00 80 00 80 00 80")
+            banks.append(bank)
+        image = parse_ines(header + b"".join(banks) + bytes(4 * 0x2000))
+        candidates = detect_banked_pointer_candidates(image, {})
+        assets = asset_manifest(image)["items"]
+
+        vectors = [
+            candidate
+            for candidate in candidates
+            if candidate.schema_id == "nes.interrupt_vectors"
+        ]
+        self.assertEqual([0, 1, 2, 3], [candidate.bank for candidate in vectors])
+        chr_assets = [asset for asset in assets if asset["kind"] == "chr_bank"]
+        self.assertEqual(4, len(chr_assets))
+        self.assertEqual(0x6000, chr_assets[3]["asset_file_offset"])
+        self.assertEqual(
+            [0x7FFA, 0xFFFA, 0x17FFA, 0x1FFFA],
+            [candidate.physical_start for candidate in vectors],
+        )
+        self.assertEqual(
+            [f"InterruptVectors_B{bank:02d}_FFFA" for bank in range(4)],
+            [candidate.candidate_id for candidate in vectors],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = emit_project(root, image, {}, candidates)
+            bank_two = (root / "src/prg-bank02.asm").read_text(encoding="utf-8")
+            linker = (root / "linker.cfg").read_text(encoding="utf-8")
+            main = (root / "main.asm").read_text(encoding="utf-8")
+            symbols = json.loads(
+                (root / "symbols.json").read_text(encoding="utf-8")
+            )
+
+        self.assertIn("Func_B02_8000:", bank_two)
+        self.assertIn("NmiVector_B02:", bank_two)
+        self.assertIn('.segment "PRG02"', bank_two)
+        self.assertIn("PRG00: start = $8000", linker)
+        self.assertIn("PRG03: start = $8000", linker)
+        self.assertIn('.include "src/prg-bank03.asm"', main)
+        bank_two_symbols = [
+            symbol
+            for symbol in symbols["symbols"]
+            if symbol["bank"] == 2 and symbol["cpu_address"] == 0x8000
+        ]
+        self.assertEqual("Func_B02_8000", bank_two_symbols[0]["symbol_id"])
+        self.assertEqual(0x10000, bank_two_symbols[0]["physical_offset"])
+        self.assertEqual("src/prg-bank02.asm", bank_two_symbols[0]["source_unit"])
+        self.assertEqual(len(image.prg), result.raw_bytes + result.pointer_bytes)
+
+    def test_fact_import_uses_explicit_prg_bank_context(self) -> None:
+        header = b"NES\x1a" + bytes((8, 0, 0x20, 0x40)) + bytes(8)
+        prg = bytearray(4 * 0x8000)
+        prg[2 * 0x8000] = 0x60
+        image = parse_ines(header + prg)
+        with tempfile.TemporaryDirectory() as directory:
+            facts_path = Path(directory) / "facts.tsv"
+            facts_path.write_text(
+                "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
+                "PRG0\tPRG0\t8000\t1\t60\tRTS\t\t\tTERMINATOR\t\tFUN_PRG0__8000\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            facts = load_ghidra_facts(facts_path, image, bank=2)
+
+        fact = facts[0x10000]
+        self.assertEqual(2, fact.bank)
+        self.assertEqual(0x10000, fact.physical_offset)
+
+    def test_banked_mapper_is_rejected_before_external_toolchain_check(self) -> None:
+        header = b"NES\x1a" + bytes((2, 1, 0x30, 0)) + bytes(8)
+        image = header + bytes(0x8000 + 0x2000)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rom = root / "cnrom.nes"
+            rom.write_bytes(image)
+            with self.assertRaisesRegex(InesError, "NROM profile requires mapper 0"):
+                disassemble_nrom(rom, root / "output", root / "missing-ghidra")
+
     def test_facts_map_to_physical_prg_and_emitter_covers_every_byte(self) -> None:
         image = parse_ines(nrom16_image())
         with tempfile.TemporaryDirectory() as directory:
@@ -65,7 +157,7 @@ class DisassemblyTests(unittest.TestCase):
         self.assertIn("BCS * + 1", source)
         self.assertIn("; $C000: B0 FF", source)
         self.assertIn(
-            "control target $C001 falls inside an instruction; kept numeric",
+            "bank 00 control target $C001 falls inside an instruction; kept numeric",
             result.diagnostics,
         )
 
@@ -86,6 +178,19 @@ class DisassemblyTests(unittest.TestCase):
             source, _ = prg_source(image, facts)
 
         self.assertIn("STA a:$57", source)
+
+    def test_vector_target_inside_vector_block_remains_numeric(self) -> None:
+        rom = bytearray(nrom16_image())
+        rom[16 + 0x4000 - 6:16 + 0x4000] = b"\xff" * 6
+        image = parse_ines(bytes(rom))
+
+        source, result = prg_source(image, {})
+
+        self.assertEqual(3, source.count("    .addr $FFFF"))
+        self.assertNotIn("Func_B00_FFFF", source)
+        self.assertFalse(
+            any(symbol.cpu_address == 0xFFFF for symbol in result.symbols)
+        )
 
     def test_exact_verification_reports_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
