@@ -78,6 +78,37 @@ def run_megadrive_analysis(
     )
 
 
+def run_z80_analysis(
+    image: Path,
+    workspace: Path,
+    ghidra_home: Path,
+    script_directory: Path,
+    *,
+    base_address: int = 0,
+) -> GhidraArtifacts:
+    return _run_analysis(
+        image,
+        workspace,
+        ghidra_home,
+        script_directory,
+        project_name="retrolarium_megadrive_z80",
+        project_prefix="megadrive_z80_",
+        expected_language="z80:LE:16:default",
+        import_arguments=(
+            "-loader",
+            "BinaryLoader",
+            "-loader-blockName",
+            "Z80_RAM",
+            "-loader-baseAddr",
+            str(base_address),
+            "-processor",
+            "z80:LE:16:default",
+        ),
+        seed_script="SeedZ80Entry.java",
+        export_block="Z80_RAM",
+    )
+
+
 def _run_analysis(
     image: Path,
     workspace: Path,

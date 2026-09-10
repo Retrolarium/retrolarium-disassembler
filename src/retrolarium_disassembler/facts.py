@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Callable
 
 from .ines import InesImage, InesError, cpu_to_prg_offset
@@ -13,6 +14,13 @@ from .megadrive import MegaDriveError, MegaDriveImage, m68k_to_rom_offset
 
 class FactError(ValueError):
     """Instruction facts conflict with the immutable input image."""
+
+
+@dataclass(frozen=True)
+class InstructionReference:
+    address: int
+    reference_type: str
+    operand_index: int
 
 
 @dataclass(frozen=True)
@@ -30,11 +38,33 @@ class InstructionFact:
     backend_block: str
     backend_symbol: str
     backend_function: str
+    references: tuple[InstructionReference, ...]
 
 
 def parse_address(value: str) -> int:
-    tail = value.rsplit("::", 1)[-1]
-    return int(tail, 16)
+    match = re.search(r"(?:0x)?([0-9a-f]+)$", value.strip(), re.I)
+    if match is None:
+        raise FactError(f"invalid Ghidra address: {value}")
+    return int(match.group(1), 16)
+
+
+def parse_references(value: str) -> tuple[InstructionReference, ...]:
+    references = []
+    for item in value.split("|"):
+        if not item:
+            continue
+        try:
+            address, reference_type, operand_index = item.rsplit("~", 2)
+        except ValueError as exc:
+            raise FactError(f"invalid Ghidra reference: {item}") from exc
+        references.append(
+            InstructionReference(
+                address=parse_address(address),
+                reference_type=reference_type,
+                operand_index=int(operand_index),
+            )
+        )
+    return tuple(references)
 
 
 def load_ghidra_facts(
@@ -71,6 +101,27 @@ def load_megadrive_ghidra_facts(
         bank=0,
         address_label="M68K",
         expected_block="ROM",
+    )
+
+
+def load_z80_ghidra_facts(
+    path: Path, payload: bytes, *, base_address: int = 0
+) -> dict[int, InstructionFact]:
+    def project(address: int) -> int:
+        offset = address - base_address
+        if not 0 <= offset < len(payload):
+            raise FactError(
+                f"Z80 address ${address:04X} is outside the extracted payload"
+            )
+        return offset
+
+    return _load_ghidra_facts(
+        path,
+        payload,
+        project,
+        bank=0,
+        address_label="Z80",
+        expected_block="Z80_RAM",
     )
 
 
@@ -134,6 +185,7 @@ def _load_ghidra_facts(
                 backend_block=row["block"],
                 backend_symbol=row["symbol"],
                 backend_function=row["function"],
+                references=parse_references(row.get("references", "") or ""),
             )
     if not facts:
         raise FactError("backend exported no instructions")

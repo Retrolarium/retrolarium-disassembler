@@ -16,7 +16,11 @@ from retrolarium_kit.megadrive import (
     parse_megadrive,
     rom_offset_to_m68k,
 )
-from retrolarium_kit.facts import FactError, load_megadrive_ghidra_facts
+from retrolarium_kit.facts import (
+    FactError,
+    load_megadrive_ghidra_facts,
+    parse_address,
+)
 
 
 def cartridge(
@@ -48,6 +52,11 @@ def cartridge(
 
 
 class MegaDriveTests(unittest.TestCase):
+    def test_normalizes_backend_address_notations(self) -> None:
+        self.assertEqual(0x4000, parse_address("ram:4000"))
+        self.assertEqual(0xC000, parse_address("PRG0::c000"))
+        self.assertEqual(0x258, parse_address("0x00000258"))
+
     def test_imports_m68k_facts_only_after_rom_byte_validation(self) -> None:
         image = parse_megadrive(cartridge())
         header = (

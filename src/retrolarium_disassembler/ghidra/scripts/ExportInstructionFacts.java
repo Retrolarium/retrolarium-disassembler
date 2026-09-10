@@ -8,6 +8,7 @@ import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.Reference;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,7 +62,7 @@ public class ExportInstructionFacts extends GhidraScript {
         }
 
         List<String> lines = new ArrayList<>();
-        lines.add("block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction");
+        lines.add("block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\treferences\tflow_type\tsymbol\tfunction");
         for (MemoryBlock block : blocks) {
             InstructionIterator iterator = currentProgram.getListing()
                 .getInstructions(block.getStart(), true);
@@ -87,6 +88,17 @@ public class ExportInstructionFacts extends GhidraScript {
                 for (Address flow : instruction.getFlows()) {
                     flows.add(flow.toString());
                 }
+                List<String> references = new ArrayList<>();
+                for (Reference reference : instruction.getReferencesFrom()) {
+                    if (!reference.getToAddress().isMemoryAddress()) {
+                        continue;
+                    }
+                    references.add(
+                        clean(reference.getToAddress().toString()) + "~" +
+                        clean(reference.getReferenceType().toString()) + "~" +
+                        reference.getOperandIndex()
+                    );
+                }
                 Symbol symbol = currentProgram.getSymbolTable().getPrimarySymbol(address);
                 Function function = currentProgram.getFunctionManager().getFunctionAt(address);
                 lines.add(
@@ -97,6 +109,7 @@ public class ExportInstructionFacts extends GhidraScript {
                     clean(instruction.getMnemonicString()) + "\t" +
                     String.join("|", operands) + "\t" +
                     String.join("|", flows) + "\t" +
+                    String.join("|", references) + "\t" +
                     clean(instruction.getFlowType().toString()) + "\t" +
                     (symbol == null ? "" : clean(symbol.getName())) + "\t" +
                     (function == null ? "" : clean(function.getName()))

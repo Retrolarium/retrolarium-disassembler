@@ -12,7 +12,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from retrolarium_kit.ghidra import run_megadrive_analysis, run_nes_analysis
+from retrolarium_kit.ghidra import (
+    run_megadrive_analysis,
+    run_nes_analysis,
+    run_z80_analysis,
+)
 
 
 class GhidraBackendTests(unittest.TestCase):
@@ -109,6 +113,44 @@ class GhidraBackendTests(unittest.TestCase):
             )
             facts_index = command.index("ExportInstructionFacts.java")
             self.assertEqual("ROM", command[facts_index + 2])
+
+    def test_z80_uses_independent_program_and_address_space(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image, ghidra_home, scripts = self.fake_layout(root)
+            workspace = root / "analysis"
+
+            def complete(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                report = Path(command[command.index("InspectProgram.java") + 1])
+                facts = Path(command[command.index("ExportInstructionFacts.java") + 1])
+                report.write_text(
+                    json.dumps(
+                        {"language": "z80:LE:16:default", "compiler": "default"}
+                    ),
+                    encoding="utf-8",
+                )
+                facts.write_text("facts", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "ok")
+
+            with patch(
+                "retrolarium_kit.ghidra.subprocess.run", side_effect=complete
+            ) as run:
+                run_z80_analysis(image, workspace, ghidra_home, scripts)
+
+            command = run.call_args.args[0]
+            self.assertEqual(
+                "z80:LE:16:default", command[command.index("-processor") + 1]
+            )
+            self.assertEqual(
+                "Z80_RAM", command[command.index("-loader-blockName") + 1]
+            )
+            self.assertEqual(
+                "SeedZ80Entry.java", command[command.index("-preScript") + 1]
+            )
+            facts_index = command.index("ExportInstructionFacts.java")
+            self.assertEqual("Z80_RAM", command[facts_index + 2])
 
 
 if __name__ == "__main__":

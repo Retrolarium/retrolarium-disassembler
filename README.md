@@ -6,6 +6,12 @@ project, rebuilds it and can prove that the result is byte-identical. Mapper
 profiles describe the physical-to-logical projections used for independent
 bank analysis and source emission.
 
+The Mega Drive pipeline parses cartridge headers and checksums, analyzes the
+68000 and statically recovered Z80 payloads as independent Ghidra Programs,
+emits a complete modular ASM68K project, and proves an exact rebuild. Stable
+symbols, big-endian/relative pointer candidates and cross-CPU copy evidence are
+published through a versioned project manifest.
+
 The generated source is deliberately conservative: Ghidra-recognized official
 6502 instructions become assembly, accepted pointer tables and interrupt
 vectors become symbolic entries, and every unclassified or unsupported byte
@@ -52,6 +58,22 @@ python retrolarium/kit/rltool.py nes disassemble `
 sizes and SHA-256 values, rejects unsafe ZIP members and installs into the
 ignored `retrolarium/kit/.tools/` directory. An existing compatible install can
 be selected with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`.
+
+### Mega Drive / Genesis
+
+```powershell
+python retrolarium/fixtures/scripts/build_fixtures.py toolchain megadrive
+python retrolarium/fixtures/scripts/build_fixtures.py build `
+  megadrive.dualcpu_probe megadrive.5stars megadrive.dragons_castle `
+  megadrive.miniplanets
+python retrolarium/kit/rltool.py megadrive disassemble `
+  retrolarium/fixtures/megadrive/bin/megadrive-dualcpu-probe.bin `
+  --output retrolarium/build/megadrive-disassembly `
+  --build-container retrolarium-fixtures-megadrive:2026-09-09
+python retrolarium/kit/rltool.py project launch `
+  retrolarium/build/megadrive-disassembly/retrolarium-project.json `
+  --mame mame_testing/mame/consoles.exe --machine genesis --seconds 2
+```
 
 The output directory contains:
 
@@ -113,6 +135,8 @@ available as `rltool`.
 The versioned manifest contract consumed by the Retrolarium application is
 documented in
 [`Retrolarium_NES_Integration_Contract.md`](../docs/Retrolarium_NES_Integration_Contract.md).
+The corresponding dual-CPU contract is
+[`Retrolarium_MegaDrive_Integration_Contract.md`](../docs/Retrolarium_MegaDrive_Integration_Contract.md).
 
 ## Trust boundary
 
