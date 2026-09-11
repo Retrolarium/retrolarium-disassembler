@@ -98,7 +98,7 @@ independently checks schemas, canonical paths and SHA-256 records. The UI
 presents every CPU program separately and preserves the evidence edge between
 the cartridge and APU RAM.
 
-`retrolarium.exe --project-smoke retrolarium-project.json` exercises the same
+`retrolarium.exe --studio-smoke retrolarium-project.json` exercises the same
 loader as **File -> Open generated project**. Build, verify and MAME actions
 use the common Retrolarium Kit bridge shared with NES and Mega Drive.
 

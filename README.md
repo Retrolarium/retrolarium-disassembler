@@ -339,16 +339,22 @@ the profile owns the glyph map, case folding, labels, widths and addresses.
 See
 [`Retrolarium_NES_Text_Authoring_Contract.md`](docs/Retrolarium_NES_Text_Authoring_Contract.md).
 
-## Super Mario Bros. World authoring
+## Super Mario Bros. authoring
 
 The packaged `smb1.v1` profile recognizes the verified byte-identical JU build
-from the open `smb1_src` reconstruction. `game extract` exposes all 36 course
-routes, nine signed/unsigned player-physics tables, and the complete CHR bank.
-The generated Studio workspace owns World, Graphics, and Code & Analysis tabs.
-The Qt World editor provides routing and physics pages with shared undo/redo,
-restore, and atomic save. The zero-edit disassemble/extract/build/verify path is
+from the open `smb1_src` reconstruction. `game extract` emits a 12-resource
+bundle containing all 36 course routes, nine player-physics tables, 34 level
+areas, metatiles, palette packets and player palettes, five screen regions,
+seven fixed text fields, 26 player frames, the main APU music bank and effect
+envelope, and the complete CHR bank. The generated Studio workspace owns World,
+Levels, Screens, Music & Sounds, Text, Graphics, Metatiles, Palettes, Player
+Frames and Code & Analysis tabs. These editors share undo/redo, restore and
+atomic save. The zero-edit disassemble/extract/build/verify path is
 byte-identical. See
 [`Retrolarium_SMB_World_Authoring_Contract.md`](docs/Retrolarium_SMB_World_Authoring_Contract.md).
+ANN and SMB2 Japan additionally expose their ending-bank FDS waveforms and
+volume programs through a dedicated `audio.synthesis` Studio tab; see
+[`Retrolarium_FDS_Synthesis_Authoring_Contract.md`](docs/Retrolarium_FDS_Synthesis_Authoring_Contract.md).
 
 ## Other commands
 

@@ -87,7 +87,7 @@ canonical paths and SHA-256 records. The UI presents 68000 and Z80 programs as
 separate nodes and exposes cross-CPU evidence rather than flattening it into a
 single pseudo-address space.
 
-`retrolarium.exe --project-smoke retrolarium-project.json` exercises the same
+`retrolarium.exe --studio-smoke retrolarium-project.json` exercises the same
 loader as the interactive **File -> Open generated project** action. The
 build/verify/MAME actions are common with NES and are invoked through
 Retrolarium Kit.
