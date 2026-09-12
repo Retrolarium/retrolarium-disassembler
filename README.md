@@ -29,10 +29,12 @@ separate binary assets. A whole-ROM `.incbin` fallback is never used.
 
 ## Studio project contract
 
-The Kit owns parsing and validation of the hand-editable `.retrolarium` TOML
+The Kit owns parsing and validation of the hand-editable `.rlj` TOML
 entrypoint used by the GUI. A game profile supplies an initial template, but
 the created project explicitly owns which editor tabs exist, their order,
 groups, documents, codecs, capabilities and dependencies.
+The retired `.retrolarium` suffix is intentionally rejected rather than
+treated as a compatibility alias.
 
 Generated NES resource workspaces declare `Screens -> Graphics/Palettes` and
 `Graphics -> Palettes` dependencies explicitly. The GUI uses this graph for
@@ -40,17 +42,27 @@ immediate preview invalidation; hand-edited projects may change these edges,
 and the Kit rejects missing nodes, disabled dependencies and cycles.
 
 ```powershell
+rltool studio preset path\to\recognized-game.nes `
+  --output build\game-studio
 rltool studio create path\to\manifest.json `
-  --output path\to\game.retrolarium `
+  --output path\to\game.rlj `
   --id game --name "Game" --profile game.v1 `
   --resource-document path\to\documents\resources.json
-rltool studio inspect path\to\game.retrolarium
-rltool studio validate path\to\game.retrolarium
-rltool studio build path\to\game.retrolarium
-rltool studio verify path\to\game.retrolarium
-rltool studio launch-plan path\to\game.retrolarium `
+rltool studio inspect path\to\game.rlj
+rltool studio validate path\to\game.rlj
+rltool studio build path\to\game.rlj
+rltool studio verify path\to\game.rlj
+rltool studio launch-plan path\to\game.rlj `
   --mame mame_testing\mame\consoles.exe
 ```
+
+`studio preset` is the normal entry point for Super Mario Bros. 1 and Pac-Man.
+It recognizes the exact supported revision, creates a full disassembly and
+typed resource bundle in a temporary sibling directory, writes the configured
+Studio project, and by default builds and verifies its first artifact. The
+requested output directory appears only after the whole workflow succeeds.
+Use `--no-build` only for diagnostics; the GUI always requests the complete
+verified workflow.
 
 `inspect` emits the versioned normalized JSON projection consumed by the Qt
 application. Project references must be portable forward-slash paths beneath
