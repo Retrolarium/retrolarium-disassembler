@@ -23,6 +23,41 @@ from test_megadrive_z80 import fact
 
 
 class MegaDriveEmitTests(unittest.TestCase):
+    def test_emits_counted_ram_trampoline_table_as_symbolic_words(self) -> None:
+        data = bytearray(cartridge(size=0x500))
+        data[0x220:0x238] = bytes.fromhex(
+            "41 FA 00 3E 43 F8 FF 00 30 18 32 FC 4E F9 "
+            "72 00 32 18 22 C1 51 C8 FF F4"
+        )
+        targets = (0x280, 0x290, 0x2A0, 0x2B0)
+        data[0x260:0x26A] = (
+            (len(targets) - 1).to_bytes(2, "big")
+            + b"".join(target.to_bytes(2, "big") for target in targets)
+        )
+        for target in targets:
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        facts = {
+            target: replace(
+                fact(target, "RTS", ""),
+                raw=bytes.fromhex("4E 75"),
+                flow_type="TERMINATOR",
+            )
+            for target in targets
+        }
+        pointers = detect_pointer_candidates(image, facts)
+        symbols = generate_symbols(image, facts, pointers)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = emit_project(root, image, facts, pointers, symbols, ())
+            source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
+
+        self.assertIn("tbl_M68K_000260:", source)
+        self.assertIn("dc.w    $3", source)
+        self.assertIn("dc.w    loc_M68K_000280", source)
+        self.assertEqual(10, result.pointer_bytes)
+
     def test_renders_indexed_operands_and_extended_instruction_families(self) -> None:
         symbol = TechnicalSymbol(
             symbol_id="megadrive.m68k.offset.011878",

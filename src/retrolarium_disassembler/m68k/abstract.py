@@ -353,6 +353,19 @@ _IMMEDIATE_TO_ABSOLUTE = re.compile(
 )
 
 
+def _plausible_orphan_start(first_word: int) -> bool:
+    """Reject obvious data while retaining selected legal line-0 opcodes."""
+    if first_word == 0xFFFF or first_word >> 12 in {0xA, 0xF}:
+        return False
+    if first_word >= 0x1000:
+        return True
+    # CMPI is a common function/block entry after an unconditional branch.
+    # The old blanket rejection of line-0 opcodes hid valid code such as
+    # Flicky's `cmpi.w #$f,d2` at $000D86. Other line-0 families remain
+    # excluded until they have similarly strong structural evidence.
+    return first_word & 0xFF00 == 0x0C00
+
+
 def discover_ram_handler_candidates(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[EntryPointCandidate, ...]:
@@ -435,12 +448,7 @@ def discover_packed_orphan_candidates(
             continue
         payload = image.data[start:following]
         first_word = int.from_bytes(payload[:2], "big")
-        if (
-            first_word < 0x1000
-            or first_word == 0xFFFF
-            or first_word >> 12 in {0xA, 0xF}
-            or len(set(payload)) <= 1
-        ):
+        if not _plausible_orphan_start(first_word) or len(set(payload)) <= 1:
             continue
         words = {
             int.from_bytes(payload[offset:offset + 2], "big")

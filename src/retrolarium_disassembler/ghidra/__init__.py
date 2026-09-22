@@ -55,8 +55,10 @@ def run_megadrive_analysis(
     ghidra_home: Path,
     script_directory: Path,
     *,
-    seed_plan: Path | None = None,
+    seed_plan: Path,
 ) -> GhidraArtifacts:
+    if not seed_plan.is_file():
+        raise GhidraError(f"Mega Drive decoder seed plan not found: {seed_plan}")
     return _run_analysis(
         image,
         workspace,
@@ -76,7 +78,7 @@ def run_megadrive_analysis(
             "68000:BE:32:default",
         ),
         seed_script="SeedMegaDriveVectors.java",
-        seed_arguments=(str(seed_plan.resolve()),) if seed_plan is not None else (),
+        seed_arguments=(str(seed_plan.resolve()),),
         export_block="ROM",
     )
 
@@ -257,10 +259,16 @@ def _run_analysis(
             errors="replace",
         )
     log.write_text(result.stdout, encoding="utf-8", newline="\n")
-    if result.returncode:
+    script_error = "REPORT SCRIPT ERROR:" in result.stdout
+    if result.returncode or script_error:
         tail = "\n".join(result.stdout.splitlines()[-60:])
+        reason = (
+            "reported a script error"
+            if script_error and not result.returncode
+            else f"failed with exit code {result.returncode}"
+        )
         raise GhidraError(
-            f"Ghidra headless failed with exit code {result.returncode}\n{tail}"
+            f"Ghidra headless {reason}\n{tail}"
         )
     if not facts.is_file() or not report.is_file():
         raise GhidraError("Ghidra completed without required fact artifacts")

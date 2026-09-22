@@ -16,6 +16,32 @@ from test_megadrive_z80 import fact
 
 
 class MegaDrivePointerTests(unittest.TestCase):
+    def test_accepts_loader_proven_counted_ram_trampoline_table(self) -> None:
+        data = bytearray(cartridge(size=0x500))
+        data[0x220:0x238] = bytes.fromhex(
+            "41 FA 00 3E 43 F8 FF 00 30 18 32 FC 4E F9 "
+            "72 00 32 18 22 C1 51 C8 FF F4"
+        )
+        targets = (0x280, 0x290, 0x2A0, 0x2B0)
+        data[0x260:0x26A] = (
+            (len(targets) - 1).to_bytes(2, "big")
+            + b"".join(target.to_bytes(2, "big") for target in targets)
+        )
+        image = parse_megadrive(bytes(data))
+        facts = {target: fact(target, "RTS", "") for target in targets}
+
+        candidates = detect_pointer_candidates(image, facts)
+        counted = next(
+            item for item in candidates
+            if item.schema_id == "megadrive.counted-u16be.absolute"
+        )
+
+        self.assertEqual("accepted", counted.status)
+        self.assertEqual((0x260, 0x26A), (
+            counted.physical_start, counted.physical_end
+        ))
+        self.assertEqual(targets, tuple(entry.target for entry in counted.entries))
+
     def test_accepts_absolute_and_table_relative_oracle_tables(self) -> None:
         data = bytearray(cartridge())
         targets = (0x200, 0x206, 0x23C, 0x23E)

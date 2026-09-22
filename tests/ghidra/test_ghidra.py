@@ -13,6 +13,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from retrolarium_kit.ghidra import (
+    GhidraError,
     run_megadrive_analysis,
     run_nes_analysis,
     run_spc700_analysis,
@@ -70,11 +71,32 @@ class GhidraBackendTests(unittest.TestCase):
             self.assertEqual("SeedNesVectors.java", command[seed_index + 1])
             self.assertLess(seed_index, command.index("-postScript"))
 
+    def test_script_error_is_fatal_even_when_ghidra_returns_success(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image, ghidra_home, scripts = self.fake_layout(root)
+            workspace = root / "analysis"
+            result = subprocess.CompletedProcess(
+                [], 0, "ERROR REPORT SCRIPT ERROR: seed failed"
+            )
+
+            with patch(
+                "retrolarium_kit.ghidra.subprocess.run", return_value=result
+            ):
+                with self.assertRaisesRegex(GhidraError, "script error"):
+                    run_nes_analysis(image, workspace, ghidra_home, scripts)
+
+            self.assertIn(
+                "REPORT SCRIPT ERROR", (workspace / "headless.log").read_text()
+            )
+
     def test_megadrive_uses_explicit_raw_68000_profile(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image, ghidra_home, scripts = self.fake_layout(root)
             workspace = root / "analysis"
+            seed_plan = root / "seeds.txt"
+            seed_plan.write_text("", encoding="ascii")
 
             def complete(
                 command: list[str], **_: object
@@ -97,7 +119,8 @@ class GhidraBackendTests(unittest.TestCase):
                 "retrolarium_kit.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_megadrive_analysis(
-                    image, workspace, ghidra_home, scripts
+                    image, workspace, ghidra_home, scripts,
+                    seed_plan=seed_plan,
                 )
 
             command = run.call_args.args[0]

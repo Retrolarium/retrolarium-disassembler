@@ -20,6 +20,7 @@ from .m68k_abstract import (
     discover_ram_handler_candidates,
     interpret_known_cfg,
 )
+from .m68k_seeds import discover_initial_decoder_seeds
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project
 from .megadrive_pointers import detect_pointer_candidates, write_pointer_report
 from .megadrive_symbols import generate_symbols, write_symbol_report
@@ -174,10 +175,26 @@ def analyze_megadrive(
     analysis_input.write_bytes(image.data)
     scripts = Path(__file__).resolve().parent / "ghidra_scripts"
     seed_plan = program_root / "python-seeds.txt"
-    seed_plan.unlink(missing_ok=True)
     (program_root / "abstract-entrypoints.json").unlink(missing_ok=True)
-    planned_seeds: set[int] = set()
+    initial_seeds = discover_initial_decoder_seeds(image)
+    planned_seeds = {seed.address for seed in initial_seeds}
     seed_evidence: dict[int, set[str]] = {}
+    seed_kinds: dict[int, set[str]] = {}
+    seed_confidence: dict[int, set[str]] = {}
+    seed_sources: dict[int, set[int]] = {}
+    for seed in initial_seeds:
+        seed_evidence.setdefault(seed.address, set()).add(seed.evidence)
+        seed_kinds.setdefault(seed.address, set()).add(seed.kind)
+        seed_confidence.setdefault(seed.address, set()).add(seed.confidence)
+        if seed.source_address is not None:
+            seed_sources.setdefault(seed.address, set()).add(
+                seed.source_address
+            )
+    seed_plan.write_text(
+        "".join(f"{address:06X}\n" for address in sorted(planned_seeds)),
+        encoding="ascii",
+        newline="\n",
+    )
     abstract_passes = []
     converged = False
     for pass_index in range(MAX_ABSTRACT_PASSES):
@@ -186,7 +203,7 @@ def analyze_megadrive(
             program_root,
             ghidra_home.resolve(),
             scripts,
-            seed_plan=seed_plan if planned_seeds else None,
+            seed_plan=seed_plan,
         )
         facts = load_megadrive_ghidra_facts(artifacts.facts, image)
         abstract_result = interpret_known_cfg(image, facts)
@@ -221,15 +238,42 @@ def analyze_megadrive(
                 seed_evidence.setdefault(edge.target_address, set()).add(
                     edge.evidence
                 )
+                seed_kinds.setdefault(edge.target_address, set()).add(
+                    "abstract_indirect_target"
+                )
+                seed_confidence.setdefault(edge.target_address, set()).add(
+                    edge.confidence
+                )
+                seed_sources.setdefault(edge.target_address, set()).add(
+                    edge.source_address
+                )
         for candidate in abstract_candidates:
             if candidate.address in discovered:
                 seed_evidence.setdefault(candidate.address, set()).add(
                     candidate.evidence
                 )
+                seed_kinds.setdefault(candidate.address, set()).add(
+                    "ram_handler"
+                )
+                seed_confidence.setdefault(candidate.address, set()).add(
+                    candidate.confidence
+                )
+                seed_sources.setdefault(candidate.address, set()).add(
+                    candidate.source_address
+                )
         for candidate in orphan_candidates:
             if candidate.address in discovered:
                 seed_evidence.setdefault(candidate.address, set()).add(
                     candidate.evidence
+                )
+                seed_kinds.setdefault(candidate.address, set()).add(
+                    "packed_orphan"
+                )
+                seed_confidence.setdefault(candidate.address, set()).add(
+                    candidate.confidence
+                )
+                seed_sources.setdefault(candidate.address, set()).add(
+                    candidate.preceding_address
                 )
         abstract_passes.append({
             "pass": pass_index + 1,
@@ -275,6 +319,13 @@ def analyze_megadrive(
                 "decoder_seed_evidence": [
                     {
                         "address": address,
+                        "kinds": sorted(seed_kinds.get(address, set())),
+                        "confidence": sorted(
+                            seed_confidence.get(address, set())
+                        ),
+                        "source_addresses": sorted(
+                            seed_sources.get(address, set())
+                        ),
                         "evidence": sorted(seed_evidence.get(address, set())),
                     }
                     for address in sorted(planned_seeds)

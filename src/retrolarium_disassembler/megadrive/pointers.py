@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .facts import InstructionFact
 from .megadrive import MegaDriveImage
+from .m68k_seeds import discover_ram_trampoline_tables
 
 
 MIN_ENTRIES = 3
@@ -279,10 +280,62 @@ def _vector_candidate(image: MegaDriveImage) -> PointerCandidate:
     )
 
 
+def _ram_trampoline_candidates(
+    image: MegaDriveImage, facts: dict[int, InstructionFact]
+) -> tuple[PointerCandidate, ...]:
+    """Promote loader-proven counted u16 function tables."""
+    _, interiors, instruction_starts = _instruction_sets(facts)
+    candidates = []
+    for table in discover_ram_trampoline_tables(image):
+        start = table.table_address
+        entries = tuple(
+            PointerEntry(
+                physical_offset=start + 2 + index * 2,
+                logical_address=image.header.rom_start + start + 2 + index * 2,
+                raw_value=target,
+                target=target,
+            )
+            for index, target in enumerate(table.targets)
+        )
+        contradictions = []
+        if any(
+            target - image.header.rom_start in interiors
+            for target in table.targets
+        ):
+            contradictions.append("target_inside_instruction")
+        all_targets_decoded = all(
+            target in instruction_starts for target in table.targets
+        )
+        if not all_targets_decoded:
+            contradictions.append("target_not_instruction_start")
+        status = "accepted" if not contradictions else "rejected"
+        candidates.append(PointerCandidate(
+            candidate_id=f"Ptr_counted-u16be-absolute_{start:06X}",
+            schema_id="megadrive.counted-u16be.absolute",
+            physical_start=start,
+            physical_end=start + 2 + len(entries) * 2,
+            logical_start=image.header.rom_start + start,
+            entry_size=2,
+            status=status,
+            score=100 if status == "accepted" else 65,
+            entries=entries,
+            evidence=(
+                f"loader_at_{table.loader_address:06X}",
+                "loader_builds_counted_JMP_abs_l_trampolines_in_RAM",
+                f"count_word_plus_one={len(entries)}",
+                "instruction_targets="
+                f"{sum(target in instruction_starts for target in table.targets)}",
+            ),
+            contradictions=tuple(contradictions),
+        ))
+    return tuple(candidates)
+
+
 def detect_pointer_candidates(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[PointerCandidate, ...]:
     candidates = [_vector_candidate(image)]
+    candidates.extend(_ram_trampoline_candidates(image, facts))
     candidates.extend(_absolute_candidates(image, facts, 4))
     candidates.extend(_absolute_candidates(image, facts, 2))
     candidates.extend(_relative_candidates(image, facts, "table_base"))

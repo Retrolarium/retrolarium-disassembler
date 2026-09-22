@@ -279,18 +279,24 @@ analyzed instructions, accepted pointer tables, existing assets, or internal
 technical symbols. A later analysis result automatically splits an opaque
 include when it finds code or structure inside it.
 
-The Mega Drive analysis also runs a Python abstract interpreter over the known
-68000 control-flow graph. It propagates constants, small value sets, ranges,
-registers, flags, and selected memory writes, then feeds proven indirect branch
-targets back to Ghidra for decoding. Analysis repeats until no new targets are
-found. A twelve-pass safety limit fails the operation instead of emitting a
-partially applied seed plan. `analysis/m68k/abstract-analysis.json` records the
-states reached, indirect edges, widening points, unresolved jumps, RAM handler
-candidates, and packed orphan candidates. `analysis/m68k/python-seeds.txt`
-contains only the targets proved by the Python pass; Ghidra remains the
-instruction decoder. Packed orphan recovery only considers short gaps between
-known instructions after a terminal flow, rejects existing data/read targets,
-and requires either a compact gap or a return opcode before known code resumes.
+The Mega Drive analysis builds its complete decoder seed plan in Python. The
+first pass validates cartridge vectors, ROM-to-RAM code-copy loops, PC-indexed
+`bra.s`/`bra.w` and dense `bra.w` dispatch tables, and counted RAM trampoline
+builders. It then
+runs a Python abstract interpreter over the known 68000 control-flow graph. The
+interpreter propagates constants, small value sets, ranges, registers, flags,
+and selected memory writes, then feeds proven indirect branch targets back to
+Ghidra for decoding. Analysis repeats until no new targets are found. A
+twelve-pass safety limit fails the operation instead of emitting a partially
+applied seed plan. `analysis/m68k/abstract-analysis.json` records each seed's
+kind, confidence, and evidence together with reached states, indirect edges,
+widening points, unresolved jumps, RAM handler candidates, and packed orphan
+candidates. `analysis/m68k/python-seeds.txt` is the sole decoder entry-point
+plan. The Ghidra pre-script labels cartridge vectors and applies that plan; it
+does not discover targets. Packed orphan recovery only considers short gaps
+between known instructions after a terminal flow, rejects existing data/read
+targets, and requires either a compact gap or a return opcode before known code
+resumes.
 The interpreter updates `X/N/Z/V/C` for modeled move, logical, arithmetic,
 compare, test, and bit-test operations. It records each conditional branch as
 true, false, or unknown in the abstract report while retaining both CFG edges;
@@ -373,6 +379,22 @@ python retrolarium_kit/tools/flicky_diff_report.py `
 `flicky-diff.json` records every mismatch with its ROM address, both source
 lines, bytes, and Ghidra fact. It separates missing analysis from unsupported
 emission and differences limited to names or formatting.
+
+To turn the source differences into contiguous regions for heuristic work,
+run:
+
+```powershell
+python retrolarium_kit/tools/flicky_discrepancy_groups.py `
+  --reference path\to\flicky_src `
+  --generated path\to\flicky_src_kit_test\project\generated `
+  --output path\to\flicky_src_kit_test\comparison
+```
+
+The command writes `flicky-discrepancy-groups.md` and JSON. It removes line
+wrapping noise and classifies every differing ROM interval as text, word or
+long data, an opaque or missing binary include, a false pointer table, false
+code, or padding. It also groups consecutive missed and extra Z80
+instructions. Each M68K group links to the matching row in the HTML report.
 
 ### SNES / Super Famicom foundation
 

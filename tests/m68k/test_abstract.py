@@ -139,6 +139,26 @@ class M68kAbstractTests(unittest.TestCase):
 
         self.assertEqual((0x202,), tuple(item.address for item in candidates))
 
+    def test_packed_orphan_accepts_cmpi_entry_with_later_return(self) -> None:
+        payload = bytearray(cartridge(size=0x500))
+        payload[0x202:0x220] = bytes.fromhex(
+            "0C 42 00 0F 67 08 70 01 51 C8 FF FC "
+            "60 02 4E 71 4E 75 4E 71 4E 71 4E 71 4E 71 4E 71 4E 71"
+        )
+        image = parse_megadrive(bytes(payload))
+        preceding = replace(
+            fact(0x200, "BRA.B", "0x000001f0", flows=(0x1F0,)),
+            raw=bytes.fromhex("60 EE"),
+            flow_type="UNCONDITIONAL_JUMP",
+        )
+        following = fact(0x220, "NOP", "")
+
+        candidates = discover_packed_orphan_candidates(image, {
+            item.physical_offset: item for item in (preceding, following)
+        })
+
+        self.assertEqual((0x202,), tuple(item.address for item in candidates))
+
     def test_interpreter_resolves_register_indirect_jump(self) -> None:
         image = parse_megadrive(cartridge(size=0x500))
         load = replace(
@@ -221,6 +241,61 @@ class M68kAbstractTests(unittest.TestCase):
         self.assertIn(0x204, result.reached_addresses)
         self.assertIn(0x208, result.reached_addresses)
         self.assertEqual(TruthValue.TRUE, result.branch_decisions[0].outcome)
+
+    def test_direct_calls_jumps_dbcc_and_returns_shape_cfg(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+
+        def control(
+            address: int,
+            mnemonic: str,
+            operands: str,
+            length: int,
+            flow_type: str,
+            flows: tuple[int, ...] = (),
+        ):
+            return replace(
+                fact(address, mnemonic, operands, flows=flows),
+                raw=bytes(length),
+                length=length,
+                flow_type=flow_type,
+            )
+
+        instructions = (
+            control(
+                0x200, "BSR.W", "0x00000220", 4,
+                "UNCONDITIONAL_CALL", (0x220,),
+            ),
+            control(
+                0x204, "JSR", "(0x224).l", 6,
+                "UNCONDITIONAL_CALL", (0x224,),
+            ),
+            control(
+                0x20A, "DBF", "D0w|0x00000218", 4,
+                "CONDITIONAL_JUMP", (0x218,),
+            ),
+            control(
+                0x20E, "BRA.W", "0x00000230", 4,
+                "UNCONDITIONAL_JUMP", (0x230,),
+            ),
+            control(
+                0x218, "JMP", "(0x234).l", 6,
+                "UNCONDITIONAL_JUMP", (0x234,),
+            ),
+            control(0x220, "RTS", "", 2, "TERMINATOR"),
+            control(0x224, "RTE", "", 2, "TERMINATOR"),
+            control(0x230, "RTS", "", 2, "TERMINATOR"),
+            control(0x234, "RTE", "", 2, "TERMINATOR"),
+        )
+
+        result = interpret_known_cfg(image, {
+            item.physical_offset: item for item in instructions
+        })
+
+        self.assertTrue(
+            {0x200, 0x204, 0x20A, 0x20E, 0x218, 0x220, 0x224,
+             0x230, 0x234} <= set(result.reached_addresses)
+        )
+        self.assertNotIn(0x212, result.reached_addresses)
 
 
 if __name__ == "__main__":

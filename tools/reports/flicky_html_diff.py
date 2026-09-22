@@ -80,14 +80,19 @@ def listing_source(path: Path) -> dict[int, SourceAtAddress]:
 
 
 def _operation(lines: list[str]) -> str:
+    operation = ""
     for line in lines:
         code = line.split(";", 1)[0].strip()
         label = LABEL.match(code)
         if label:
             code = label.group(1).strip()
         if code:
-            return code.split(None, 1)[0].lower()
-    return ""
+            # A listing address can contain location directives, aliases and
+            # the byte-emitting statement.  The assembler prints that
+            # statement last (for example: org, label, move), so it is the
+            # operation that describes the encoded bytes at this address.
+            operation = code.split(None, 1)[0].lower()
+    return operation
 
 
 def _encoded_bytes(record: SourceAtAddress) -> str:
@@ -118,6 +123,17 @@ def _data_or_label(record: SourceAtAddress) -> bool:
     return not operation or operation.split(".", 1)[0] in DIRECTIVES
 
 
+def _directive_kind(operation: str) -> str | None:
+    aliases = {
+        "db": "dc.b",
+        "dw": "dc.w",
+    }
+    operation = aliases.get(operation, operation)
+    if operation.split(".", 1)[0] not in DIRECTIVES:
+        return None
+    return operation
+
+
 def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
     if not reference.lines:
         return "generated-only"
@@ -133,6 +149,14 @@ def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
     produced = _operation(generated.lines)
     if original.split(".", 1)[0] not in DIRECTIVES and produced in {"dc.b", "db"}:
         return "raw-fallback"
+    original_directive = _directive_kind(original)
+    produced_directive = _directive_kind(produced)
+    if (
+        original_directive is not None
+        and produced_directive is not None
+        and original_directive != produced_directive
+    ):
+        return "data-structure"
     return "same-bytes"
 
 
@@ -173,10 +197,6 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
                         f'; covered by binclude "{include.path}" + 0x{relative:X}'
                     ]
                 )
-        elif ref.lines and not gen.lines and _data_or_label(ref):
-            status = "same-data"
-        elif gen.lines and not ref.lines and _data_or_label(gen):
-            status = "same-data"
         else:
             status = _status(ref, gen)
         counts[status] += 1
@@ -191,6 +211,7 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
         ("same-include", "same data in a binclude"),
         ("same-data", "same ROM data"),
         ("same-bytes", "same bytes, different text"),
+        ("data-structure", "different data structure"),
         ("raw-fallback", "instruction left as dc.b"),
         ("reference-only", "reference only"),
         ("generated-only", "kit only"),
@@ -209,7 +230,7 @@ th,td{{border:1px solid #d9e0e8;vertical-align:top;padding:5px 8px}}th:first-chi
 td{{width:calc((100% - 90px)/2);overflow-wrap:anywhere}}tbody tr:nth-child(even){{background:#fafbfd}}
 tr.raw-fallback{{background:#fff0e4}}tr.reference-only{{background:#fcecec}}
 tr.generated-only{{background:#e9f4ff}}
-tr.same-source,tr.same-instruction,tr.same-include,tr.same-data,tr.same-bytes{{background:#eff9ed}}tr:target{{outline:3px solid #2368bb;outline-offset:-3px}}
+tr.same-source,tr.same-instruction,tr.same-include,tr.same-data,tr.same-bytes{{background:#eff9ed}}tr.data-structure{{background:#fff0d6}}tr:target{{outline:3px solid #2368bb;outline-offset:-3px}}
 pre{{margin:0;font:12px/1.45 Consolas,'Courier New',monospace;white-space:pre-wrap;tab-size:4}}
 .bytes{{color:#657283;font:11px/1.3 Consolas,monospace;margin-bottom:3px}}
 .empty{{color:#8793a1}}.legend{{font-size:12px;color:#546273}}

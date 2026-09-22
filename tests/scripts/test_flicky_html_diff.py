@@ -7,10 +7,19 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from flicky_html_diff import SourceAtAddress, _data_or_label, _status
+from flicky_html_diff import SourceAtAddress, _data_or_label, _operation, _status
 
 
 class FlickyHtmlDiffTests(unittest.TestCase):
+    def test_operation_uses_byte_emitting_statement_at_shared_address(self) -> None:
+        lines = [
+            "                org     $10000",
+            "EntryPoint:",
+            "                move    #$2700,sr",
+        ]
+
+        self.assertEqual("move", _operation(lines))
+
     def test_same_branch_bytes_ignore_different_label_names(self) -> None:
         reference = SourceAtAddress(
             lines=["NamedLoop:    bra.w   ReferenceTarget"],
@@ -46,6 +55,18 @@ class FlickyHtmlDiffTests(unittest.TestCase):
         )
 
         self.assertEqual("raw-fallback", _status(reference, generated))
+
+    def test_different_data_width_is_a_structural_difference(self) -> None:
+        reference = SourceAtAddress(
+            lines=["Sys_FuncTable:    dc.w $39"],
+            encoded=["00 39"],
+        )
+        generated = SourceAtAddress(
+            lines=["off_M68K_0022FC:", "                dc.b $00, $39"],
+            encoded=["00 39"],
+        )
+
+        self.assertEqual("data-structure", _status(reference, generated))
 
     def test_binary_include_can_hide_data_but_not_reference_code(self) -> None:
         data = SourceAtAddress(lines=["Data_Table:    dc.w 1, 2, 3"])

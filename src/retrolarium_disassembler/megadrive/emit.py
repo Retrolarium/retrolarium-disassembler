@@ -319,12 +319,27 @@ def _pointer_lines(
 ) -> list[str]:
     lines = [f"{M68K_INDENT}; {candidate.schema_id}"]
     table = _target_expression(candidate.logical_start, primary, 6)
+    if candidate.schema_id == "megadrive.counted-u16be.absolute":
+        count_word = len(candidate.entries) - 1
+        encoded_count = count_word.to_bytes(2, "big")
+        original_count = image.data[
+            candidate.physical_start:candidate.physical_start + 2
+        ]
+        if encoded_count != original_count:
+            raise MegaDriveEmitError(
+                f"counted pointer header changes bytes at "
+                f"{candidate.physical_start:#x}"
+            )
+        lines.append(f"{M68K_INDENT}dc.w    ${count_word:X}")
     for entry in candidate.entries:
         target = _target_expression(entry.target, primary, 6)
         if candidate.schema_id == "megadrive.u32be.absolute":
             lines.append(f"{M68K_INDENT}dc.l    {target}")
             encoded = entry.target.to_bytes(4, "big")
-        elif candidate.schema_id == "megadrive.u16be.absolute":
+        elif candidate.schema_id in {
+            "megadrive.u16be.absolute",
+            "megadrive.counted-u16be.absolute",
+        }:
             lines.append(f"{M68K_INDENT}dc.w    {target}")
             encoded = entry.target.to_bytes(2, "big")
         elif candidate.schema_id == "megadrive.s16be.target-table_base":

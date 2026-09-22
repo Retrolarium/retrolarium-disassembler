@@ -17,14 +17,15 @@ LABEL = re.compile(r"^[A-Za-z_][\w.]*:\s*(.*)$")
 
 
 def _code(lines: list[str]) -> str:
+    result = ""
     for line in lines:
         code = line.split(";", 1)[0].strip()
         label = LABEL.match(code)
         if label:
             code = label.group(1).strip()
         if code:
-            return code
-    return ""
+            result = code
+    return result
 
 
 def _normalized(lines: list[str]) -> tuple[str, ...]:
