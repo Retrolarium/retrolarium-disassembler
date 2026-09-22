@@ -40,6 +40,28 @@ def fact(
 
 
 class MegaDriveZ80Tests(unittest.TestCase):
+    def test_recovers_driver_passed_to_shared_z80_copy_subroutine(self) -> None:
+        image = parse_megadrive(cartridge())
+        sequence = (
+            fact(0x200, "MOVEM.L", "{ A0 D0 D1}|-(SP)"),
+            fact(0x204, "LEA", "(0xa00000).l|A1"),
+            fact(0x206, "ADDA.W", "D1w|A1"),
+            fact(0x208, "MOVE.B", "(A0)+|D1b"),
+            fact(0x20A, "MOVE.B", "D1b|(A1)"),
+            fact(0x20C, "ADDQ.W", "0x1|A1"),
+            fact(0x20E, "DBF", "D0w|0x00000208", flows=(0x208,)),
+            fact(0x240, "MOVE.W", "#0x3f|D0w"),
+            fact(0x244, "MOVEQ", "0x0|D1"),
+            fact(0x246, "LEA", "(0x38,PC)|A0",
+                 references=(InstructionReference(0x280, "DATA", 0),)),
+            fact(0x24A, "BSR.W", "0x00000200", flows=(0x200,)),
+        )
+        copy, = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
+
+        self.assertEqual((0x280, 0x2BF), (copy.source_start, copy.source_end))
+        self.assertEqual((0, 63), (copy.target_start, copy.target_end))
+        self.assertEqual("megadrive.m68k-z80.subroutine-copy", copy.schema_id)
+
     def test_recovers_a_proven_postincrement_dbf_copy(self) -> None:
         image = parse_megadrive(cartridge())
         sequence = (

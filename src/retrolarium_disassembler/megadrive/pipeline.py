@@ -316,7 +316,7 @@ def _build_emitted_project(project: Path, container: str) -> Path:
         container,
         "asm68k",
         "/p",
-        "main.68k,rebuilt.bin",
+        "src/main.s,rebuilt.bin",
     ]
     result = subprocess.run(command, text=True)
     if result.returncode:
@@ -370,7 +370,8 @@ def disassemble_megadrive(
     symbols = generate_symbols(image, m68k_facts, pointers, tuple(z80_programs))
     generated = output / "generated"
     emitted = emit_project(
-        generated, image, m68k_facts, pointers, symbols, copies
+        generated, image, m68k_facts, pointers, symbols, copies,
+        tuple(z80_programs),
     )
 
     verification: dict[str, object] = {"status": "not-run"}
@@ -420,8 +421,9 @@ def disassemble_megadrive(
                 "pointer_bytes": emitted.pointer_bytes,
                 "asset_bytes": emitted.asset_bytes,
                 "raw_bytes": emitted.raw_bytes,
+                "padding_bytes": emitted.padding_bytes,
             },
-            "instruction_encoding": "exact-byte-directives-with-disassembly-comments",
+            "instruction_encoding": "verified-mnemonics-with-exact-byte-fallback",
         },
         "operations": {
             "build": {
@@ -431,9 +433,10 @@ def disassemble_megadrive(
                 "recipe": "asl-p2bin-v1",
                 "default_container": build_container,
                 "project_directory": "generated",
-                "source": "main.68k",
+                "source": "src/main.s",
                 "object": "build/main.p",
-                "argv": ["asm68k", "/p", "main.68k,rebuilt.bin"],
+                "z80_prebuild": list(emitted.z80_builds),
+                "argv": ["asm68k", "/p", "src/main.s,rebuilt.bin"],
                 "output": "generated/rebuilt.bin",
             },
             "verify": {

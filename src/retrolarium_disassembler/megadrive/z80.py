@@ -50,6 +50,16 @@ def _immediate(operand: str) -> int | None:
     return int(match.group(1), 0) if match else None
 
 
+def _register_constant(fact: InstructionFact, register: str) -> int | None:
+    operands = fact.operands.split("|")
+    if len(operands) != 2 or operands[1].upper().rstrip("BWL") != register:
+        return None
+    if fact.mnemonic not in {"MOVE.W", "MOVE.L", "MOVEQ"}:
+        return None
+    value = operands[0].removeprefix("#")
+    return int(value, 0) if re.fullmatch(r"-?(?:0x[0-9a-f]+|\d+)", value, re.I) else None
+
+
 def _source_address(image: MegaDriveImage, fact: InstructionFact) -> int | None:
     for reference in fact.references:
         if reference.operand_index != 0 or "DATA" not in reference.reference_type:
@@ -63,6 +73,96 @@ def _source_address(image: MegaDriveImage, fact: InstructionFact) -> int | None:
     if address is None or not image.header.rom_start <= address <= image.actual_rom_end:
         return None
     return address
+
+
+def _subroutine_copy_routines(ordered: list[InstructionFact]) -> set[int]:
+    """Find calls that copy A0 bytes into Z80 RAM using D0/D1 parameters."""
+    routines: set[int] = set()
+    for entry in ordered:
+        if not (entry.mnemonic.startswith("MOVEM") and entry.operands.endswith("|-(SP)")):
+            continue
+        window = [fact for fact in ordered if entry.cpu_address < fact.cpu_address < entry.cpu_address + 0x40]
+        bus = next((fact for fact in window if fact.mnemonic == "LEA"
+                    and fact.operands.upper() == "(0XA00000).L|A1"), None)
+        if bus is None:
+            continue
+        if not any(fact.mnemonic == "ADDA.W" and fact.operands.upper() == "D1W|A1"
+                   for fact in window):
+            continue
+        source = next((fact for fact in window if fact.mnemonic == "MOVE.B"
+                       and fact.operands.upper() == "(A0)+|D1B"), None)
+        if source is None:
+            continue
+        if not any(fact.mnemonic == "MOVE.B" and fact.operands.upper() == "D1B|(A1)"
+                   for fact in window):
+            continue
+        if not any(fact.mnemonic == "ADDQ.W" and fact.operands.upper() == "0X1|A1"
+                   for fact in window):
+            continue
+        if not any(fact.mnemonic == "DBF" and fact.operands.upper().startswith("D0W|")
+                   and source.cpu_address in fact.flows for fact in window):
+            continue
+        routines.add(entry.cpu_address)
+    return routines
+
+
+def _detect_subroutine_copies(
+    image: MegaDriveImage, ordered: list[InstructionFact], seen: set[tuple[int, int, int]]
+) -> list[CrossCpuCopy]:
+    routines = _subroutine_copy_routines(ordered)
+    copies: list[CrossCpuCopy] = []
+    for index, call in enumerate(ordered):
+        if not call.mnemonic.startswith("BSR") or not routines.intersection(call.flows):
+            continue
+        prior = [fact for fact in ordered[max(0, index - 8):index]
+                 if call.cpu_address - 0x20 <= fact.cpu_address]
+        count = next((fact for fact in reversed(prior)
+                      if _register_constant(fact, "D0") is not None), None)
+        destination = next((fact for fact in reversed(prior)
+                            if _register_constant(fact, "D1") is not None), None)
+        source = next((fact for fact in reversed(prior) if fact.mnemonic == "LEA"
+                       and fact.operands.upper().endswith("|A0")
+                       and _source_address(image, fact) is not None), None)
+        if count is None or destination is None or source is None:
+            continue
+        count_value = _register_constant(count, "D0")
+        destination_value = _register_constant(destination, "D1")
+        source_start = _source_address(image, source)
+        assert count_value is not None and destination_value is not None and source_start is not None
+        if count.cpu_address >= source.cpu_address or destination.cpu_address >= source.cpu_address:
+            continue
+        size = (count_value & 0xFFFF) + 1
+        # This analysis lane extracts executable Z80 images, which enter RAM
+        # at zero. Short copies to the sound command area are data transfers.
+        if destination_value != 0 or not 0x20 <= size <= 0x2000:
+            continue
+        source_end = source_start + size - 1
+        if source_end > image.actual_rom_end:
+            continue
+        key = (source_start, Z80_WINDOW_START, size)
+        if key in seen:
+            continue
+        seen.add(key)
+        payload_offset = m68k_to_rom_offset(image, source_start)
+        payload = image.data[payload_offset:payload_offset + size]
+        copies.append(CrossCpuCopy(
+            edge_id=f"megadrive.cross.m68k-z80.{source_start:06X}.0000",
+            schema_id="megadrive.m68k-z80.subroutine-copy",
+            source_cpu_id="m68k",
+            source_space="m68k",
+            source_start=source_start,
+            source_end=source_end,
+            target_cpu_id="z80",
+            target_space="z80",
+            target_start=0,
+            target_end=size - 1,
+            size=size,
+            payload_sha256=hashlib.sha256(payload).hexdigest(),
+            evidence_addresses=(count.cpu_address, destination.cpu_address,
+                                source.cpu_address, call.cpu_address, *call.flows),
+            confidence="proven-static-copy",
+        ))
+    return copies
 
 
 def detect_z80_copies(
@@ -177,4 +277,5 @@ def detect_z80_copies(
                 confidence="proven-static-copy",
             )
         )
-    return tuple(copies)
+    copies.extend(_detect_subroutine_copies(image, ordered, seen))
+    return tuple(sorted(copies, key=lambda copy: (copy.source_start, copy.target_start)))

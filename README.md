@@ -262,6 +262,85 @@ python retrolarium_kit/rltool.py project launch `
   --mame mame_testing/mame/consoles.exe --machine genesis --seconds 2
 ```
 
+Mega Drive source is emitted below `generated/src/`, with `main.s` as the
+address-ordered translation-unit index, `.s` files for the 68000, `data/`
+for binary inputs, and technical work-RAM/hardware definitions under
+`src/memory/`. Proven Z80 uploads also produce rebuildable
+`src/sound/z80/programNN.asm` units; `project build` assembles them before
+the 68000 ROM. ROM-derived instructions with supported operand forms are
+emitted as mnemonics; the remaining recognized instructions retain their
+original bytes and disassembly comments. `project verify` checks the rebuilt
+ROM against the input byte for byte.
+Generated `loc_`, `sub_`, `tbl_`, and `off_` symbols use IDA-style lower-case
+prefixes. Long `$FF` padding runs use `org` and are counted separately as
+`padding_bytes` in the project coverage report.
+
+For an independent Flicky source benchmark, run this after disassembly:
+
+```powershell
+python retrolarium_kit/tools/source_benchmark.py `
+  --reference path\to\flicky_src `
+  --generated retrolarium_kit/build/megadrive-disassembly/generated `
+  --output retrolarium_kit/build/flicky-benchmark `
+  --minimum-m68k-instruction-match 95 `
+  --minimum-m68k-source-match 95 `
+  --minimum-z80-instruction-match 70 `
+  --minimum-z80-source-match 70
+```
+
+This creates flattened `reference/main.s` and `generated/main.s`, source maps,
+and `comparison.json`. When the reference AS listing exists, the report compares
+68000 instruction addresses and encodings. If the reference Z80 driver listing
+is available at `comparison/reference/z80_driver.lst`, it also compares Z80
+instruction addresses and full instruction bytes. Run `project build` before
+this command: the benchmark reads its 68000 and Z80 assembler listings to
+count instructions actually written as mnemonics. The processor-specific
+minimum flags enforce separate 68000 and Z80 targets. The legacy
+`--minimum-instruction-match` and `--minimum-source-match` flags apply one
+threshold to both processors. The benchmark reads the reference only after the ROM
+pipeline completes; no reference source or symbols enter generation.
+
+For side-by-side editing, export the two ROM-aligned reference files after
+disassembly:
+
+```powershell
+python retrolarium_kit/tools/export_flicky_reference.py `
+  --reference path\to\flicky_src `
+  --generated path\to\flicky_src_kit_test\project\generated
+```
+
+This writes `rom-000200.reference.s` and `rom-010000.reference.s` beside the
+generated `rom-*.s` files. They concatenate the matching source modules from
+`flicky_src/src/main.s`; the first starts at `Sys_ErrorTrap` ($000200), after
+the cartridge vectors and header. These comparison files are not assembled.
+
+For a standalone address-aligned HTML view, build both projects and run:
+
+```powershell
+python retrolarium_kit/tools/flicky_html_diff.py `
+  --reference path\to\flicky_src `
+  --generated path\to\flicky_src_kit_test\project\generated `
+  --output path\to\flicky_src_kit_test\comparison\flicky-source-diff.html
+```
+
+The page places lines from both assembler listings side by side at their ROM
+addresses, with filters for source differences and instructions still emitted
+as `dc.b`. It requires the rebuilt ROM to match the reference byte for byte.
+
+For an actionable text and JSON report of the same build, run:
+
+```powershell
+python retrolarium_kit/tools/flicky_diff_report.py `
+  --reference path\to\flicky_src `
+  --generated path\to\flicky_src_kit_test\project\generated `
+  --output path\to\flicky_src_kit_test\comparison
+```
+
+`flicky-diff.md` groups the remaining raw instruction fallbacks by mnemonic;
+`flicky-diff.json` records every mismatch with its ROM address, both source
+lines, bytes, and Ghidra fact. It separates missing analysis from unsupported
+emission and differences limited to names or formatting.
+
 ### SNES / Super Famicom foundation
 
 ```powershell
