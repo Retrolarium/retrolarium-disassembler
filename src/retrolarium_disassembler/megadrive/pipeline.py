@@ -15,11 +15,19 @@ from .facts import (
 )
 from .ghidra import GhidraArtifacts, run_megadrive_analysis, run_z80_analysis
 from .megadrive import image_manifest, load_megadrive
+from .m68k_abstract import (
+    discover_packed_orphan_candidates,
+    discover_ram_handler_candidates,
+    interpret_known_cfg,
+)
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project
 from .megadrive_pointers import detect_pointer_candidates, write_pointer_report
 from .megadrive_symbols import generate_symbols, write_symbol_report
 from .megadrive_z80 import CrossCpuCopy, detect_z80_copies
 from .toolchain import toolchain_status
+
+
+MAX_ABSTRACT_PASSES = 12
 
 
 def _sha256(path: Path) -> str:
@@ -165,10 +173,193 @@ def analyze_megadrive(
     analysis_input = program_root / "analysis-input.bin"
     analysis_input.write_bytes(image.data)
     scripts = Path(__file__).resolve().parent / "ghidra_scripts"
-    artifacts = run_megadrive_analysis(
-        analysis_input, program_root, ghidra_home.resolve(), scripts
+    seed_plan = program_root / "python-seeds.txt"
+    seed_plan.unlink(missing_ok=True)
+    (program_root / "abstract-entrypoints.json").unlink(missing_ok=True)
+    planned_seeds: set[int] = set()
+    seed_evidence: dict[int, set[str]] = {}
+    abstract_passes = []
+    converged = False
+    for pass_index in range(MAX_ABSTRACT_PASSES):
+        artifacts = run_megadrive_analysis(
+            analysis_input,
+            program_root,
+            ghidra_home.resolve(),
+            scripts,
+            seed_plan=seed_plan if planned_seeds else None,
+        )
+        facts = load_megadrive_ghidra_facts(artifacts.facts, image)
+        abstract_result = interpret_known_cfg(image, facts)
+        abstract_candidates = discover_ram_handler_candidates(image, facts)
+        orphan_candidates = discover_packed_orphan_candidates(image, facts)
+        indirect_targets = {
+            edge.target_address
+            for edge in abstract_result.indirect_edges
+            if edge.confidence == "proven"
+            if edge.target_address not in facts
+            and edge.target_address not in planned_seeds
+        }
+        handler_targets = {
+            candidate.address
+            for candidate in abstract_candidates
+            if candidate.confidence == "proven"
+            and candidate.address not in facts
+            and candidate.address not in planned_seeds
+        }
+        orphan_targets = {
+            candidate.address
+            for candidate in orphan_candidates
+            if candidate.confidence == "high"
+            and candidate.address not in facts
+            and candidate.address not in planned_seeds
+        }
+        discovered = sorted(
+            indirect_targets | handler_targets | orphan_targets
+        )
+        for edge in abstract_result.indirect_edges:
+            if edge.target_address in discovered:
+                seed_evidence.setdefault(edge.target_address, set()).add(
+                    edge.evidence
+                )
+        for candidate in abstract_candidates:
+            if candidate.address in discovered:
+                seed_evidence.setdefault(candidate.address, set()).add(
+                    candidate.evidence
+                )
+        for candidate in orphan_candidates:
+            if candidate.address in discovered:
+                seed_evidence.setdefault(candidate.address, set()).add(
+                    candidate.evidence
+                )
+        abstract_passes.append({
+            "pass": pass_index + 1,
+            "decoded_instruction_count": len(facts),
+            "reached_instruction_count": len(
+                abstract_result.reached_addresses
+            ),
+            "new_seed_addresses": discovered,
+            "new_seed_evidence": [
+                {
+                    "address": address,
+                    "evidence": sorted(seed_evidence[address]),
+                }
+                for address in discovered
+            ],
+        })
+        if not discovered:
+            converged = True
+            break
+        planned_seeds.update(discovered)
+        seed_plan.write_text(
+            "".join(f"{address:06X}\n" for address in sorted(planned_seeds)),
+            encoding="ascii",
+            newline="\n",
+        )
+    if not converged:
+        raise ValueError(
+            "M68K abstract analysis did not converge after "
+            f"{MAX_ABSTRACT_PASSES} decoder passes"
+        )
+    abstract_candidates = discover_ram_handler_candidates(image, facts)
+    orphan_candidates = discover_packed_orphan_candidates(image, facts)
+    abstract_path = program_root / "abstract-analysis.json"
+    abstract_path.write_text(
+        json.dumps(
+            {
+                "schema": "retrolarium.m68k.abstract-analysis",
+                "schema_version": 1,
+                "input_sha256": image.sha256,
+                "converged": converged,
+                "passes": abstract_passes,
+                "decoder_seed_addresses": sorted(planned_seeds),
+                "decoder_seed_evidence": [
+                    {
+                        "address": address,
+                        "evidence": sorted(seed_evidence.get(address, set())),
+                    }
+                    for address in sorted(planned_seeds)
+                ],
+                "entrypoint_candidates": [
+                    {
+                        "address": candidate.address,
+                        "source_address": candidate.source_address,
+                        "storage_address": candidate.storage_address,
+                        "confidence": candidate.confidence,
+                        "evidence": candidate.evidence,
+                        "already_disassembled": candidate.address in facts,
+                    }
+                    for candidate in abstract_candidates
+                ],
+                "orphan_candidates": [
+                    {
+                        "address": candidate.address,
+                        "preceding_address": candidate.preceding_address,
+                        "following_address": candidate.following_address,
+                        "gap_size": candidate.gap_size,
+                        "confidence": candidate.confidence,
+                        "evidence": candidate.evidence,
+                        "already_disassembled": candidate.address in facts,
+                    }
+                    for candidate in orphan_candidates
+                ],
+                "control_flow": {
+                    "reached_instruction_count": len(
+                        abstract_result.reached_addresses
+                    ),
+                    "state_updates": abstract_result.state_updates,
+                    "widened_addresses": list(
+                        abstract_result.widened_addresses
+                    ),
+                    "unresolved_indirect_addresses": list(
+                        abstract_result.unresolved_indirect_addresses
+                    ),
+                    "indirect_edges": [
+                        {
+                            "source_address": edge.source_address,
+                            "target_address": edge.target_address,
+                            "mnemonic": edge.mnemonic,
+                            "evidence": edge.evidence,
+                            "confidence": edge.confidence,
+                            "target_already_disassembled": (
+                                edge.target_address in facts
+                            ),
+                        }
+                        for edge in abstract_result.indirect_edges
+                    ],
+                    "conditional_branches": {
+                        "true": sum(
+                            decision.outcome.value == "true"
+                            for decision in abstract_result.branch_decisions
+                        ),
+                        "false": sum(
+                            decision.outcome.value == "false"
+                            for decision in abstract_result.branch_decisions
+                        ),
+                        "unknown": sum(
+                            decision.outcome.value == "unknown"
+                            for decision in abstract_result.branch_decisions
+                        ),
+                        "decisions": [
+                            {
+                                "source_address": decision.source_address,
+                                "target_address": decision.target_address,
+                                "fallthrough_address": (
+                                    decision.fallthrough_address
+                                ),
+                                "condition": decision.condition,
+                                "outcome": decision.outcome.value,
+                            }
+                            for decision in abstract_result.branch_decisions
+                        ],
+                    },
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
-    facts = load_megadrive_ghidra_facts(artifacts.facts, image)
     instructions = program_root / "instructions.json"
     _write_instructions(
         instructions,
@@ -193,6 +384,16 @@ def analyze_megadrive(
             analysis_input=analysis_input,
         )
     ]
+    programs[0]["abstract_analysis"] = abstract_path.relative_to(output).as_posix()
+    programs[0]["abstract_analysis_sha256"] = _sha256(abstract_path)
+    programs[0]["abstract_entrypoint_candidates"] = len(abstract_candidates)
+    programs[0]["abstract_orphan_candidates"] = len(orphan_candidates)
+    programs[0]["abstract_decoder_seed_count"] = len(planned_seeds)
+    if seed_plan.is_file():
+        programs[0]["abstract_decoder_seeds"] = (
+            seed_plan.relative_to(output).as_posix()
+        )
+        programs[0]["abstract_decoder_seeds_sha256"] = _sha256(seed_plan)
     edges = []
     z80_symbol_programs = []
     for index, copy in enumerate(detect_z80_copies(image, facts)):

@@ -20,6 +20,7 @@ from .megadrive_z80 import CrossCpuCopy
 
 MODULE_SIZE = 0x10000
 FF_ORG_MIN_BYTES = 64
+OPAQUE_INCLUDE_MIN_BYTES = 256
 M68K_INDENT = " " * 16
 SIMPLE_OPCODES = {
     "RESET": bytes.fromhex("4E70"),
@@ -375,6 +376,54 @@ def _selected_tables(
     return selected
 
 
+def _opaque_include_ranges(
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    tables: dict[int, PointerCandidate],
+    asset_ranges: dict[int, tuple[int, str]],
+    primary: dict[int, TechnicalSymbol],
+) -> tuple[tuple[int, int], ...]:
+    """Select large evidence-free ROM spans for reversible binary includes."""
+    blocked = bytearray(len(image.data))
+
+    def mark(start: int, end: int) -> None:
+        start = max(0x200, start)
+        end = min(len(blocked), end)
+        if start < end:
+            blocked[start:end] = b"\x01" * (end - start)
+
+    for start, fact in facts.items():
+        mark(start, start + fact.length)
+    for table in tables.values():
+        mark(table.physical_start, table.physical_end)
+    for start, (size, _) in asset_ranges.items():
+        mark(start, start + size)
+    for match in re.finditer(
+        bytes([0xFF]) + f"{{{FF_ORG_MIN_BYTES},}}".encode("ascii"),
+        image.data[0x200:],
+    ):
+        mark(0x200 + match.start(), 0x200 + match.end())
+
+    boundaries = {0x200, len(image.data)}
+    boundaries.update(range(MODULE_SIZE, len(image.data), MODULE_SIZE))
+    for address in primary:
+        offset = address - image.header.rom_start
+        if 0x200 < offset < len(image.data):
+            boundaries.add(offset)
+
+    selected: list[tuple[int, int]] = []
+    start: int | None = None
+    for offset in range(0x200, len(image.data) + 1):
+        unavailable = offset == len(image.data) or bool(blocked[offset])
+        if start is not None and (offset in boundaries or unavailable):
+            if offset - start >= OPAQUE_INCLUDE_MIN_BYTES:
+                selected.append((start, offset))
+            start = None
+        if offset < len(image.data) and not blocked[offset] and start is None:
+            start = offset
+    return tuple(selected)
+
+
 def _z80_one_byte_asm(raw: bytes) -> str | None:
     if len(raw) != 1:
         return None
@@ -649,6 +698,8 @@ def emit_project(
     asset_root = root / "data"
     source_root.mkdir(exist_ok=True)
     asset_root.mkdir(exist_ok=True)
+    for stale in asset_root.glob("opaque-*.bin"):
+        stale.unlink()
     (source_root / "system").mkdir(exist_ok=True)
     (source_root / "data").mkdir(exist_ok=True)
     (source_root / "memory").mkdir(exist_ok=True)
@@ -730,6 +781,34 @@ def emit_project(
             }
         )
     tables = _selected_tables(pointer_candidates, tuple(ranges))
+    for start, end in _opaque_include_ranges(
+        image, m68k_facts, tables, asset_ranges, primary
+    ):
+        payload = image.data[start:end]
+        name = f"opaque-{start:06x}.bin"
+        relative = f"data/{name}"
+        (asset_root / name).write_bytes(payload)
+        asset_ranges[start] = (len(payload), relative)
+        assets.append(
+            {
+                "id": f"megadrive.opaque.{start:06x}",
+                "kind": "opaque_rom",
+                "path": relative,
+                "rom_file_offset": start,
+                "size": len(payload),
+                "sha256": _sha256(payload),
+                "emit": "binclude",
+                "heuristic": {
+                    "minimum_size": OPAQUE_INCLUDE_MIN_BYTES,
+                    "evidence": "no instructions, pointer tables, assets, or internal symbols",
+                },
+                "address": {
+                    "space": "m68k",
+                    "start": image.header.rom_start + start,
+                    "end": image.header.rom_start + end - 1,
+                },
+            }
+        )
 
     source_units = ["src/system/vectors.s", "src/data/header.s"]
     counts = [0, 0, 0, 0, 0]

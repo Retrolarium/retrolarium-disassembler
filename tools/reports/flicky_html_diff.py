@@ -6,6 +6,7 @@ import argparse
 from collections import Counter
 from dataclasses import dataclass, field
 from html import escape
+import json
 from pathlib import Path
 import re
 
@@ -22,6 +23,34 @@ ROM_NAME = "Flicky (UE) [!].bin"
 class SourceAtAddress:
     lines: list[str] = field(default_factory=list)
     encoded: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class BinaryInclude:
+    start: int
+    end: int
+    path: str
+
+
+def binary_includes(generated: Path) -> tuple[BinaryInclude, ...]:
+    manifest = generated.parent / "retrolarium-project.json"
+    if not manifest.is_file():
+        return ()
+    project = json.loads(manifest.read_text(encoding="utf-8"))
+    items = project.get("assets", {}).get("items", [])
+    includes = []
+    for item in items:
+        if item.get("emit") != "binclude":
+            continue
+        start = item.get("rom_file_offset")
+        size = item.get("size")
+        path = item.get("path")
+        if not isinstance(start, int) or not isinstance(size, int) or not isinstance(path, str):
+            continue
+        if start < 0x200 or size <= 0:
+            continue
+        includes.append(BinaryInclude(start, start + size, path))
+    return tuple(sorted(includes, key=lambda item: item.start))
 
 
 def listing_source(path: Path) -> dict[int, SourceAtAddress]:
@@ -61,6 +90,34 @@ def _operation(lines: list[str]) -> str:
     return ""
 
 
+def _encoded_bytes(record: SourceAtAddress) -> str:
+    return re.sub(r"\s+", "", "".join(record.encoded)).lower()
+
+
+def _same_instruction(
+    reference: SourceAtAddress, generated: SourceAtAddress
+) -> bool:
+    original = _operation(reference.lines)
+    produced = _operation(generated.lines)
+    if not original or not produced:
+        return False
+    original_base = original.split(".", 1)[0]
+    produced_base = produced.split(".", 1)[0]
+    if original_base in DIRECTIVES or produced_base in DIRECTIVES:
+        return False
+    encoded = _encoded_bytes(reference)
+    return (
+        original_base == produced_base
+        and bool(encoded)
+        and encoded == _encoded_bytes(generated)
+    )
+
+
+def _data_or_label(record: SourceAtAddress) -> bool:
+    operation = _operation(record.lines)
+    return not operation or operation.split(".", 1)[0] in DIRECTIVES
+
+
 def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
     if not reference.lines:
         return "generated-only"
@@ -70,6 +127,8 @@ def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
                                      for item in lines)
     if normalized(reference.lines) == normalized(generated.lines):
         return "same-source"
+    if _same_instruction(reference, generated):
+        return "same-instruction"
     original = _operation(reference.lines)
     produced = _operation(generated.lines)
     if original.split(".", 1)[0] not in DIRECTIVES and produced in {"dc.b", "db"}:
@@ -92,6 +151,7 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
         raise ValueError("reference and generated ROMs differ; build and verify first")
     original = listing_source(reference / "build" / "main.lst")
     produced = listing_source(generated / "build" / "retrolarium-main.lst")
+    includes = binary_includes(generated)
     addresses = sorted(original.keys() | produced.keys())
     if not addresses:
         raise ValueError("no ROM source lines found in assembler listings")
@@ -100,7 +160,25 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
     for address in addresses:
         ref = original.get(address, SourceAtAddress())
         gen = produced.get(address, SourceAtAddress())
-        status = _status(ref, gen)
+        include = next(
+            (item for item in includes if item.start <= address < item.end),
+            None,
+        )
+        if include is not None and ref.lines and _data_or_label(ref):
+            status = "same-include"
+            if not gen.lines:
+                relative = address - include.start
+                gen = SourceAtAddress(
+                    lines=[
+                        f'; covered by binclude "{include.path}" + 0x{relative:X}'
+                    ]
+                )
+        elif ref.lines and not gen.lines and _data_or_label(ref):
+            status = "same-data"
+        elif gen.lines and not ref.lines and _data_or_label(gen):
+            status = "same-data"
+        else:
+            status = _status(ref, gen)
         counts[status] += 1
         rows.append(
             f'<tr id="a{address:06X}" class="{status}">'
@@ -109,6 +187,9 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
         )
     summary = " · ".join(f"{name}: {counts[key]}" for key, name in (
         ("same-source", "same text"),
+        ("same-instruction", "same instruction"),
+        ("same-include", "same data in a binclude"),
+        ("same-data", "same ROM data"),
         ("same-bytes", "same bytes, different text"),
         ("raw-fallback", "instruction left as dc.b"),
         ("reference-only", "reference only"),
@@ -128,7 +209,7 @@ th,td{{border:1px solid #d9e0e8;vertical-align:top;padding:5px 8px}}th:first-chi
 td{{width:calc((100% - 90px)/2);overflow-wrap:anywhere}}tbody tr:nth-child(even){{background:#fafbfd}}
 tr.raw-fallback{{background:#fff0e4}}tr.reference-only{{background:#fcecec}}
 tr.generated-only{{background:#e9f4ff}}
-tr.same-source{{background:#eff9ed}}tr:target{{outline:3px solid #2368bb;outline-offset:-3px}}
+tr.same-source,tr.same-instruction,tr.same-include,tr.same-data,tr.same-bytes{{background:#eff9ed}}tr:target{{outline:3px solid #2368bb;outline-offset:-3px}}
 pre{{margin:0;font:12px/1.45 Consolas,'Courier New',monospace;white-space:pre-wrap;tab-size:4}}
 .bytes{{color:#657283;font:11px/1.3 Consolas,monospace;margin-bottom:3px}}
 .empty{{color:#8793a1}}.legend{{font-size:12px;color:#546273}}
@@ -143,7 +224,7 @@ pre{{margin:0;font:12px/1.45 Consolas,'Courier New',monospace;white-space:pre-wr
 <script>
 const rows=[...document.querySelectorAll('tbody tr')],filter=document.getElementById('filter'),visible=document.getElementById('visible');
 function applyFilter(){{let count=0;for(const row of rows){{const show=filter.value==='all'||
-  (filter.value==='changes'&&!row.classList.contains('same-source'))||
+  (filter.value==='changes'&&!row.classList.contains('same-source')&&!row.classList.contains('same-instruction')&&!row.classList.contains('same-include')&&!row.classList.contains('same-data')&&!row.classList.contains('same-bytes'))||
   (filter.value==='raw'&&row.classList.contains('raw-fallback'))||
   (filter.value==='missing'&&(row.classList.contains('reference-only')||row.classList.contains('generated-only')));
   row.hidden=!show;if(show)count++}}visible.textContent=`Lines: ${{count}}`}}

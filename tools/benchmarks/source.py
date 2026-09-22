@@ -27,6 +27,24 @@ DIRECTIVES = {
 LISTING_LINE = re.compile(r"^(?:\(\d+\))?\s*\d+/\s*([0-9A-Fa-f]+)\s+: (.*)$")
 
 
+def instruction_quality(
+    matches: int, reference_count: int, generated_count: int
+) -> dict[str, float]:
+    recall = 100 * matches / reference_count if reference_count else 100.0
+    precision = 100 * matches / generated_count if generated_count else (
+        100.0 if not reference_count else 0.0
+    )
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if precision + recall else 0.0
+    )
+    return {
+        "instruction_recall_percentage": round(recall, 2),
+        "instruction_precision_percentage": round(precision, 2),
+        "instruction_f1_percentage": round(f1, 2),
+    }
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -189,6 +207,7 @@ def instruction_comparison(reference: Path, generated: Path) -> dict[str, object
                            if not same_instruction(address))
     missed = sorted(known.keys() - analyzed.keys())
     extra = sorted(analyzed.keys() - known.keys())
+    quality = instruction_quality(len(matches), len(known), len(analyzed))
     report = {
         "reference_listing_sha256": sha256(listing),
         "reference_rom_sha256": sha256(rom_path),
@@ -196,6 +215,7 @@ def instruction_comparison(reference: Path, generated: Path) -> dict[str, object
         "generated_instructions": len(analyzed),
         "matching_instruction_starts": len(matches),
         "matching_instruction_percentage": round(100 * len(matches) / len(known), 2),
+        **quality,
         "missed_reference_instructions": len(missed),
         "other_generated_instructions": len(extra),
         "different_opcode_prefixes_at_same_address": len(disagreements),
@@ -216,6 +236,7 @@ def instruction_comparison(reference: Path, generated: Path) -> dict[str, object
             "emitted_mnemonic_instructions": len(emitted),
             "matching_reference_instructions": source_matches,
             "matching_reference_percentage": round(100 * source_matches / len(known), 2),
+            **instruction_quality(source_matches, len(known), len(emitted)),
         }
     return report
 
@@ -252,6 +273,7 @@ def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -
                            if analyzed[address] != known[address])
     missed = sorted(known.keys() - analyzed.keys())
     extra = sorted(analyzed.keys() - known.keys())
+    quality = instruction_quality(len(matches), len(known), len(analyzed))
     report = {
         "reference_listing_sha256": sha256(listing),
         "reference_driver_sha256": sha256(driver),
@@ -260,6 +282,7 @@ def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -
         "generated_instructions": len(analyzed),
         "matching_instruction_starts": len(matches),
         "matching_instruction_percentage": round(100 * len(matches) / len(known), 2),
+        **quality,
         "missed_reference_instructions": len(missed),
         "other_generated_instructions": len(extra),
         "different_opcode_prefixes_at_same_address": len(disagreements),
@@ -281,6 +304,7 @@ def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -
             "emitted_mnemonic_instructions": len(emitted),
             "matching_reference_instructions": source_matches,
             "matching_reference_percentage": round(100 * source_matches / len(known), 2),
+            **instruction_quality(source_matches, len(known), len(emitted)),
         }
     return report
 
@@ -306,18 +330,30 @@ def main() -> None:
     parser.add_argument("--generated", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--minimum-instruction-match", type=float, default=0)
+    parser.add_argument("--minimum-instruction-precision", type=float, default=0)
+    parser.add_argument("--minimum-instruction-f1", type=float, default=0)
     parser.add_argument("--minimum-source-match", type=float, default=0)
     parser.add_argument("--minimum-m68k-instruction-match", type=float, default=0)
+    parser.add_argument("--minimum-m68k-precision", type=float, default=0)
+    parser.add_argument("--minimum-m68k-f1", type=float, default=0)
     parser.add_argument("--minimum-m68k-source-match", type=float, default=0)
     parser.add_argument("--minimum-z80-instruction-match", type=float, default=0)
+    parser.add_argument("--minimum-z80-precision", type=float, default=0)
+    parser.add_argument("--minimum-z80-f1", type=float, default=0)
     parser.add_argument("--minimum-z80-source-match", type=float, default=0)
     args = parser.parse_args()
     for value in (
         args.minimum_instruction_match,
+        args.minimum_instruction_precision,
+        args.minimum_instruction_f1,
         args.minimum_source_match,
         args.minimum_m68k_instruction_match,
+        args.minimum_m68k_precision,
+        args.minimum_m68k_f1,
         args.minimum_m68k_source_match,
         args.minimum_z80_instruction_match,
+        args.minimum_z80_precision,
+        args.minimum_z80_f1,
         args.minimum_z80_source_match,
     ):
         if not 0 <= value <= 100:
@@ -392,16 +428,25 @@ def main() -> None:
         "68000": (
             args.minimum_m68k_instruction_match or args.minimum_instruction_match,
             args.minimum_m68k_source_match or args.minimum_source_match,
+            args.minimum_m68k_precision or args.minimum_instruction_precision,
+            args.minimum_m68k_f1 or args.minimum_instruction_f1,
         ),
         "Z80": (
             args.minimum_z80_instruction_match or args.minimum_instruction_match,
             args.minimum_z80_source_match or args.minimum_source_match,
+            args.minimum_z80_precision or args.minimum_instruction_precision,
+            args.minimum_z80_f1 or args.minimum_instruction_f1,
         ),
     }
     for cpu, key in (("68000", "instruction_comparison"),
                      ("Z80", "z80_instruction_comparison")):
         comparison = report.get(key)
-        minimum_instruction_match, minimum_source_match = thresholds[cpu]
+        (
+            minimum_instruction_match,
+            minimum_source_match,
+            minimum_precision,
+            minimum_f1,
+        ) = thresholds[cpu]
         if minimum_instruction_match:
             if not isinstance(comparison, dict):
                 raise SystemExit(f"{cpu} reference instruction comparison is missing")
@@ -410,6 +455,19 @@ def main() -> None:
                 raise SystemExit(
                     f"{cpu} instruction match {actual}% is below "
                     f"{minimum_instruction_match}%"
+                )
+        for label, minimum, field in (
+            ("precision", minimum_precision, "instruction_precision_percentage"),
+            ("F1", minimum_f1, "instruction_f1_percentage"),
+        ):
+            if not minimum:
+                continue
+            if not isinstance(comparison, dict):
+                raise SystemExit(f"{cpu} reference instruction comparison is missing")
+            actual = comparison[field]
+            if actual < minimum:
+                raise SystemExit(
+                    f"{cpu} instruction {label} {actual}% is below {minimum}%"
                 )
         if minimum_source_match:
             emission = comparison.get("source_emission") if isinstance(comparison, dict) else None

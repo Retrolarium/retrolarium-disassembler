@@ -116,6 +116,44 @@ class GhidraBackendTests(unittest.TestCase):
             facts_index = command.index("ExportInstructionFacts.java")
             self.assertEqual("ROM", command[facts_index + 2])
 
+    def test_megadrive_passes_python_seed_plan_to_decoder(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image, ghidra_home, scripts = self.fake_layout(root)
+            workspace = root / "analysis"
+            seed_plan = root / "seeds.txt"
+            seed_plan.write_text("000B5A\n", encoding="ascii")
+
+            def complete(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                report = Path(command[command.index("InspectProgram.java") + 1])
+                facts = Path(command[command.index("ExportInstructionFacts.java") + 1])
+                report.write_text(
+                    json.dumps({
+                        "language": "68000:BE:32:default",
+                        "compiler": "default",
+                    }),
+                    encoding="utf-8",
+                )
+                facts.write_text("facts", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "ok")
+
+            with patch(
+                "retrolarium_kit.ghidra.subprocess.run", side_effect=complete
+            ) as run:
+                run_megadrive_analysis(
+                    image,
+                    workspace,
+                    ghidra_home,
+                    scripts,
+                    seed_plan=seed_plan,
+                )
+
+            command = run.call_args.args[0]
+            script_index = command.index("SeedMegaDriveVectors.java")
+            self.assertEqual(str(seed_plan.resolve()), command[script_index + 1])
+
     def test_z80_uses_independent_program_and_address_space(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

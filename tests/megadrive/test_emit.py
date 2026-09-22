@@ -189,6 +189,29 @@ class MegaDriveEmitTests(unittest.TestCase):
                 )
                 self.assertEqual(image.data, rebuilt.read_bytes())
 
+    def test_large_unclassified_span_uses_binary_include(self) -> None:
+        image = parse_megadrive(cartridge(size=0x600))
+        entry = replace(
+            fact(0x200, "RTS", ""),
+            raw=image.data[0x200:0x202],
+            length=2,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = emit_project(root, image, {0x200: entry}, (), (), ())
+            source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
+            blobs = [item for item in result.assets if item["kind"] == "opaque_rom"]
+
+            self.assertEqual(1, len(blobs))
+            self.assertEqual(0x202, blobs[0]["rom_file_offset"])
+            self.assertEqual(0x3FE, blobs[0]["size"])
+            self.assertIn('binclude "data/opaque-000202.bin"', source)
+            self.assertEqual(
+                image.data[0x202:],
+                (root / "data/opaque-000202.bin").read_bytes(),
+            )
+            self.assertEqual(0, result.raw_bytes)
+
     def test_emits_modules_relocatable_tables_and_z80_include(self) -> None:
         data = bytearray(cartridge())
         targets = (0x200, 0x206, 0x23C, 0x23E)

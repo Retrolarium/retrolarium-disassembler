@@ -54,6 +54,8 @@ def run_megadrive_analysis(
     workspace: Path,
     ghidra_home: Path,
     script_directory: Path,
+    *,
+    seed_plan: Path | None = None,
 ) -> GhidraArtifacts:
     return _run_analysis(
         image,
@@ -74,6 +76,7 @@ def run_megadrive_analysis(
             "68000:BE:32:default",
         ),
         seed_script="SeedMegaDriveVectors.java",
+        seed_arguments=(str(seed_plan.resolve()),) if seed_plan is not None else (),
         export_block="ROM",
     )
 

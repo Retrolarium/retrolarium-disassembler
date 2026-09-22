@@ -273,7 +273,28 @@ original bytes and disassembly comments. `project verify` checks the rebuilt
 ROM against the input byte for byte.
 Generated `loc_`, `sub_`, `tbl_`, and `off_` symbols use IDA-style lower-case
 prefixes. Long `$FF` padding runs use `org` and are counted separately as
-`padding_bytes` in the project coverage report.
+`padding_bytes` in the project coverage report. Unclassified ROM spans of at
+least 256 bytes are emitted as `data/opaque-*.bin` files when they contain no
+analyzed instructions, accepted pointer tables, existing assets, or internal
+technical symbols. A later analysis result automatically splits an opaque
+include when it finds code or structure inside it.
+
+The Mega Drive analysis also runs a Python abstract interpreter over the known
+68000 control-flow graph. It propagates constants, small value sets, ranges,
+registers, flags, and selected memory writes, then feeds proven indirect branch
+targets back to Ghidra for decoding. Analysis repeats until no new targets are
+found. A twelve-pass safety limit fails the operation instead of emitting a
+partially applied seed plan. `analysis/m68k/abstract-analysis.json` records the
+states reached, indirect edges, widening points, unresolved jumps, RAM handler
+candidates, and packed orphan candidates. `analysis/m68k/python-seeds.txt`
+contains only the targets proved by the Python pass; Ghidra remains the
+instruction decoder. Packed orphan recovery only considers short gaps between
+known instructions after a terminal flow, rejects existing data/read targets,
+and requires either a compact gap or a return opcode before known code resumes.
+The interpreter updates `X/N/Z/V/C` for modeled move, logical, arithmetic,
+compare, test, and bit-test operations. It records each conditional branch as
+true, false, or unknown in the abstract report while retaining both CFG edges;
+known flags therefore add evidence without hiding alternate game states.
 
 For an independent Flicky source benchmark, run this after disassembly:
 
@@ -282,8 +303,10 @@ python retrolarium_kit/tools/source_benchmark.py `
   --reference path\to\flicky_src `
   --generated retrolarium_kit/build/megadrive-disassembly/generated `
   --output retrolarium_kit/build/flicky-benchmark `
-  --minimum-m68k-instruction-match 95 `
-  --minimum-m68k-source-match 95 `
+  --minimum-m68k-instruction-match 99 `
+  --minimum-m68k-precision 99 `
+  --minimum-m68k-f1 99 `
+  --minimum-m68k-source-match 99 `
   --minimum-z80-instruction-match 70 `
   --minimum-z80-source-match 70
 ```
@@ -299,6 +322,11 @@ minimum flags enforce separate 68000 and Z80 targets. The legacy
 `--minimum-instruction-match` and `--minimum-source-match` flags apply one
 threshold to both processors. The benchmark reads the reference only after the ROM
 pipeline completes; no reference source or symbols enter generation.
+
+The instruction comparison records recall, precision, and F1 independently.
+Precision counts speculative instruction starts that are absent from the
+reference as false positives, so broader code recovery cannot improve the gate
+by decoding arbitrary data.
 
 For side-by-side editing, export the two ROM-aligned reference files after
 disassembly:
@@ -325,7 +353,12 @@ python retrolarium_kit/tools/flicky_html_diff.py `
 
 The page places lines from both assembler listings side by side at their ROM
 addresses, with filters for source differences and instructions still emitted
-as `dc.b`. It requires the rebuilt ROM to match the reference byte for byte.
+as `dc.b`. Instructions with the same mnemonic and encoded bytes are treated
+as equal even when their labels, symbolic operands, or size spelling differ.
+Reference data rows covered by an exact generated `binclude` are also treated
+as equal; reference instructions inside such a span remain visible as missing
+analysis.
+It requires the rebuilt ROM to match the reference byte for byte.
 
 For an actionable text and JSON report of the same build, run:
 

@@ -6,6 +6,9 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -227,6 +230,29 @@ public class SeedMegaDriveVectors extends GhidraScript {
         return seeded;
     }
 
+    private int seedPythonPlan(MemoryBlock rom, Set<Long> disassembled)
+            throws Exception {
+        String[] arguments = getScriptArgs();
+        if (arguments.length == 0) {
+            return 0;
+        }
+        Path plan = Paths.get(arguments[0]);
+        int seeded = 0;
+        for (String raw : Files.readAllLines(plan)) {
+            String line = raw.split("#", 2)[0].trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            long target = Long.parseLong(line, 16);
+            if (seedAddress(rom, target, disassembled)) {
+                seeded++;
+                println(String.format(
+                    "[SEED] Python abstract target 0x%06X", target));
+            }
+        }
+        return seeded;
+    }
+
     @Override
     protected void run() throws Exception {
         Memory memory = currentProgram.getMemory();
@@ -264,9 +290,10 @@ public class SeedMegaDriveVectors extends GhidraScript {
         int indexedTables = seedIndexedBranchTables(rom, memory, disassembled);
         int tables = seedBranchTables(rom, memory, disassembled);
         int trampolines = seedRamTrampolineTables(rom, memory, disassembled);
+        int pythonTargets = seedPythonPlan(rom, disassembled);
         println("[OK] seeded " + seeded + " vector, " + copies
             + " RAM copy, " + indexedTables + " indexed branch table, "
             + tables + " broad branch table, " + trampolines
-            + " RAM trampoline targets");
+            + " RAM trampoline, " + pythonTargets + " Python abstract targets");
     }
 }
