@@ -7,10 +7,33 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from flicky_html_diff import SourceAtAddress, _data_or_label, _operation, _status
+from flicky_html_diff import (
+    SourceAtAddress,
+    _data_or_label,
+    _is_difference,
+    _operation,
+    _status,
+)
 
 
 class FlickyHtmlDiffTests(unittest.TestCase):
+    def test_difference_filter_omits_all_equivalent_statuses(self) -> None:
+        for status in (
+            "same-source",
+            "same-instruction",
+            "same-include",
+            "same-data",
+            "same-bytes",
+        ):
+            self.assertFalse(_is_difference(status), status)
+        for status in (
+            "data-structure",
+            "raw-fallback",
+            "reference-only",
+            "generated-only",
+        ):
+            self.assertTrue(_is_difference(status), status)
+
     def test_operation_uses_byte_emitting_statement_at_shared_address(self) -> None:
         lines = [
             "                org     $10000",

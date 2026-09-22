@@ -27,6 +27,17 @@ class RamTrampolineTable:
     targets: tuple[int, ...]
 
 
+@dataclass(frozen=True)
+class RamCopyRegion:
+    """A ROM range copied verbatim to 68000 work RAM before execution."""
+
+    source_start: int
+    source_end: int
+    destination_start: int
+    destination_end: int
+    loader_address: int
+
+
 def _word(data: bytes, offset: int) -> int:
     return int.from_bytes(data[offset:offset + 2], "big")
 
@@ -58,10 +69,10 @@ def discover_vector_seeds(image: MegaDriveImage) -> tuple[DecoderSeed, ...]:
     )
 
 
-def discover_ram_copy_seeds(image: MegaDriveImage) -> tuple[DecoderSeed, ...]:
-    """Find ROM code copied to work RAM by a complete MOVE/DBF/JMP idiom."""
+def discover_ram_copy_regions(image: MegaDriveImage) -> tuple[RamCopyRegion, ...]:
+    """Find ranges proven by a complete MOVE/DBF/JMP ROM-to-RAM idiom."""
     data = image.data
-    seeds = []
+    regions = []
     for offset in range(0x200, len(data) - 27, 2):
         if (
             _word(data, offset) != 0x41F9
@@ -84,17 +95,32 @@ def discover_ram_copy_seeds(image: MegaDriveImage) -> tuple[DecoderSeed, ...]:
             or destination & 0xFF0000 != 0xFF0000
         ):
             continue
-        seeds.append(DecoderSeed(
-            address=source,
+        regions.append(RamCopyRegion(
+            source_start=source,
+            source_end=source + length,
+            destination_start=destination,
+            destination_end=destination + length,
+            loader_address=offset,
+        ))
+    return tuple(regions)
+
+
+def discover_ram_copy_seeds(image: MegaDriveImage) -> tuple[DecoderSeed, ...]:
+    """Use each proven ROM-to-RAM copy origin as a decoder root."""
+    return tuple(
+        DecoderSeed(
+            address=region.source_start,
             kind="ram_copy_origin",
             confidence="proven",
             evidence=(
-                f"ROM code copied to RAM 0x{destination:06X} "
-                f"by MOVE/DBF/JMP loop ({length} bytes)"
+                f"ROM code copied to RAM 0x{region.destination_start:06X} "
+                "by MOVE/DBF/JMP loop "
+                f"({region.source_end - region.source_start} bytes)"
             ),
-            source_address=offset,
-        ))
-    return tuple(seeds)
+            source_address=region.loader_address,
+        )
+        for region in discover_ram_copy_regions(image)
+    )
 
 
 def _branch_table(

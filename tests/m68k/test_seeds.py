@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from retrolarium_kit.m68k_seeds import (
     discover_dense_branch_table_seeds,
     discover_indexed_branch_table_seeds,
+    discover_ram_copy_regions,
     discover_ram_copy_seeds,
     discover_ram_trampoline_seeds,
     discover_vector_seeds,
@@ -39,12 +40,22 @@ class M68kSeedTests(unittest.TestCase):
             "30 3C 00 01 22 D8 51 C8 FF FC 4E F9 00 FF 00 00"
         )
         valid = discover_ram_copy_seeds(image_with({0x220: copy_loop}))
+        regions = discover_ram_copy_regions(image_with({0x220: copy_loop}))
         broken = bytearray(copy_loop)
         broken[20:22] = bytes.fromhex("FF FA")
         invalid = discover_ram_copy_seeds(image_with({0x220: bytes(broken)}))
 
         self.assertEqual((0x300,), tuple(seed.address for seed in valid))
         self.assertEqual("ram_copy_origin", valid[0].kind)
+        self.assertEqual(
+            (0x300, 0x308, 0xFF0000, 0xFF0008),
+            (
+                regions[0].source_start,
+                regions[0].source_end,
+                regions[0].destination_start,
+                regions[0].destination_end,
+            ),
+        )
         self.assertEqual((), invalid)
 
     def test_recognizes_pc_indexed_and_dense_branch_tables(self) -> None:

@@ -56,11 +56,16 @@ rltool studio launch-plan path\to\game.rlj `
   --mame mame_testing\mame\consoles.exe
 ```
 
-`studio preset` is the normal entry point for Super Mario Bros. 1 and Pac-Man.
+`studio preset` is the normal entry point for Castle Excellent / Castlequest,
+Super Mario Bros. 1, and Pac-Man.
 It recognizes the exact supported revision, creates a full disassembly and
 typed resource bundle in a temporary sibling directory, writes the configured
 Studio project, and by default builds and verifies its first artifact. The
 requested output directory appears only after the whole workflow succeeds.
+For a previously edited Castle levels JSON, pass
+`--legacy-castle-levels path\to\old-levels.json` to `studio preset`; the Kit
+validates it against the selected ROM and copies it into the new multi-document
+Studio before building. The original JSON and ROM are never changed.
 Use `--no-build` only for diagnostics; the GUI always requests the complete
 verified workflow.
 
@@ -71,7 +76,9 @@ contracts and dependency cycles are rejected. Operation values are registered
 identifiers rather than executable command strings. The resource document is
 optional; a recognized `retrolarium.nes-resource-bundle` materializes ordered
 Screens, Graphics, Palettes and Code & Analysis tabs with their actual codecs
-and capabilities, while omitting it creates the minimal Code-only workspace.
+and capabilities. A recognized `retrolarium.castle-levels` document creates a
+Rooms & Objects tab backed by the same fixed-arena writer. Omitting the
+resource document creates the minimal Code-only workspace.
 
 `studio build` first rebuilds the generated source and requires its normal
 exact verification to pass. It then applies the current typed authoring
@@ -170,6 +177,14 @@ terminated object stream, object count/state offsets and mutable-cell state
 offsets as one transactional `BuildPlan`. Zero-edit builds of both known
 revisions are byte-identical.
 
+The extracted document also contains a profile-bound
+`castle.room-rendering.v1` snapshot: CHR bank 0, the 32-byte gameplay palette,
+100 left/right cell-tile mappings, the native attribute tables, the 61-entry
+encoded-to-runtime object type table and the representative metasprite
+descriptors. Schema v1 keeps this payload read-only and verifies it against the
+source image during build, while allowing Qt to render exact background and
+8×16 sprite pixels without reopening or interpreting the ROM itself.
+
 `game launch-plan` produces the same allowlisted `retrolarium.process-spec`
 consumed by the Qt shell. `game launch` is its bounded headless verification
 form: it saves logs, screenshots and a versioned run result below the explicit
@@ -189,8 +204,10 @@ See
 [`Retrolarium_Castle_Integration_Contract.md`](../retrolarium/docs/Retrolarium_Castle_Integration_Contract.md).
 
 The Qt 5.15 consumer calls the same commands with explicit `QProcess`
-arguments. Its first editor presents Castle rooms/cells/objects with undo/redo
-and atomic document saves; it intentionally delegates all codec and capacity
+arguments. Its first editor presents Castle rooms/cells/objects with undo/redo,
+native CHR/palette cell previews, full-room metasprite composition, a
+navigable 10×10 native overview and atomic document saves; it intentionally
+delegates all codec and capacity
 validation back to this package. After a successful build, the Game menu can
 request a launch plan and start the edited ROM in the explicitly selected MAME.
 
@@ -273,7 +290,10 @@ original bytes and disassembly comments. `project verify` checks the rebuilt
 ROM against the input byte for byte.
 Generated `loc_`, `sub_`, `tbl_`, and `off_` symbols use IDA-style lower-case
 prefixes. Long `$FF` padding runs use `org` and are counted separately as
-`padding_bytes` in the project coverage report. Unclassified ROM spans of at
+`padding_bytes` in the project coverage report. Technical references whose
+targets fall inside such a run are suppressed, so immediate constants mistaken
+for data addresses cannot split one padding range into artificial tables.
+Unclassified ROM spans of at
 least 256 bytes are emitted as `data/opaque-*.bin` files when they contain no
 analyzed instructions, accepted pointer tables, existing assets, or internal
 technical symbols. A later analysis result automatically splits an opaque
@@ -297,10 +317,43 @@ does not discover targets. Packed orphan recovery only considers short gaps
 between known instructions after a terminal flow, rejects existing data/read
 targets, and requires either a compact gap or a return opcode before known code
 resumes.
+After convergence, the Kit retains backend-decoded instructions only when they
+are reachable from a cartridge vector, direct call, proven decoder seed,
+proven indirect target, or backend function entry. This removes isolated
+instruction-shaped data without using reference source. The discarded
+addresses are recorded in `analysis/m68k/abstract-analysis.json`.
 The interpreter updates `X/N/Z/V/C` for modeled move, logical, arithmetic,
 compare, test, and bit-test operations. It records each conditional branch as
 true, false, or unknown in the abstract report while retaining both CFG edges;
 known flags therefore add evidence without hiding alternate game states.
+
+Generic pointer scans are advisory until code or data references the table
+start. Unreferenced sequences whose values merely happen to land on instruction
+starts remain `candidate` entries in `analysis/pointers.json` and are emitted as
+raw data. Schema-proven structures such as cartridge vectors and counted RAM
+trampoline tables can be accepted without that reference.
+Referenced `u32be` arrays are also accepted as data-pointer tables when code
+reads them with an indexed `move.l` and every entry points forward beyond the
+table. References to aligned addresses inside one scanned run split it into the
+separate tables actually selected by the program. Numeric longword tables whose
+values precede the table remain candidates.
+
+Counted animation layouts are recovered through their complete data path. The
+analysis requires a proven ROM-to-work-RAM copy loop, the shared animation
+reader that indexes a longword sequence table and then reads a sign-extended
+word at `2(sequence,index)`, and a root stored into the same object field.
+Each sequence header supplies its entry count, so the emitter can write every
+frame as `dc.w target-copy_source` even though one runtime update reads only one
+frame. This schema also follows animation roots selected by an outer indexed
+longword table.
+
+The standard Mega Drive startup stream is recovered as a mixed-width structure
+when the loader addresses it through `a5`, consumes the canonical `movem`
+fields, copies the VDP, Z80, CRAM, VSRAM and PSG portions with the matching
+counted loops, and branches to the byte immediately after the block. The
+emitter writes its scalar fields as `dc.w`/`dc.l`, uses generated hardware
+symbols for the five device addresses, and preserves the embedded byte streams
+as `dc.b`.
 
 For an independent Flicky source benchmark, run this after disassembly:
 
@@ -356,6 +409,10 @@ python retrolarium_kit/tools/flicky_html_diff.py `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison\flicky-source-diff.html
 ```
+
+Add `--differences-only` and choose a separate output file to generate a
+compact report containing only structural data differences, raw instruction
+fallbacks, and source lines present on one side of the comparison.
 
 The page places lines from both assembler listings side by side at their ROM
 addresses, with filters for source differences and instructions still emitted

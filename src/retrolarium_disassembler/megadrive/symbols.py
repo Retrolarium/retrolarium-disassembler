@@ -10,6 +10,10 @@ import re
 from .facts import InstructionFact
 from .megadrive import MegaDriveImage
 from .megadrive_pointers import PointerCandidate
+from .megadrive_structures import (
+    discover_long_ff_padding,
+    discover_standard_boot_setups,
+)
 
 
 @dataclass(frozen=True)
@@ -114,9 +118,19 @@ def _symbols_for_program(
     vector_aliases = vector_aliases or {}
     tables = tables or {}
     pointer_targets = pointer_targets or set()
+    instruction_interiors = {
+        address
+        for fact in facts.values()
+        for address in range(fact.cpu_address + 1, fact.cpu_address + fact.length)
+    }
     claims: dict[int, dict[str, set[str]]] = {}
 
     def claim(address: int, kind: str, evidence: str) -> None:
+        # A linear assembly source cannot place a label between the bytes of an
+        # already emitted instruction. Ghidra can report such flows when data is
+        # misidentified as code; retain the numeric branch target in source.
+        if address in instruction_interiors:
+            return
         item = claims.setdefault(address, {})
         item.setdefault(kind, set()).add(evidence)
 
@@ -217,6 +231,10 @@ def generate_symbols(
         if candidate.status == "accepted":
             tables.setdefault(candidate.logical_start, []).append(candidate.schema_id)
             pointer_targets.update(entry.target for entry in candidate.entries)
+    for setup in discover_standard_boot_setups(image, m68k_facts):
+        tables.setdefault(setup.logical_start, []).append(
+            "megadrive.standard-boot-setup"
+        )
     symbols = _symbols_for_program(
         m68k_facts,
         cpu_id="m68k",
@@ -229,6 +247,14 @@ def generate_symbols(
         tables=tables,
         pointer_targets=pointer_targets,
     )
+    padding_ranges = discover_long_ff_padding(image, m68k_facts)
+    symbols = [
+        symbol for symbol in symbols
+        if not any(
+            start <= symbol.physical_offset < end
+            for start, end in padding_ranges
+        )
+    ]
     for cpu_id, base_address, facts in z80_programs:
         symbols.extend(
             _symbols_for_program(

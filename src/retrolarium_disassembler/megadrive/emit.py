@@ -10,6 +10,11 @@ import re
 from .facts import InstructionFact
 from .megadrive import MegaDriveImage
 from .megadrive_pointers import PointerCandidate
+from .megadrive_structures import (
+    LONG_FF_PADDING_MIN_BYTES,
+    StandardBootSetup,
+    discover_standard_boot_setups,
+)
 from .megadrive_symbols import (
     TechnicalSymbol,
     pc_displacement_target,
@@ -19,7 +24,7 @@ from .megadrive_z80 import CrossCpuCopy
 
 
 MODULE_SIZE = 0x10000
-FF_ORG_MIN_BYTES = 64
+FF_ORG_MIN_BYTES = LONG_FF_PADDING_MIN_BYTES
 OPAQUE_INCLUDE_MIN_BYTES = 256
 M68K_INDENT = " " * 16
 SIMPLE_OPCODES = {
@@ -151,6 +156,17 @@ def _asm_instruction(
     primary: dict[int, TechnicalSymbol] | None = None,
 ) -> str | None:
     """Render ROM-derived instruction candidates; project build proves encoding."""
+    byte_immediate_mnemonics = {
+        "ORI.B", "ANDI.B", "SUBI.B", "ADDI.B", "EORI.B", "CMPI.B",
+        "BTST.B", "BTST.L", "BCHG.B", "BCHG.L", "BCLR.B", "BCLR.L",
+        "BSET.B", "BSET.L",
+    }
+    if (fact.mnemonic.upper() in byte_immediate_mnemonics
+            and len(fact.raw) >= 4 and fact.raw[2] != 0):
+        # The 68000 ignores the upper byte of these immediate extension words.
+        # Assemblers canonicalize it to zero, so preserve unusual ROM encodings
+        # as data to keep rebuilds byte exact.
+        return None
     opcode = SIMPLE_OPCODES.get(fact.mnemonic.upper())
     if opcode is not None and not fact.operands and fact.raw == opcode:
         return fact.mnemonic.lower()
@@ -277,11 +293,18 @@ def _asm_instruction(
 
 def _symbol_maps(
     symbols: tuple[TechnicalSymbol, ...],
+    facts: dict[int, InstructionFact] | None = None,
 ) -> tuple[dict[int, TechnicalSymbol], dict[int, tuple[str, ...]]]:
+    instruction_interiors = {
+        address
+        for fact in (facts or {}).values()
+        for address in range(fact.cpu_address + 1, fact.cpu_address + fact.length)
+    }
     primary = {
         symbol.logical_address: symbol
         for symbol in symbols
-        if symbol.cpu_id == "m68k"
+        if (symbol.cpu_id == "m68k"
+            and symbol.logical_address not in instruction_interiors)
     }
     aliases = {
         address: tuple(alias for alias in symbol.aliases if alias != symbol.name)
@@ -331,6 +354,18 @@ def _pointer_lines(
                 f"{candidate.physical_start:#x}"
             )
         lines.append(f"{M68K_INDENT}dc.w    ${count_word:X}")
+    elif candidate.schema_id == "megadrive.counted-u16be.ram-copy-offset":
+        header = image.data[
+            candidate.physical_start:candidate.physical_start + 2
+        ]
+        if len(header) != 2 or header[0] != len(candidate.entries):
+            raise MegaDriveEmitError(
+                f"animation count header disagrees at "
+                f"{candidate.physical_start:#x}"
+            )
+        lines.append(
+            f"{M68K_INDENT}dc.b    ${header[0]:02X}, ${header[1]:02X}"
+        )
     for entry in candidate.entries:
         target = _target_expression(entry.target, primary, 6)
         if candidate.schema_id == "megadrive.u32be.absolute":
@@ -352,6 +387,14 @@ def _pointer_lines(
             encoded = ((entry.target - entry.logical_address) & 0xFFFF).to_bytes(
                 2, "big"
             )
+        elif candidate.schema_id == "megadrive.counted-u16be.ram-copy-offset":
+            if entry.base_address is None:
+                raise MegaDriveEmitError("RAM-copy offset is missing its ROM base")
+            base = _target_expression(entry.base_address, primary, 6)
+            lines.append(f"{M68K_INDENT}dc.w    {target}-{base}")
+            encoded = ((entry.target - entry.base_address) & 0xFFFF).to_bytes(
+                2, "big"
+            )
         else:
             raise MegaDriveEmitError(
                 f"unsupported accepted pointer schema: {candidate.schema_id}"
@@ -363,6 +406,49 @@ def _pointer_lines(
             raise MegaDriveEmitError(
                 f"pointer expression changes bytes at {entry.physical_offset:#x}"
             )
+    return lines
+
+
+def _standard_boot_setup_lines(
+    setup: StandardBootSetup,
+    image: MegaDriveImage,
+) -> list[str]:
+    offset = setup.physical_start
+    lines: list[str] = []
+
+    for _ in range(3):
+        value = int.from_bytes(image.data[offset:offset + 2], "big")
+        lines.append(f"{M68K_INDENT}dc.w    ${value:X}")
+        offset += 2
+    for _ in range(5):
+        value = int.from_bytes(image.data[offset:offset + 4], "big")
+        lines.append(f"{M68K_INDENT}dc.l    Io_{value:06X}")
+        offset += 4
+
+    def emit_bytes(size: int) -> None:
+        nonlocal offset
+        end = offset + size
+        while offset < end:
+            next_offset = min(offset + 8, end)
+            lines.append(
+                f"{M68K_INDENT}dc.b    {_hex_bytes(image.data[offset:next_offset])}"
+            )
+            offset = next_offset
+
+    def emit_longs(count: int) -> None:
+        nonlocal offset
+        for _ in range(count):
+            value = int.from_bytes(image.data[offset:offset + 4], "big")
+            lines.append(f"{M68K_INDENT}dc.l    ${value:08X}")
+            offset += 4
+
+    emit_bytes(24)
+    emit_longs(1)
+    emit_bytes(38)
+    emit_longs(3)
+    emit_bytes(4)
+    if offset != setup.physical_end:
+        raise MegaDriveEmitError("standard boot setup layout has the wrong size")
     return lines
 
 
@@ -618,6 +704,7 @@ def _emit_payload_module(
     limit: int,
     facts: dict[int, InstructionFact],
     tables: dict[int, PointerCandidate],
+    boot_setups: dict[int, StandardBootSetup],
     asset_ranges: dict[int, tuple[int, str]],
     primary: dict[int, TechnicalSymbol],
     aliases: dict[int, tuple[str, ...]],
@@ -636,7 +723,10 @@ def _emit_payload_module(
             image.data[start:limit],
         )
     }
-    event_offsets = set(facts) | set(tables) | set(asset_ranges) | set(primary) | ff_starts
+    event_offsets = (
+        set(facts) | set(tables) | set(boot_setups) | set(asset_ranges)
+        | set(primary) | ff_starts
+    )
     while offset < limit:
         logical_address = image.header.rom_start + offset
         _emit_labels(lines, logical_address, primary, aliases)
@@ -646,6 +736,14 @@ def _emit_payload_module(
             lines.append(f'{M68K_INDENT}binclude "{asset_path}"')
             lines.append("")
             asset_bytes += size
+            offset += size
+            continue
+        setup = boot_setups.get(offset)
+        if setup is not None:
+            lines.extend(_standard_boot_setup_lines(setup, image))
+            lines.append("")
+            size = setup.physical_end - setup.physical_start
+            raw_bytes += size
             offset += size
             continue
         table = tables.get(offset)
@@ -718,7 +816,7 @@ def emit_project(
     (source_root / "system").mkdir(exist_ok=True)
     (source_root / "data").mkdir(exist_ok=True)
     (source_root / "memory").mkdir(exist_ok=True)
-    primary, aliases = _symbol_maps(symbols)
+    primary, aliases = _symbol_maps(symbols, m68k_facts)
 
     vector_lines = ["; Mega Drive 68000 vector table"]
     for vector in image.vector_table:
@@ -796,6 +894,10 @@ def emit_project(
             }
         )
     tables = _selected_tables(pointer_candidates, tuple(ranges))
+    boot_setups = {
+        setup.physical_start: setup
+        for setup in discover_standard_boot_setups(image, m68k_facts)
+    }
     for start, end in _opaque_include_ranges(
         image, m68k_facts, tables, asset_ranges, primary
     ):
@@ -841,6 +943,7 @@ def emit_project(
             nominal_limit,
             m68k_facts,
             tables,
+            boot_setups,
             asset_ranges,
             primary,
             aliases,

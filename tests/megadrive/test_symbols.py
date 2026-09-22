@@ -17,6 +17,24 @@ from test_megadrive_z80 import fact
 
 
 class MegaDriveSymbolTests(unittest.TestCase):
+    def test_ignores_data_references_inside_long_ff_padding(self) -> None:
+        data = bytearray(cartridge())
+        data[0x280:0x340] = b"\xFF" * 0xC0
+        image = parse_megadrive(bytes(data))
+        source = replace(
+            fact(0x200, "MOVE.L", "#0x2a0|D0"),
+            references=(
+                InstructionReference(0x260, "DATA", 0),
+                InstructionReference(0x2A0, "DATA", 0),
+            ),
+        )
+
+        symbols = generate_symbols(image, {0x200: source}, ())
+        by_address = {symbol.logical_address: symbol for symbol in symbols}
+
+        self.assertIn(0x260, by_address)
+        self.assertNotIn(0x2A0, by_address)
+
     def test_movem_pc_displacement_skips_register_mask(self) -> None:
         image = parse_megadrive(cartridge(size=0x1000))
         instruction = replace(
@@ -56,7 +74,10 @@ class MegaDriveSymbolTests(unittest.TestCase):
         entry = replace(
             fact(0x200, "BSR.W", "0x206", flows=(0x206,)),
             flow_type="UNCONDITIONAL_CALL",
-            references=(InstructionReference(0x250, "DATA", 0),),
+            references=(
+                InstructionReference(0x240, "DATA", 0),
+                InstructionReference(0x250, "DATA", 0),
+            ),
         )
         branch = replace(
             fact(0x204, "BRA.B", "0x23c", flows=(0x23C,)),

@@ -977,3 +977,50 @@ def interpret_known_cfg(
         state_updates=state_updates,
         widened_addresses=tuple(sorted(widened)),
     )
+
+
+def retain_trusted_instruction_facts(
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
+    additional_entrypoints: set[int] | frozenset[int] = frozenset(),
+) -> dict[int, InstructionFact]:
+    """Remove backend code islands that have no trusted control-flow root."""
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+    roots = {image.reset_address, *additional_entrypoints}
+    roots.update(
+        vector.address
+        for vector in image.vector_table[1:]
+        if vector.address in by_address
+    )
+    roots.update(
+        target
+        for fact in facts.values()
+        if fact.flow_type.upper() in {"UNCONDITIONAL_CALL", "CALL_TERMINATOR"}
+        for target in fact.flows
+        if target in by_address
+    )
+    roots.update(
+        fact.cpu_address for fact in facts.values() if fact.backend_function
+    )
+    reached: set[int] = set()
+    pending = list(roots)
+    while pending:
+        address = pending.pop()
+        fact = by_address.get(address)
+        if fact is None or address in reached:
+            continue
+        reached.add(address)
+        flow = fact.flow_type.upper()
+        pending.extend(fact.flows)
+        if flow in {
+            "FALL_THROUGH",
+            "CONDITIONAL_JUMP",
+            "UNCONDITIONAL_CALL",
+            "COMPUTED_CALL",
+        }:
+            pending.append(fact.cpu_address + fact.length)
+    return {
+        offset: fact for offset, fact in facts.items()
+        if fact.cpu_address in reached
+    }

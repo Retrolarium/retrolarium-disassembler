@@ -17,6 +17,13 @@ DIRECTIVES = {"binclude", "dc", "ds", "equ", "org", "cpu", "page",
               "supmode", "padding", "align", "cnop", "set", "if", "else",
               "endif", "rept", "endr", "macro", "endm", "even", "db", "dw"}
 ROM_NAME = "Flicky (UE) [!].bin"
+EQUIVALENT_STATUSES = {
+    "same-source",
+    "same-instruction",
+    "same-include",
+    "same-data",
+    "same-bytes",
+}
 
 
 @dataclass
@@ -160,6 +167,10 @@ def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
     return "same-bytes"
 
 
+def _is_difference(status: str) -> bool:
+    return status not in EQUIVALENT_STATUSES
+
+
 def _cell(record: SourceAtAddress) -> str:
     if not record.lines:
         return '<span class="empty">—</span>'
@@ -168,7 +179,13 @@ def _cell(record: SourceAtAddress) -> str:
     return byte_line + "<pre>" + escape("\n".join(record.lines)) + "</pre>"
 
 
-def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
+def write_html(
+    reference: Path,
+    generated: Path,
+    output: Path,
+    *,
+    differences_only: bool = False,
+) -> Counter[str]:
     reference_rom = (reference / ROM_NAME).read_bytes()
     generated_rom = (generated / "rebuilt.bin").read_bytes()
     if reference_rom != generated_rom:
@@ -181,6 +198,7 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
         raise ValueError("no ROM source lines found in assembler listings")
     counts: Counter[str] = Counter()
     rows: list[str] = []
+    visible_addresses: list[int] = []
     for address in addresses:
         ref = original.get(address, SourceAtAddress())
         gen = produced.get(address, SourceAtAddress())
@@ -199,7 +217,10 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
                 )
         else:
             status = _status(ref, gen)
+        if differences_only and not _is_difference(status):
+            continue
         counts[status] += 1
+        visible_addresses.append(address)
         rows.append(
             f'<tr id="a{address:06X}" class="{status}">'
             f'<th scope="row"><a href="#a{address:06X}">${address:06X}</a></th>'
@@ -216,9 +237,31 @@ def write_html(reference: Path, generated: Path, output: Path) -> Counter[str]:
         ("reference-only", "reference only"),
         ("generated-only", "kit only"),
     ))
+    report_title = (
+        "Flicky — source differences only"
+        if differences_only
+        else "Flicky — source comparison"
+    )
+    report_note = (
+        "Only addresses with a different data structure, "
+        "unrecognised instructions or a line on one side only are shown."
+        if differences_only
+        else "Every address of the listings is shown."
+    )
+    navigation = "".join(
+        f'<a href="#a{target:06X}">{label}</a>'
+        for start, end, label in (
+            (0x200, 0x10000, "$000200–$00FFFF"),
+            (0x10000, 0x20000, "$010000–$01FFFF"),
+        )
+        if (target := next(
+            (address for address in visible_addresses if start <= address < end),
+            None,
+        )) is not None
+    )
     page = f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Flicky — source comparison</title>
+<title>{escape(report_title)}</title>
 <style>
 body{{margin:0;background:#f5f7fa;color:#17202a;font-family:system-ui,sans-serif}}
 header{{position:sticky;top:0;z-index:2;background:white;padding:12px 18px;border-bottom:1px solid #ccd5df}}
@@ -235,10 +278,10 @@ pre{{margin:0;font:12px/1.45 Consolas,'Courier New',monospace;white-space:pre-wr
 .bytes{{color:#657283;font:11px/1.3 Consolas,monospace;margin-bottom:3px}}
 .empty{{color:#8793a1}}.legend{{font-size:12px;color:#546273}}
 </style></head><body>
-<header><h1>Flicky: source comparison by ROM address</h1>
-<p class="legend">Reference: flicky_src · Kit: the generated project · both ROMs verified byte for byte. Aligned by the assembler listings; comments omitted.</p>
+<header><h1>{escape(report_title)}</h1>
+<p class="legend">Reference: flicky_src · Kit: the generated project · both ROMs verified byte for byte. Aligned by the assembler listings; comments omitted. {escape(report_note)}</p>
 <p class="legend">{escape(summary)}</p>
-<nav><a href="#a000200">$000200–$00FFFF</a><a href="#a010000">$010000–$01FFFF</a></nav>
+<nav>{navigation}</nav>
 <div class="controls"><label>Show <select id="filter"><option value="all">everything</option><option value="changes">differences</option><option value="raw">dc.b instead of an instruction</option><option value="missing">a line on one side only</option></select></label>
 <label>Address <input id="address" placeholder="010084" size="8" maxlength="6"></label><button id="jump">Go</button><span id="visible"></span></div></header>
 <main><table><thead><tr><th>Address</th><th>Reference flicky_src</th><th>Retrolarium Kit</th></tr></thead><tbody>{chr(10).join(rows)}</tbody></table></main>
@@ -267,8 +310,18 @@ def main() -> None:
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--generated", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--differences-only",
+        action="store_true",
+        help="omit rows considered equivalent by the source comparator",
+    )
     args = parser.parse_args()
-    counts = write_html(args.reference, args.generated, args.output)
+    counts = write_html(
+        args.reference,
+        args.generated,
+        args.output,
+        differences_only=args.differences_only,
+    )
     print(f"{args.output}: {sum(counts.values())} ROM addresses")
 
 

@@ -16,6 +16,7 @@ from retrolarium_kit.m68k_abstract import (
     discover_packed_orphan_candidates,
     discover_ram_handler_candidates,
     interpret_known_cfg,
+    retain_trusted_instruction_facts,
     transfer_instruction,
 )
 from retrolarium_kit.facts import InstructionReference
@@ -25,6 +26,48 @@ from test_megadrive_z80 import fact
 
 
 class M68kAbstractTests(unittest.TestCase):
+    def test_trusted_fact_filter_rejects_unrooted_data_disassembly(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        entry = replace(
+            fact(0x200, "RTS", ""),
+            flow_type="TERMINATOR",
+            backend_function="FUN_00000200",
+        )
+        false_data = replace(
+            fact(0x280, "ADDI.L", "#1|(A0)"),
+            length=6,
+            raw=bytes(6),
+            flow_type="FALL_THROUGH",
+        )
+        false_data_tail = replace(
+            fact(0x286, "ADDI.L", "#2|(A1)"),
+            length=6,
+            raw=bytes(6),
+            flow_type="FALL_THROUGH",
+        )
+
+        retained = retain_trusted_instruction_facts(image, {
+            item.physical_offset: item
+            for item in (entry, false_data, false_data_tail)
+        })
+
+        self.assertEqual({0x200}, set(retained))
+
+    def test_trusted_fact_filter_retains_explicit_decoder_seed(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        seeded = replace(
+            fact(0x280, "RTS", ""),
+            flow_type="TERMINATOR",
+        )
+
+        retained = retain_trusted_instruction_facts(
+            image,
+            {seeded.physical_offset: seeded},
+            additional_entrypoints={0x280},
+        )
+
+        self.assertEqual({0x280}, set(retained))
+
     def test_join_preserves_small_sets_and_widens_growing_ranges(self) -> None:
         first = AbstractValue.small_set({0, 4})
         second = AbstractValue.small_set({8, 12})

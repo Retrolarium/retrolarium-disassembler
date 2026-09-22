@@ -19,6 +19,7 @@ from .m68k_abstract import (
     discover_packed_orphan_candidates,
     discover_ram_handler_candidates,
     interpret_known_cfg,
+    retain_trusted_instruction_facts,
 )
 from .m68k_seeds import discover_initial_decoder_seeds
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project
@@ -304,6 +305,23 @@ def analyze_megadrive(
             "M68K abstract analysis did not converge after "
             f"{MAX_ABSTRACT_PASSES} decoder passes"
         )
+    proven_indirect_targets = {
+        edge.target_address
+        for edge in abstract_result.indirect_edges
+        if edge.confidence == "proven"
+    }
+    unfiltered_facts = facts
+    facts = retain_trusted_instruction_facts(
+        image,
+        facts,
+        additional_entrypoints=planned_seeds | proven_indirect_targets,
+    )
+    discarded_backend_addresses = sorted(
+        fact.cpu_address
+        for offset, fact in unfiltered_facts.items()
+        if offset not in facts
+    )
+    abstract_result = interpret_known_cfg(image, facts)
     abstract_candidates = discover_ram_handler_candidates(image, facts)
     orphan_candidates = discover_packed_orphan_candidates(image, facts)
     abstract_path = program_root / "abstract-analysis.json"
@@ -316,6 +334,9 @@ def analyze_megadrive(
                 "converged": converged,
                 "passes": abstract_passes,
                 "decoder_seed_addresses": sorted(planned_seeds),
+                "discarded_backend_instruction_addresses": (
+                    discarded_backend_addresses
+                ),
                 "decoder_seed_evidence": [
                     {
                         "address": address,
@@ -606,6 +627,24 @@ def disassemble_megadrive(
     analysis = analyze_megadrive(rom, analysis_root, ghidra_home)
     m68k_facts = load_megadrive_ghidra_facts(
         analysis_root / "m68k" / "instructions.tsv", image
+    )
+    abstract_analysis = json.loads(
+        (analysis_root / "m68k" / "abstract-analysis.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    proven_indirect_targets = {
+        edge["target_address"]
+        for edge in abstract_analysis["control_flow"]["indirect_edges"]
+        if edge["confidence"] == "proven"
+    }
+    m68k_facts = retain_trusted_instruction_facts(
+        image,
+        m68k_facts,
+        additional_entrypoints=(
+            set(abstract_analysis["decoder_seed_addresses"])
+            | proven_indirect_targets
+        ),
     )
     pointers = detect_pointer_candidates(image, m68k_facts)
     copies = detect_z80_copies(image, m68k_facts)

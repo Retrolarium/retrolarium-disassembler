@@ -5,10 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import re
 
 from .facts import InstructionFact
 from .megadrive import MegaDriveImage
-from .m68k_seeds import discover_ram_trampoline_tables
+from .m68k_seeds import (
+    RamCopyRegion,
+    discover_ram_copy_regions,
+    discover_ram_trampoline_tables,
+)
 
 
 MIN_ENTRIES = 3
@@ -90,6 +95,28 @@ def _referenced_addresses(facts: dict[int, InstructionFact]) -> set[int]:
     }
 
 
+def _indexed_long_read_addresses(
+    facts: dict[int, InstructionFact],
+) -> set[int]:
+    """Return table bases read as indexed 32-bit values."""
+    addresses: set[int] = set()
+    for fact in facts.values():
+        if fact.mnemonic.upper() not in {"MOVE.L", "MOVEA.L"}:
+            continue
+        source = fact.operands.split("|", 1)[0].upper()
+        if source.startswith("#") or "(" not in source or ",D" not in source:
+            continue
+        addresses.update(
+            reference.address
+            for reference in fact.references
+            if (
+                "DATA" in reference.reference_type
+                or "READ" in reference.reference_type
+            )
+        )
+    return addresses
+
+
 def _mapped(image: MegaDriveImage, address: int) -> bool:
     return (
         image.header.rom_start <= address <= image.actual_rom_end
@@ -105,6 +132,7 @@ def _evaluate(
     interiors: set[int],
     instruction_starts: set[int],
     referenced_addresses: set[int],
+    indexed_long_read_addresses: set[int],
 ) -> PointerCandidate | None:
     start = entries[0].physical_offset
     end = entries[-1].physical_offset + entry_size
@@ -127,18 +155,34 @@ def _evaluate(
     all_instruction_targets = target_starts == len(entries)
     if all_instruction_targets:
         evidence.append("all_targets_are_instruction_starts")
+    logical_end = image.header.rom_start + end
+    indexed_forward_data_table = (
+        schema_id == "megadrive.u32be.absolute"
+        and logical_start in indexed_long_read_addresses
+        and all(target >= logical_end for target in targets)
+    )
+    if indexed_forward_data_table:
+        evidence.extend((
+            "table_read_by_indexed_move_l",
+            "all_targets_follow_table",
+        ))
+    if not referenced:
+        evidence.append("scan_only_no_table_reference")
     ratio = target_starts / len(entries)
     if not referenced and ratio < 0.75:
         return None
     accepted = (
         len(entries) >= MIN_ACCEPTED_ENTRIES
         and not contradictions
-        and all_instruction_targets
+        and (all_instruction_targets or indexed_forward_data_table)
+        and referenced
     )
     status = "accepted" if accepted else "rejected" if contradictions else "candidate"
     score = 35 + min(len(entries) * 3, 24) + min(target_starts * 8, 32)
     if referenced:
         score += 10
+    if indexed_forward_data_table:
+        score += 15
     if contradictions:
         score -= 35
     schema_slug = schema_id.removeprefix("megadrive.").replace(".", "-")
@@ -164,6 +208,7 @@ def _absolute_candidates(
 ) -> list[PointerCandidate]:
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     referenced = _referenced_addresses(facts)
+    indexed_long_reads = _indexed_long_read_addresses(facts)
     candidates: list[PointerCandidate] = []
     offset = 0x200
     schema_id = f"megadrive.u{width * 8}be.absolute"
@@ -175,6 +220,9 @@ def _absolute_candidates(
         entries: list[PointerEntry] = []
         while offset + width <= len(image.data) and len(entries) < MAX_ENTRIES:
             if any(byte in occupied for byte in range(offset, offset + width)):
+                break
+            logical_offset = image.header.rom_start + offset
+            if entries and logical_offset in referenced:
                 break
             raw = int.from_bytes(image.data[offset:offset + width], "big")
             if not _mapped(image, raw):
@@ -197,6 +245,7 @@ def _absolute_candidates(
                 interiors,
                 instruction_starts,
                 referenced,
+                indexed_long_reads,
             )
             if candidate is not None:
                 candidates.append(candidate)
@@ -212,6 +261,7 @@ def _relative_candidates(
 ) -> list[PointerCandidate]:
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     referenced = _referenced_addresses(facts)
+    indexed_long_reads = _indexed_long_read_addresses(facts)
     candidates: list[PointerCandidate] = []
     for start in range(0x200, max(0x200, len(image.data) - 5), 2):
         entries: list[PointerEntry] = []
@@ -249,6 +299,7 @@ def _relative_candidates(
             interiors,
             instruction_starts,
             referenced,
+            indexed_long_reads,
         )
         if candidate is not None:
             candidates.append(candidate)
@@ -331,12 +382,277 @@ def _ram_trampoline_candidates(
     return tuple(candidates)
 
 
+_DISPLACEMENT_ADDRESS = re.compile(
+    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)\|([Aa][0-7])$", re.I
+)
+_INDEXED_ADDRESS = re.compile(
+    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7]),"
+    r"([Dd][0-7])w\*0x1\)\|([Aa][0-7])$", re.I
+)
+_INDEXED_WORD = re.compile(
+    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7]),"
+    r"([Dd][0-7])w\*0x1\)\|([Dd][0-7])w$", re.I
+)
+_IMMEDIATE_TO_DISPLACEMENT = re.compile(
+    r"#(-?0x[0-9a-f]+|-?\d+)\|"
+    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)$", re.I
+)
+_INDEXED_TO_DISPLACEMENT = re.compile(
+    r".+PC,[Dd][0-7]w\*0x1\)\|"
+    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)$", re.I
+)
+_MOVEQ = re.compile(r"(-?0x[0-9a-f]+|-?\d+)\|([Dd][0-7])$", re.I)
+
+
+def _animation_reader_fields(
+    facts: dict[int, InstructionFact],
+) -> dict[tuple[int, str], int]:
+    """Find object fields consumed as counted animation pointer schemas."""
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+    ordered = sorted(facts.values(), key=lambda item: item.cpu_address)
+    fields: dict[tuple[int, str], int] = {}
+    for load in ordered:
+        if load.mnemonic.upper() != "MOVEA.L":
+            continue
+        direct = _DISPLACEMENT_ADDRESS.fullmatch(load.operands)
+        if direct is None:
+            continue
+        displacement = int(direct.group(1), 0)
+        object_register = direct.group(2).upper()
+        sequence_register = direct.group(3).upper()
+        indexed_load = by_address.get(load.cpu_address + load.length)
+        if indexed_load is None or indexed_load.mnemonic.upper() != "MOVEA.L":
+            continue
+        indexed = _INDEXED_ADDRESS.fullmatch(indexed_load.operands)
+        if (
+            indexed is None
+            or int(indexed.group(1), 0) != 0
+            or indexed.group(2).upper() != sequence_register
+            or indexed.group(4).upper() != sequence_register
+        ):
+            continue
+        index_register = indexed.group(3).upper()
+        window = [
+            fact for fact in ordered
+            if indexed_load.cpu_address < fact.cpu_address <= load.cpu_address + 0x40
+        ]
+        sign_extended_registers = {
+            match.group(2).upper()
+            for fact in window
+            if fact.mnemonic.upper() == "MOVEQ"
+            and (match := _MOVEQ.fullmatch(fact.operands)) is not None
+            and int(match.group(1), 0) == -1
+        }
+        has_counted_word_read = any(
+            fact.mnemonic.upper() == "MOVE.W"
+            and (match := _INDEXED_WORD.fullmatch(fact.operands)) is not None
+            and int(match.group(1), 0) == 2
+            and match.group(2).upper() == sequence_register
+            and match.group(3).upper() == index_register
+            and match.group(4).upper() in sign_extended_registers
+            for fact in window
+        )
+        if has_counted_word_read:
+            fields[(displacement, object_register)] = load.cpu_address
+    return fields
+
+
+def _animation_roots(
+    facts: dict[int, InstructionFact],
+    fields: dict[tuple[int, str], int],
+    absolute_candidates: tuple[PointerCandidate, ...],
+) -> dict[int, tuple[int, int]]:
+    accepted_tables = {
+        candidate.logical_start: candidate
+        for candidate in absolute_candidates
+        if candidate.schema_id == "megadrive.u32be.absolute"
+        and candidate.status == "accepted"
+    }
+    roots: dict[int, tuple[int, int]] = {}
+    for fact in facts.values():
+        if fact.mnemonic.upper() != "MOVE.L":
+            continue
+        immediate = _IMMEDIATE_TO_DISPLACEMENT.fullmatch(fact.operands)
+        if immediate is not None:
+            field = (int(immediate.group(2), 0), immediate.group(3).upper())
+            if field in fields:
+                roots[int(immediate.group(1), 0) & 0xFFFFFF] = (
+                    fact.cpu_address, fields[field]
+                )
+            continue
+        indexed = _INDEXED_TO_DISPLACEMENT.fullmatch(fact.operands)
+        if indexed is None:
+            continue
+        field = (int(indexed.group(1), 0), indexed.group(2).upper())
+        if field not in fields:
+            continue
+        for reference in fact.references:
+            table = accepted_tables.get(reference.address)
+            if table is None:
+                continue
+            for entry in table.entries:
+                roots[entry.target] = (fact.cpu_address, fields[field])
+    return roots
+
+
+def _animation_sequence_candidate(
+    image: MegaDriveImage,
+    occupied: set[int],
+    region: RamCopyRegion,
+    sequence: int,
+    root: int,
+    reader: int,
+) -> PointerCandidate | None:
+    physical_start = sequence - image.header.rom_start
+    if physical_start < 0 or physical_start + 4 > len(image.data):
+        return None
+    count = image.data[physical_start]
+    if not 1 <= count <= MAX_ENTRIES:
+        return None
+    physical_end = physical_start + 2 + count * 2
+    if physical_end > len(image.data):
+        return None
+    if any(offset in occupied for offset in range(physical_start, physical_end)):
+        return None
+    entries = []
+    runtime_page = region.destination_start & 0xFF0000
+    for index in range(count):
+        offset = physical_start + 2 + index * 2
+        raw = int.from_bytes(image.data[offset:offset + 2], "big")
+        runtime_target = runtime_page | raw
+        if not region.destination_start <= runtime_target < region.destination_end:
+            return None
+        target = region.source_start + runtime_target - region.destination_start
+        if not _mapped(image, target):
+            return None
+        entries.append(PointerEntry(
+            physical_offset=offset,
+            logical_address=image.header.rom_start + offset,
+            raw_value=raw,
+            target=target,
+            base_address=region.source_start,
+        ))
+    return PointerCandidate(
+        candidate_id=f"Ptr_counted-u16be-ram-copy-offset_{sequence:06X}",
+        schema_id="megadrive.counted-u16be.ram-copy-offset",
+        physical_start=physical_start,
+        physical_end=physical_end,
+        logical_start=sequence,
+        entry_size=2,
+        status="accepted",
+        score=100,
+        entries=tuple(entries),
+        evidence=(
+            f"animation_pointer_root_{root:06X}",
+            f"count_header={count}",
+            f"reader_at_{reader:06X}",
+            f"rom_{region.source_start:06X}_copied_to_ram_"
+            f"{region.destination_start:06X}",
+        ),
+        contradictions=(),
+    )
+
+
+def _animation_candidates(
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    absolute_candidates: tuple[PointerCandidate, ...],
+) -> tuple[PointerCandidate, ...]:
+    """Recover long animation roots and their counted copied-RAM offsets."""
+    regions = tuple(
+        region for region in discover_ram_copy_regions(image)
+        if region.destination_start & 0xFFFF == 0
+        and region.destination_end - region.destination_start <= 0x10000
+    )
+    fields = _animation_reader_fields(facts)
+    if not regions or not fields:
+        return ()
+    roots = _animation_roots(facts, fields, absolute_candidates)
+    referenced = _referenced_addresses(facts)
+    occupied, _, _ = _instruction_sets(facts)
+    candidates: list[PointerCandidate] = []
+    root_boundaries = set(roots) | referenced
+    for root in sorted(roots):
+        assignment, reader = roots[root]
+        physical_start = root - image.header.rom_start
+        if physical_start < 0 or physical_start + 4 > len(image.data):
+            continue
+        entries: list[PointerEntry] = []
+        sequences: list[PointerCandidate] = []
+        offset = physical_start
+        while offset + 4 <= len(image.data) and len(entries) < MAX_ENTRIES:
+            logical_offset = image.header.rom_start + offset
+            if offset != physical_start and logical_offset in root_boundaries:
+                break
+            target = int.from_bytes(image.data[offset:offset + 4], "big")
+            if not _mapped(image, target) or target < root + 4:
+                break
+            sequence_candidate = next(
+                (
+                    candidate
+                    for region in regions
+                    if (
+                        candidate := _animation_sequence_candidate(
+                            image, occupied, region, target, root, reader
+                        )
+                    ) is not None
+                ),
+                None,
+            )
+            if sequence_candidate is None:
+                break
+            entries.append(PointerEntry(
+                physical_offset=offset,
+                logical_address=logical_offset,
+                raw_value=target,
+                target=target,
+            ))
+            sequences.append(sequence_candidate)
+            offset += 4
+        if not entries:
+            continue
+        sequence_ranges = sorted(
+            (item.physical_start, item.physical_end) for item in sequences
+        )
+        if (
+            any(start < offset for start, _ in sequence_ranges)
+            or any(
+                left_end > right_start
+                for (_, left_end), (right_start, _) in zip(
+                    sequence_ranges, sequence_ranges[1:]
+                )
+            )
+        ):
+            continue
+        candidates.append(PointerCandidate(
+            candidate_id=f"Ptr_u32be-animation-root_{root:06X}",
+            schema_id="megadrive.u32be.absolute",
+            physical_start=physical_start,
+            physical_end=offset,
+            logical_start=root,
+            entry_size=4,
+            status="accepted",
+            score=100,
+            entries=tuple(entries),
+            evidence=(
+                f"stored_to_animation_field_by_{assignment:06X}",
+                f"reader_at_{reader:06X}",
+                "all_targets_have_counted_word_offset_layout",
+            ),
+            contradictions=(),
+        ))
+        candidates.extend(sequences)
+    return tuple(candidates)
+
+
 def detect_pointer_candidates(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[PointerCandidate, ...]:
     candidates = [_vector_candidate(image)]
     candidates.extend(_ram_trampoline_candidates(image, facts))
-    candidates.extend(_absolute_candidates(image, facts, 4))
+    absolute = tuple(_absolute_candidates(image, facts, 4))
+    candidates.extend(absolute)
+    candidates.extend(_animation_candidates(image, facts, absolute))
     candidates.extend(_absolute_candidates(image, facts, 2))
     candidates.extend(_relative_candidates(image, facts, "table_base"))
     candidates.extend(_relative_candidates(image, facts, "entry_address"))

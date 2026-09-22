@@ -89,7 +89,10 @@ def semantic_kind(record: SourceAtAddress) -> str | None:
     if operation in {"dc.w", "dc.l"}:
         statement = _statement_for_operation(record, _operation(record.lines))
         operands = statement.split(None, 1)[1] if " " in statement else ""
-        suffix = "symbolic" if re.search(r"[A-Za-z_]", operands) else "numeric"
+        without_numbers = re.sub(
+            r"\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|\b\d+\b", "", operands
+        )
+        suffix = "symbolic" if re.search(r"[A-Za-z_]", without_numbers) else "numeric"
         return f"{operation}.{suffix}"
     return operation
 

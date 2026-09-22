@@ -13,8 +13,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from retrolarium_kit.build_toolchains import materialize_build_toolchain
 from retrolarium_kit.facts import InstructionReference
 from retrolarium_kit.megadrive import parse_megadrive
-from retrolarium_kit.megadrive_emit import _asm_instruction, emit_project
-from retrolarium_kit.megadrive_pointers import detect_pointer_candidates
+from retrolarium_kit.megadrive_emit import (
+    _asm_instruction,
+    _pointer_lines,
+    emit_project,
+)
+from retrolarium_kit.megadrive_pointers import (
+    PointerCandidate,
+    PointerEntry,
+    detect_pointer_candidates,
+)
 from retrolarium_kit.megadrive_symbols import TechnicalSymbol, generate_symbols
 from retrolarium_kit.megadrive_z80 import CrossCpuCopy
 from retrolarium_kit.project import _asl_build
@@ -23,6 +31,57 @@ from test_megadrive_z80 import fact
 
 
 class MegaDriveEmitTests(unittest.TestCase):
+    def test_emits_counted_ram_copy_offsets_symbolically(self) -> None:
+        data = bytearray(cartridge(size=0x800))
+        data[0x500:0x506] = bytes.fromhex("02 03 03 00 03 08")
+        image = parse_megadrive(bytes(data))
+        candidate = PointerCandidate(
+            candidate_id="animation",
+            schema_id="megadrive.counted-u16be.ram-copy-offset",
+            physical_start=0x500,
+            physical_end=0x506,
+            logical_start=0x500,
+            entry_size=2,
+            status="accepted",
+            score=100,
+            entries=tuple(
+                PointerEntry(
+                    physical_offset=0x502 + index * 2,
+                    logical_address=0x502 + index * 2,
+                    raw_value=target - 0x300,
+                    target=target,
+                    base_address=0x300,
+                )
+                for index, target in enumerate((0x600, 0x608))
+            ),
+            evidence=("test",),
+            contradictions=(),
+        )
+        symbols = {
+            address: TechnicalSymbol(
+                symbol_id=f"symbol.{address:x}",
+                name=name,
+                kind="offset",
+                cpu_id="m68k",
+                address_space="m68k",
+                logical_address=address,
+                physical_offset=address,
+                aliases=(),
+                evidence=("test",),
+            )
+            for address, name in (
+                (0x300, "CopySource"),
+                (0x600, "Frame0"),
+                (0x608, "Frame1"),
+            )
+        }
+
+        lines = _pointer_lines(candidate, image, symbols)
+
+        self.assertIn("                dc.b    $02, $03", lines)
+        self.assertIn("                dc.w    Frame0-CopySource", lines)
+        self.assertIn("                dc.w    Frame1-CopySource", lines)
+
     def test_emits_counted_ram_trampoline_table_as_symbolic_words(self) -> None:
         data = bytearray(cartridge(size=0x500))
         data[0x220:0x238] = bytes.fromhex(
@@ -135,6 +194,20 @@ class MegaDriveEmitTests(unittest.TestCase):
         )
         self.assertEqual("bset #7,2(a0)", _asm_instruction(instruction))
 
+    def test_rejects_noncanonical_byte_immediate_extension_words(self) -> None:
+        cases = (
+            ("ORI.B", "#-0x56|D4b", "00 04 C6 AA"),
+            ("BCLR.L", "#-0x80|D0", "08 80 02 80"),
+            ("CMPI.B", "#-0x80|D0b", "0C 00 04 80"),
+        )
+        for mnemonic, operands, raw_hex in cases:
+            with self.subTest(mnemonic=mnemonic):
+                raw = bytes.fromhex(raw_hex)
+                instruction = replace(
+                    fact(0x200, mnemonic, operands), raw=raw, length=len(raw)
+                )
+                self.assertIsNone(_asm_instruction(instruction))
+
     def test_branch_and_dbcc_use_existing_target_symbols(self) -> None:
         target = 0x11FB0
         symbol = TechnicalSymbol(
@@ -159,6 +232,31 @@ class MegaDriveEmitTests(unittest.TestCase):
         self.assertEqual("bra.w sub_M68K_011FB0", _asm_instruction(branch, {target: symbol}))
         self.assertEqual("dbeq d0,sub_M68K_011FB0", _asm_instruction(dbcc, {target: symbol}))
         self.assertEqual("bra.w $011FB0", _asm_instruction(branch))
+
+    def test_branch_into_instruction_interior_uses_numeric_target(self) -> None:
+        data = bytearray(cartridge(size=0x500))
+        data[0x200:0x208] = bytes.fromhex("60 00 00 04 0C 40 00 00")
+        image = parse_megadrive(bytes(data))
+        branch = replace(
+            fact(0x200, "BRA.W", "0x00000206", flows=(0x206,)),
+            raw=bytes.fromhex("60 00 00 04"), length=4,
+            flow_type="UNCONDITIONAL_JUMP",
+        )
+        comparison = replace(
+            fact(0x204, "CMPI.W", "#0x0|D0w"),
+            raw=bytes.fromhex("0C 40 00 00"), length=4,
+        )
+        facts = {0x200: branch, 0x204: comparison}
+        symbols = generate_symbols(image, facts, ())
+
+        self.assertNotIn(0x206, {item.logical_address for item in symbols})
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            emit_project(root, image, facts, (), symbols, ())
+            source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
+
+        self.assertIn("bra.w $000206", source)
+        self.assertNotIn("loc_M68K_000206", source)
 
     def test_pc_indexed_jsr_uses_branch_table_symbol(self) -> None:
         target = 0x10084
@@ -278,7 +376,11 @@ class MegaDriveEmitTests(unittest.TestCase):
             for item in items
         }
         facts[0x200] = replace(
-            facts[0x200], references=(InstructionReference(0xFFFFC000, "DATA", 0),)
+            facts[0x200], references=(
+                InstructionReference(0x240, "DATA", 0),
+                InstructionReference(0x250, "DATA", 0),
+                InstructionReference(0xFFFFC000, "DATA", 0),
+            )
         )
         pointers = detect_pointer_candidates(image, facts)
         copy = CrossCpuCopy(

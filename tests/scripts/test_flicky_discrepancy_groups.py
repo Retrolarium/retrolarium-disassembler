@@ -21,9 +21,11 @@ class FlickyDiscrepancyGroupTests(unittest.TestCase):
     def test_text_and_symbolic_pointer_kinds_are_preserved(self) -> None:
         text = SourceAtAddress(lines=['Message: dc.b "READY",0'])
         pointer = SourceAtAddress(lines=["Table: dc.l Target"])
+        numeric = SourceAtAddress(lines=["Values: dc.w $ABCD, $10"])
 
         self.assertEqual("text", semantic_kind(text))
         self.assertEqual("dc.l.symbolic", semantic_kind(pointer))
+        self.assertEqual("dc.w.numeric", semantic_kind(numeric))
 
     def test_adjacent_word_and_long_losses_form_one_rom_group(self) -> None:
         reference = {
