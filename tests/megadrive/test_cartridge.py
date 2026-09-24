@@ -15,6 +15,7 @@ from retrolarium_kit.megadrive import (
     m68k_to_rom_offset,
     parse_megadrive,
     rom_offset_to_m68k,
+    stamp_cartridge_checksum,
 )
 from retrolarium_kit.facts import (
     FactError,
@@ -133,6 +134,18 @@ class MegaDriveTests(unittest.TestCase):
 
         self.assertEqual("mismatch", image.checksum_status)
         self.assertIn("computed value", image.warnings[-1])
+
+    def test_stamps_edited_cartridge_but_preserves_zero_edit(self) -> None:
+        original = cartridge()
+        self.assertEqual(original, stamp_cartridge_checksum(original))
+        edited = bytearray(original)
+        edited[0x300] ^= 1
+        stamped = stamp_cartridge_checksum(bytes(edited))
+        self.assertEqual("valid", parse_megadrive(stamped).checksum_status)
+        self.assertEqual(bytes(edited[0x200:]), stamped[0x200:])
+        self.assertNotEqual(bytes(edited[0x18E:0x190]), stamped[0x18E:0x190])
+        with self.assertRaises(MegaDriveError):
+            stamp_cartridge_checksum(b"not a cartridge")
 
     def test_rejects_missing_signature_and_invalid_reset_vector(self) -> None:
         data = bytearray(cartridge())
