@@ -181,6 +181,85 @@ class MegaDrivePointerTests(unittest.TestCase):
             "table_read_by_indexed_move_l", accepted[0x240].evidence
         )
 
+    def test_accepts_read_referenced_u32_data_table(self) -> None:
+        data = bytearray(cartridge())
+        first_targets = (0x300, 0x310, 0x320, 0x330)
+        second_targets = (0x340, 0x350, 0x360, 0x370)
+        data[0x240:0x250] = b"".join(
+            target.to_bytes(4, "big") for target in first_targets
+        )
+        data[0x250:0x260] = b"".join(
+            target.to_bytes(4, "big") for target in second_targets
+        )
+        image = parse_megadrive(bytes(data))
+        facts = {
+            0x200: replace(
+                fact(0x200, "MOVE.L", "(0x240,PC,D0w*0x1)|D1"),
+                references=(InstructionReference(0x240, "READ", 0),),
+            ),
+            0x202: replace(
+                fact(0x202, "MOVE.L", "(0x250,PC,D0w*0x1)|D1"),
+                references=(InstructionReference(0x250, "READ", 0),),
+            ),
+        }
+
+        candidates = detect_pointer_candidates(image, facts)
+        table = next(
+            item for item in candidates
+            if item.schema_id == "megadrive.u32be.absolute"
+            and item.physical_start == 0x240
+        )
+
+        self.assertEqual("accepted", table.status)
+        self.assertEqual(0x250, table.physical_end)
+        self.assertIn("table_start_referenced_by_instruction", table.evidence)
+
+    def test_splits_adjacent_s16_relative_data_tables(self) -> None:
+        data = bytearray(cartridge())
+        first_targets = (0x300, 0x310, 0x320, 0x330)
+        second_targets = (0x340, 0x350, 0x360, 0x370)
+        data[0x280:0x288] = b"".join(
+            (target - 0x280).to_bytes(2, "big", signed=True)
+            for target in first_targets
+        )
+        data[0x288:0x290] = b"".join(
+            (target - 0x288).to_bytes(2, "big", signed=True)
+            for target in second_targets
+        )
+        image = parse_megadrive(bytes(data))
+        facts = {
+            0x200: replace(
+                fact(0x200, "MOVE.W", "(0x280,PC,D0w*0x1)|D1w"),
+                references=(InstructionReference(0x280, "READ", 0),),
+            ),
+            0x202: replace(
+                fact(0x202, "MOVE.W", "(0x288,PC,D0w*0x1)|D1w"),
+                references=(InstructionReference(0x288, "READ", 0),),
+            ),
+            0x290: fact(0x290, "RTS", ""),
+        }
+
+        candidates = detect_pointer_candidates(image, facts)
+        tables = {
+            item.physical_start: item
+            for item in candidates
+            if item.schema_id == "megadrive.s16be.target-table_base"
+            and item.physical_start in {0x280, 0x288}
+        }
+
+        self.assertEqual({0x280, 0x288}, tables.keys())
+        self.assertEqual(0x288, tables[0x280].physical_end)
+        self.assertEqual(0x290, tables[0x288].physical_end)
+        for table, targets in (
+            (tables[0x280], first_targets),
+            (tables[0x288], second_targets),
+        ):
+            self.assertEqual("accepted", table.status)
+            self.assertEqual(targets, tuple(
+                entry.target for entry in table.entries
+            ))
+            self.assertIn("table_read_by_indexed_word", table.evidence)
+
     def test_indexed_long_numeric_values_before_table_stay_candidate(self) -> None:
         data = bytearray(cartridge())
         data[0x280:0x290] = b"".join(

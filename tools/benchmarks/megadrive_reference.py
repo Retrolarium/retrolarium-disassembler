@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 from flatten_asm_source import flatten_source
-from source_benchmark import instruction_quality, listing_instructions, source_metrics
+from source_benchmark import instruction_quality, read_listing, same_instruction, source_metrics
 
 
 def _sha256(raw: bytes) -> str:
@@ -62,13 +62,15 @@ def benchmark(reference: Path, generated: Path, rom: Path, listing: Path, layout
     manifest = json.loads((generated.parent / "retrolarium-project.json").read_text(encoding="utf-8"))
     if manifest["input"]["sha256"] != _sha256(rom_bytes):
         raise ValueError("reference ROM differs from generated project input")
-    known = listing_instructions(listing, rom_bytes)
+    known, known_open = read_listing(listing, rom_bytes)
     facts = json.loads((generated.parent / "analysis/m68k/instructions.json").read_text(encoding="utf-8"))["instructions"]
     analyzed = {item["physical_offset"]: bytes.fromhex(item["bytes"]) for item in facts}
 
-    def matches(address: int, actual: bytes) -> bool:
-        prefix = known[address]
-        return actual.startswith(prefix) and (len(prefix) == 6 or len(actual) == len(prefix))
+    def matches(address: int, actual: bytes, actual_open: bool = False) -> bool:
+        return same_instruction(
+            known[address], actual,
+            expected_open=address in known_open, actual_open=actual_open,
+        )
 
     matching = {address for address in known.keys() & analyzed.keys() if matches(address, analyzed[address])}
     missed = known.keys() - analyzed.keys()
@@ -113,9 +115,9 @@ def benchmark(reference: Path, generated: Path, rom: Path, listing: Path, layout
     source_listing = generated / "build/retrolarium-main.lst"
     if source_listing.is_file():
         rebuilt = (generated / "rebuilt.bin").read_bytes()
-        emitted = listing_instructions(source_listing, rebuilt)
+        emitted, emitted_open = read_listing(source_listing, rebuilt)
         emitted_matches = sum(
-            address in known and matches(address, raw)
+            address in known and matches(address, raw, address in emitted_open)
             for address, raw in emitted.items()
         )
         report["source_emission"] = {

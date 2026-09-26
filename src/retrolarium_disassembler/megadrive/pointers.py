@@ -91,17 +91,21 @@ def _referenced_addresses(facts: dict[int, InstructionFact]) -> set[int]:
         reference.address
         for fact in facts.values()
         for reference in fact.references
-        if "DATA" in reference.reference_type
+        if (
+            "DATA" in reference.reference_type
+            or "READ" in reference.reference_type
+        )
     }
 
 
-def _indexed_long_read_addresses(
+def _indexed_read_addresses(
     facts: dict[int, InstructionFact],
+    mnemonics: frozenset[str],
 ) -> set[int]:
-    """Return table bases read as indexed 32-bit values."""
+    """Return table bases read through an indexed operand."""
     addresses: set[int] = set()
     for fact in facts.values():
-        if fact.mnemonic.upper() not in {"MOVE.L", "MOVEA.L"}:
+        if fact.mnemonic.upper() not in mnemonics:
             continue
         source = fact.operands.split("|", 1)[0].upper()
         if source.startswith("#") or "(" not in source or ",D" not in source:
@@ -115,6 +119,22 @@ def _indexed_long_read_addresses(
             )
         )
     return addresses
+
+
+def _indexed_long_read_addresses(
+    facts: dict[int, InstructionFact],
+) -> set[int]:
+    """Return table bases read as indexed 32-bit values."""
+    return _indexed_read_addresses(facts, frozenset({"MOVE.L", "MOVEA.L"}))
+
+
+def _indexed_word_read_addresses(
+    facts: dict[int, InstructionFact],
+) -> set[int]:
+    """Return table bases read as indexed 16-bit values."""
+    return _indexed_read_addresses(
+        facts, frozenset({"MOVE.W", "MOVEA.W", "ADDA.W", "ADD.W"})
+    )
 
 
 def _mapped(image: MegaDriveImage, address: int) -> bool:
@@ -132,7 +152,7 @@ def _evaluate(
     interiors: set[int],
     instruction_starts: set[int],
     referenced_addresses: set[int],
-    indexed_long_read_addresses: set[int],
+    indexed_read_addresses: set[int],
 ) -> PointerCandidate | None:
     start = entries[0].physical_offset
     end = entries[-1].physical_offset + entry_size
@@ -157,13 +177,18 @@ def _evaluate(
         evidence.append("all_targets_are_instruction_starts")
     logical_end = image.header.rom_start + end
     indexed_forward_data_table = (
-        schema_id == "megadrive.u32be.absolute"
-        and logical_start in indexed_long_read_addresses
+        schema_id in {
+            "megadrive.u32be.absolute",
+            "megadrive.s16be.target-table_base",
+        }
+        and logical_start in indexed_read_addresses
         and all(target >= logical_end for target in targets)
     )
     if indexed_forward_data_table:
         evidence.extend((
-            "table_read_by_indexed_move_l",
+            "table_read_by_indexed_move_l"
+            if entry_size == 4
+            else "table_read_by_indexed_word",
             "all_targets_follow_table",
         ))
     if not referenced:
@@ -261,13 +286,15 @@ def _relative_candidates(
 ) -> list[PointerCandidate]:
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     referenced = _referenced_addresses(facts)
-    indexed_long_reads = _indexed_long_read_addresses(facts)
+    indexed_word_reads = _indexed_word_read_addresses(facts)
     candidates: list[PointerCandidate] = []
     for start in range(0x200, max(0x200, len(image.data) - 5), 2):
         entries: list[PointerEntry] = []
         offset = start
         while offset + 2 <= len(image.data) and len(entries) < MAX_ENTRIES:
             if offset in occupied or offset + 1 in occupied:
+                break
+            if entries and image.header.rom_start + offset in referenced:
                 break
             raw = int.from_bytes(image.data[offset:offset + 2], "big")
             signed = int.from_bytes(image.data[offset:offset + 2], "big", signed=True)
@@ -299,7 +326,7 @@ def _relative_candidates(
             interiors,
             instruction_starts,
             referenced,
-            indexed_long_reads,
+            indexed_word_reads,
         )
         if candidate is not None:
             candidates.append(candidate)

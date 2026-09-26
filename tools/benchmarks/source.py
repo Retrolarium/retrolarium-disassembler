@@ -7,6 +7,7 @@ ROM-to-source emitter; this tool runs after emission for evaluation.
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 import hashlib
 import json
 import os
@@ -144,11 +145,31 @@ def source_metrics(source: str) -> dict[str, int]:
     return metrics
 
 
-def listing_instructions(
-    path: Path, rom: bytes, *, source_column: int = 21, hex_width: int = 4
-) -> dict[int, bytes]:
-    """Read byte-proven instructions from the reference AS listing."""
+# AS lists at most six leading bytes on a 68000 source line; the longest
+# 68000 instruction is ten bytes.
+M68K_LISTED_BYTES = 6
+M68K_MAXIMUM_INSTRUCTION = 10
+
+
+def read_listing(
+    path: Path,
+    rom: bytes | None,
+    *,
+    source_column: int = 21,
+    hex_width: int = 4,
+    listed_bytes: int | None = M68K_LISTED_BYTES,
+    maximum_length: int = M68K_MAXIMUM_INSTRUCTION,
+) -> tuple[dict[int, bytes], frozenset[int]]:
+    """Read byte-proven instructions and the addresses whose length is unknown.
+
+    A line showing exactly ``listed_bytes`` may be truncated. Its full length
+    is recovered from the next listed byte address when that is close enough
+    to belong to the same instruction; the bytes then come from ``rom``.
+    Otherwise the address is returned as open-ended and only its prefix is
+    known. Without ``rom`` the listing is not verified or extended.
+    """
     found: dict[int, bytes] = {}
+    boundaries: set[int] = set()
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         match = LISTING_LINE.match(line)
         if not match:
@@ -162,6 +183,7 @@ def listing_instructions(
             for word in words
         ):
             continue
+        boundaries.add(address)
         code = source.split(";", 1)[0].strip()
         label = LABEL.match(code)
         if label:
@@ -172,13 +194,58 @@ def listing_instructions(
         if not MNEMONIC.fullmatch(operation) or operation.split(".", 1)[0] in DIRECTIVES:
             continue
         payload = bytes.fromhex("".join(words))
-        if rom[address:address + len(payload)] != payload:
+        if rom is not None and rom[address:address + len(payload)] != payload:
             raise ValueError(f"reference listing disagrees with ROM at {address:#x}")
         previous = found.get(address)
         if previous is not None and previous != payload:
             raise ValueError(f"conflicting reference instructions at {address:#x}")
         found[address] = payload
-    return found
+    if listed_bytes is None:
+        return found, frozenset()
+    ordered = sorted(boundaries)
+    open_ended = set()
+    for address, payload in found.items():
+        if len(payload) != listed_bytes:
+            continue
+        index = bisect_right(ordered, address)
+        following = ordered[index] if index < len(ordered) else None
+        length = None if following is None else following - address
+        if length is None or not listed_bytes <= length <= maximum_length or rom is None:
+            if length != listed_bytes:
+                open_ended.add(address)
+            continue
+        full = rom[address:address + length]
+        if len(full) != length:
+            open_ended.add(address)
+            continue
+        found[address] = full
+    return found, frozenset(open_ended)
+
+
+def listing_instructions(
+    path: Path, rom: bytes, *, source_column: int = 21, hex_width: int = 4
+) -> dict[int, bytes]:
+    """Read byte-proven listed instruction bytes without length recovery."""
+    return read_listing(
+        path, rom, source_column=source_column, hex_width=hex_width, listed_bytes=None
+    )[0]
+
+
+def same_instruction(
+    expected: bytes, actual: bytes, *, expected_open: bool = False, actual_open: bool = False
+) -> bool:
+    """Compare instructions, allowing only an open-ended side to be a prefix.
+
+    A truncated listing prefix never matches an instruction of a different
+    length unless the listing itself leaves that length undetermined.
+    """
+    if expected_open and actual_open:
+        return expected.startswith(actual) or actual.startswith(expected)
+    if expected_open:
+        return actual.startswith(expected)
+    if actual_open:
+        return expected.startswith(actual)
+    return expected == actual
 
 
 def instruction_comparison(reference: Path, generated: Path) -> dict[str, object] | None:
@@ -188,23 +255,22 @@ def instruction_comparison(reference: Path, generated: Path) -> dict[str, object
     if not all(path.is_file() for path in (listing, rom_path, facts_path)):
         return None
     rom = rom_path.read_bytes()
-    known = listing_instructions(listing, rom)
+    known, known_open = read_listing(listing, rom)
     facts = json.loads(facts_path.read_text(encoding="utf-8"))["instructions"]
     analyzed = {
         item["physical_offset"]: bytes.fromhex(item["bytes"])
         for item in facts
     }
-    # AS lists at most six leading instruction bytes on a 68000 source line.
-    # Shorter listings contain the entire instruction and must match length.
-    def same_instruction(address: int) -> bool:
-        prefix = known[address]
-        actual = analyzed[address]
-        return actual.startswith(prefix) and (len(prefix) == 6 or len(actual) == len(prefix))
+
+    def analyzed_matches(address: int) -> bool:
+        return same_instruction(
+            known[address], analyzed[address], expected_open=address in known_open
+        )
 
     matches = sorted(address for address in known.keys() & analyzed.keys()
-                     if same_instruction(address))
+                     if analyzed_matches(address))
     disagreements = sorted(address for address in known.keys() & analyzed.keys()
-                           if not same_instruction(address))
+                           if not analyzed_matches(address))
     missed = sorted(known.keys() - analyzed.keys())
     extra = sorted(analyzed.keys() - known.keys())
     quality = instruction_quality(len(matches), len(known), len(analyzed))
@@ -225,10 +291,13 @@ def instruction_comparison(reference: Path, generated: Path) -> dict[str, object
     source_listing = generated / "build" / "retrolarium-main.lst"
     rebuilt = generated / "rebuilt.bin"
     if source_listing.is_file() and rebuilt.is_file():
-        emitted = listing_instructions(source_listing, rebuilt.read_bytes())
+        emitted, emitted_open = read_listing(source_listing, rebuilt.read_bytes())
         source_matches = sum(
-            address in known and emitted[address].startswith(known[address])
-            and (len(known[address]) == 6 or len(emitted[address]) == len(known[address]))
+            address in known and same_instruction(
+                known[address], emitted[address],
+                expected_open=address in known_open,
+                actual_open=address in emitted_open,
+            )
             for address in emitted
         )
         report["source_emission"] = {
@@ -257,54 +326,140 @@ def z80_source_comparison(reference: Path, generated: Path) -> dict[str, object]
     return report
 
 
-def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -> dict[str, object] | None:
-    listing = output / "reference" / "z80_driver.lst"
-    driver = reference / "data" / "sound" / "data_z80_part1.bin"
-    facts_path = generated.parent / "analysis" / "z80" / "program00" / "instructions.json"
-    if not all(path.is_file() for path in (listing, driver, facts_path)):
-        return None
-    payload = driver.read_bytes()
-    known = listing_instructions(listing, payload, source_column=36, hex_width=2)
+def z80_program_facts(facts_path: Path) -> tuple[int | None, dict[int, bytes]]:
+    """Return a Z80 program's load base and instructions keyed by Z80 address."""
     facts = json.loads(facts_path.read_text(encoding="utf-8"))["instructions"]
-    analyzed = {item["physical_offset"]: bytes.fromhex(item["bytes"]) for item in facts}
-    matches = sorted(address for address in known.keys() & analyzed.keys()
-                     if analyzed[address] == known[address])
-    disagreements = sorted(address for address in known.keys() & analyzed.keys()
-                           if analyzed[address] != known[address])
-    missed = sorted(known.keys() - analyzed.keys())
-    extra = sorted(analyzed.keys() - known.keys())
-    quality = instruction_quality(len(matches), len(known), len(analyzed))
-    report = {
-        "reference_listing_sha256": sha256(listing),
-        "reference_driver_sha256": sha256(driver),
-        "generated_driver_sha256": sha256(generated / "build" / "z80-program00.bin"),
-        "reference_instructions": len(known),
+    bases = {item["logical_address"] - item["physical_offset"] for item in facts}
+    if len(bases) > 1:
+        raise ValueError(f"Z80 facts use inconsistent load bases: {facts_path}")
+    analyzed = {item["logical_address"]: bytes.fromhex(item["bytes"]) for item in facts}
+    return (next(iter(bases)) if bases else None), analyzed
+
+
+def compare_z80_program(
+    known: dict[int, bytes],
+    base: int,
+    payload: bytes,
+    analyzed: dict[int, bytes],
+    emitted: dict[int, bytes] | None = None,
+) -> dict[str, object]:
+    """Compare one loaded Z80 program with the reference instructions it contains.
+
+    Reference instructions count only when their listed bytes equal the
+    program bytes at the same Z80 address, so overlays loaded at the same
+    destination are not credited to each other. ``emitted`` is keyed by
+    offset in the program, as the generated source assembles at ``org 0``.
+    """
+    owned = {
+        address: raw for address, raw in known.items()
+        if base <= address and payload[address - base:address - base + len(raw)] == raw
+    }
+    matches = {address for address in owned.keys() & analyzed.keys()
+               if analyzed[address] == owned[address]}
+    result: dict[str, object] = {
+        "base_address": base,
+        "size": len(payload),
+        "reference_instructions": len(owned),
         "generated_instructions": len(analyzed),
         "matching_instruction_starts": len(matches),
-        "matching_instruction_percentage": round(100 * len(matches) / len(known), 2),
-        **quality,
+        **instruction_quality(len(matches), len(owned), len(analyzed)),
+        "missed_reference_instructions": len(owned.keys() - analyzed.keys()),
+        "other_generated_instructions": len(analyzed.keys() - owned.keys()),
+        "different_opcode_prefixes_at_same_address": len(
+            (owned.keys() & analyzed.keys()) - matches
+        ),
+        "_matches": matches,
+        "_owned": set(owned),
+    }
+    if emitted is not None:
+        source_matches = {
+            base + offset for offset, raw in emitted.items()
+            if owned.get(base + offset) == raw
+        }
+        result["source_emission"] = {
+            "emitted_mnemonic_instructions": len(emitted),
+            "matching_reference_instructions": len(source_matches),
+            **instruction_quality(len(source_matches), len(owned), len(emitted)),
+        }
+        result["_source_matches"] = source_matches
+    return result
+
+
+def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -> dict[str, object] | None:
+    listing = output / "reference" / "z80_driver.lst"
+    facts_root = generated.parent / "analysis" / "z80"
+    fact_paths = sorted(facts_root.glob("program*/instructions.json"))
+    if not listing.is_file() or not fact_paths:
+        return None
+    # Program bytes, not one reference part, verify the listing below.
+    known, _ = read_listing(
+        listing, None, source_column=36, hex_width=2, listed_bytes=None
+    )
+    programs = []
+    analyzed_total = 0
+    emitted_total = 0
+    has_emission = False
+    matched: set[int] = set()
+    source_matched: set[int] = set()
+    owned: set[int] = set()
+    analyzed_addresses: set[int] = set()
+    disagreements = 0
+    for facts_path in fact_paths:
+        name = facts_path.parent.name
+        driver = generated / "build" / f"z80-{name}.bin"
+        if not driver.is_file():
+            raise ValueError(f"generated Z80 program is missing: {driver}")
+        payload = driver.read_bytes()
+        base, analyzed = z80_program_facts(facts_path)
+        if base is None:
+            base = 0
+        source_listing = generated / "build" / f"z80-{name}.lst"
+        emitted = None
+        if source_listing.is_file():
+            emitted, _ = read_listing(
+                source_listing, payload, source_column=24, hex_width=2, listed_bytes=None
+            )
+        result = compare_z80_program(known, base, payload, analyzed, emitted)
+        matched |= result.pop("_matches")
+        owned |= result.pop("_owned")
+        analyzed_addresses |= analyzed.keys()
+        analyzed_total += len(analyzed)
+        disagreements += result["different_opcode_prefixes_at_same_address"]
+        if emitted is not None:
+            has_emission = True
+            emitted_total += len(emitted)
+            source_matched |= result.pop("_source_matches")
+            result["source_emission"]["listing_sha256"] = sha256(source_listing)
+        programs.append({"program": name, "generated_driver_sha256": sha256(driver), **result})
+    missed = sorted(known.keys() - analyzed_addresses)
+    extra = sorted(analyzed_addresses - known.keys())
+    reference_parts = sorted((reference / "data" / "sound").glob("data_z80_part*.bin"))
+    report = {
+        "reference_listing_sha256": sha256(listing),
+        "reference_driver_sha256": {path.name: sha256(path) for path in reference_parts},
+        "programs": programs,
+        "reference_instructions": len(known),
+        "unattributed_reference_instructions": len(known.keys() - owned),
+        "generated_instructions": analyzed_total,
+        "matching_instruction_starts": len(matched),
+        "matching_instruction_percentage": round(
+            100 * len(matched) / len(known), 2
+        ) if known else 100.0,
+        **instruction_quality(len(matched), len(known), analyzed_total),
         "missed_reference_instructions": len(missed),
         "other_generated_instructions": len(extra),
-        "different_opcode_prefixes_at_same_address": len(disagreements),
+        "different_opcode_prefixes_at_same_address": disagreements,
         "first_missed_addresses": [f"{address:04X}" for address in missed[:12]],
         "first_other_addresses": [f"{address:04X}" for address in extra[:12]],
     }
-    source_listing = generated / "build" / "z80-program00.lst"
-    generated_driver = generated / "build" / "z80-program00.bin"
-    if source_listing.is_file() and generated_driver.is_file():
-        emitted = listing_instructions(
-            source_listing, generated_driver.read_bytes(), source_column=24, hex_width=2
-        )
-        source_matches = sum(
-            address in known and emitted[address] == known[address]
-            for address in emitted
-        )
+    if has_emission:
         report["source_emission"] = {
-            "listing_sha256": sha256(source_listing),
-            "emitted_mnemonic_instructions": len(emitted),
-            "matching_reference_instructions": source_matches,
-            "matching_reference_percentage": round(100 * source_matches / len(known), 2),
-            **instruction_quality(source_matches, len(known), len(emitted)),
+            "emitted_mnemonic_instructions": emitted_total,
+            "matching_reference_instructions": len(source_matched),
+            "matching_reference_percentage": round(
+                100 * len(source_matched) / len(known), 2
+            ) if known else 100.0,
+            **instruction_quality(len(source_matched), len(known), emitted_total),
         }
     return report
 
