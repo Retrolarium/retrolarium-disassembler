@@ -355,6 +355,15 @@ emitter writes its scalar fields as `dc.w`/`dc.l`, uses generated hardware
 symbols for the five device addresses, and preserves the embedded byte streams
 as `dc.b`.
 
+The Z80 analysis follows word dispatch tables when executable code loads their
+address into HL, calls a recognized A-indexed word lookup through RST, and
+jumps through HL. A preceding `sub` bounds the selector range. The analyzer
+marks the words as data and seeds their targets in Ghidra, repeating this pass
+when a newly decoded handler reveals another table. Each table and its evidence
+are recorded in `analysis/z80/programNN/dispatch-tables.json`. On the Flicky
+ROM, this recovers the 4-entry sound-command table and the adjacent 32- and
+8-entry coordination tables.
+
 For an independent Flicky source benchmark, run this after disassembly:
 
 ```powershell
@@ -366,8 +375,10 @@ python retrolarium_kit/tools/source_benchmark.py `
   --minimum-m68k-precision 99 `
   --minimum-m68k-f1 99 `
   --minimum-m68k-source-match 99 `
-  --minimum-z80-instruction-match 70 `
-  --minimum-z80-source-match 70
+  --minimum-z80-instruction-match 99 `
+  --minimum-z80-precision 99 `
+  --minimum-z80-f1 99 `
+  --minimum-z80-source-match 97
 ```
 
 This creates flattened `reference/main.s` and `generated/main.s`, source maps,
@@ -386,6 +397,11 @@ The instruction comparison records recall, precision, and F1 independently.
 Precision counts speculative instruction starts that are absent from the
 reference as false positives, so broader code recovery cannot improve the gate
 by decoding arbitrary data.
+
+In the current Flicky benchmark, the 68000 instruction analysis matches
+5707/5707 reference instructions; the Z80 analysis matches 1679/1683
+(99.76% recall, 99.29% precision). The generated Z80 source emits 1646/1683
+reference instructions as mnemonics (97.8%). The assembled ROM is byte exact.
 
 For side-by-side editing, export the two ROM-aligned reference files after
 disassembly:

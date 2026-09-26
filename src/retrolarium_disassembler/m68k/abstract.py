@@ -274,6 +274,24 @@ class AbstractState:
             self.registers, self.flags, tuple(sorted(memory.items()))
         )
 
+    def without_memory(
+        self, address: int | None = None, size: int = 4
+    ) -> AbstractState:
+        """Forget memory facts that a write may have overwritten.
+
+        Tracked entries are longwords, so an entry overlaps a write when
+        their byte ranges intersect. ``address=None`` forgets everything.
+        """
+        if address is None:
+            memory: tuple[tuple[int, AbstractValue], ...] = ()
+        else:
+            start = address & 0xFFFFFF
+            memory = tuple(
+                (key, value) for key, value in self.memory
+                if not (key < start + size and start < key + 4)
+            )
+        return AbstractState(self.registers, self.flags, memory)
+
     def join(self, other: AbstractState) -> AbstractState:
         registers = tuple(
             left.join(right)
@@ -474,37 +492,148 @@ def discover_packed_orphan_candidates(
     return tuple(candidates)
 
 
-_REGISTER = re.compile(r"([DA][0-7])(?:[bwl])?$", re.I)
+_REGISTER = re.compile(r"([DA][0-7]|SP)(?:[bwl])?$", re.I)
 _IMMEDIATE = re.compile(r"#?(-?0x[0-9a-f]+|-?\d+)$", re.I)
 _ABSOLUTE = re.compile(r"\((-?0x[0-9a-f]+|-?\d+)\)\.[wl]$", re.I)
 _INDIRECT_REGISTER = re.compile(r"\(([Aa][0-7])\)$")
+_AUTO_ADJUST = re.compile(r"-\(([A][0-7]|SP)\)|\(([A][0-7]|SP)\)\+", re.I)
+_REGISTER_LIST_ITEM = re.compile(
+    r"([DA][0-7]|SP)(?:[bwl])?(?:\s*-\s*([DA][0-7]|SP)(?:[bwl])?)?", re.I
+)
+_NON_WRITING_FLOWS = {
+    "CONDITIONAL_JUMP",
+    "UNCONDITIONAL_JUMP",
+    "COMPUTED_JUMP",
+    "TERMINATOR",
+}
+_READ_ONLY_PREFIXES = ("CMP", "TST", "BTST", "CHK")
+_CALL_FLOWS = {"UNCONDITIONAL_CALL", "COMPUTED_CALL"}
+
+
+def _canonical_register(name: str) -> str:
+    name = name.lower()
+    return "a7" if name == "sp" else name
 
 
 def _register_name(operand: str) -> str | None:
     match = _REGISTER.fullmatch(operand.strip())
-    return match.group(1).lower() if match else None
+    return _canonical_register(match.group(1)) if match else None
+
+
+def _register_list(operand: str) -> tuple[str, ...]:
+    """Expand a MOVEM register list such as ``D0-D1/A0`` or ``{A0 D1}``."""
+    registers: list[str] = []
+    for match in _REGISTER_LIST_ITEM.finditer(operand):
+        first = REGISTER_NAMES.index(_canonical_register(match.group(1)))
+        last = first
+        if match.group(2):
+            last = REGISTER_NAMES.index(_canonical_register(match.group(2)))
+        low, high = sorted((first, last))
+        registers.extend(REGISTER_NAMES[low:high + 1])
+    return tuple(dict.fromkeys(registers))
+
+
+def _narrow(value: AbstractValue, bits: int) -> AbstractValue:
+    """Return the low ``bits`` of a value, or unknown if they are not known."""
+    if value.bits == bits:
+        return value
+    if value.bits < bits:
+        return AbstractValue.unknown(bits)
+    mask = (1 << bits) - 1
+    values = value.concrete_values()
+    if values is not None:
+        return AbstractValue.small_set(
+            {item & mask for item in values},
+            bits,
+            address_space=value.address_space,
+        )
+    bounds = value.bounds()
+    if bounds is not None and bounds[1] <= mask:
+        return AbstractValue.interval(
+            bounds[0],
+            bounds[1],
+            value.stride() or 1,
+            bits,
+            address_space=value.address_space,
+        )
+    return AbstractValue.unknown(bits)
+
+
+def _sign_extend(value: AbstractValue) -> AbstractValue:
+    if value.bits == 32:
+        return value
+    values = value.concrete_values()
+    if values is None:
+        return AbstractValue.unknown()
+    sign = 1 << (value.bits - 1)
+    return AbstractValue.small_set(
+        {item - (1 << value.bits) if item & sign else item for item in values},
+        address_space=value.address_space,
+    )
+
+
+def _write_register(
+    state: AbstractState, name: str, value: AbstractValue, bits: int = 32
+) -> AbstractState:
+    """Write a register, preserving the 68000's partial-width semantics.
+
+    Address registers always receive a sign-extended 32-bit value. A byte or
+    word write to a data register leaves the upper bits intact; if they are
+    not exactly known, the register only records the low ``bits`` and
+    full-width consumers treat it as unknown.
+    """
+    value = _narrow(value, bits)
+    if name.startswith("a"):
+        return state.with_register(name, _sign_extend(value))
+    if bits == 32:
+        return state.with_register(name, value)
+    old = state.register(name)
+    old_values = old.concrete_values() if old.bits == 32 else None
+    new_values = value.concrete_values()
+    if (
+        old_values is not None
+        and new_values is not None
+        and len(old_values) * len(new_values) <= 64
+    ):
+        mask = (1 << bits) - 1
+        return state.with_register(name, AbstractValue.small_set(
+            {
+                (high & ~mask) | low
+                for high in old_values
+                for low in new_values
+            },
+            address_space=value.address_space,
+        ))
+    return state.with_register(name, value)
 
 
 def _source_value(
-    operand: str, state: AbstractState, *, address: bool = False
+    operand: str,
+    state: AbstractState,
+    *,
+    address: bool = False,
+    bits: int = 32,
 ) -> AbstractValue:
     register = _register_name(operand)
     if register is not None:
-        return state.register(register)
+        return _narrow(state.register(register), bits)
     immediate = _IMMEDIATE.fullmatch(operand.strip())
     if immediate is not None:
-        return AbstractValue.constant(
+        return _narrow(AbstractValue.constant(
             int(immediate.group(1), 0),
             address_space="rom" if address else "scalar",
-        )
+        ), bits)
     absolute = _ABSOLUTE.fullmatch(operand.strip())
     if absolute is not None:
         value = int(absolute.group(1), 0) & 0xFFFFFF
         if address:
             space = "ram" if value >= 0xFF0000 else "rom"
             return AbstractValue.constant(value, address_space=space)
-        return dict(state.memory).get(value, AbstractValue.unknown())
-    return AbstractValue.unknown()
+        # Memory facts are longwords; a narrower read at the same address
+        # would see the high-order bytes, which are not modelled here.
+        if bits == 32:
+            return dict(state.memory).get(value, AbstractValue.unknown())
+    return AbstractValue.unknown(bits)
 
 
 def _operation_bits(mnemonic: str, default: int = 32) -> int:
@@ -648,6 +777,66 @@ def transfer_instruction(
     """Apply register, selected memory, and condition-code effects."""
     mnemonic = fact.mnemonic.upper()
     operands = fact.operands.split("|") if fact.operands else []
+    state = _invalidate_written_memory(fact, operands, state)
+    state = _transfer_values(fact, mnemonic, operands, state)
+    # (An)+ and -(An) change the address register whatever the operation.
+    for operand in operands:
+        for match in _AUTO_ADJUST.finditer(operand):
+            register = _canonical_register(match.group(1) or match.group(2))
+            state = state.with_register(register, AbstractValue.unknown())
+    return state
+
+
+def _invalidate_written_memory(
+    fact: InstructionFact, operands: list[str], state: AbstractState
+) -> AbstractState:
+    """Drop memory facts that the destination operand may overwrite."""
+    mnemonic = fact.mnemonic.upper()
+    if (
+        not operands
+        or not state.memory
+        or fact.flow_type.upper() in _NON_WRITING_FLOWS
+        or mnemonic.startswith(_READ_ONLY_PREFIXES)
+    ):
+        return state
+    destination = operands[-1].strip()
+    if "(" not in destination:
+        return state
+    absolute = _ABSOLUTE.fullmatch(destination)
+    if absolute is None:
+        # A register-relative write may alias any tracked address.
+        return state.without_memory()
+    return state.without_memory(
+        int(absolute.group(1), 0), _operation_bits(mnemonic) // 8
+    )
+
+
+def _transfer_values(
+    fact: InstructionFact,
+    mnemonic: str,
+    operands: list[str],
+    state: AbstractState,
+) -> AbstractState:
+    if mnemonic.startswith("MOVEM") and len(operands) == 2:
+        if "(" not in operands[1]:
+            for register in _register_list(operands[1]):
+                state = state.with_register(register, AbstractValue.unknown())
+        return state
+    if mnemonic.startswith("EXG") and len(operands) == 2:
+        left = _register_name(operands[0])
+        right = _register_name(operands[1])
+        if left is not None and right is not None:
+            left_value = state.register(left)
+            return state.with_register(
+                left, state.register(right)
+            ).with_register(right, left_value)
+    if mnemonic.startswith("DB") and operands:
+        counter = _register_name(operands[0])
+        if counter is not None:
+            return _write_register(
+                state, counter, AbstractValue.unknown(16), 16
+            )
+        return state
     if mnemonic == "LEA" and len(operands) == 2:
         destination = _register_name(operands[1])
         if destination is not None:
@@ -669,15 +858,20 @@ def transfer_instruction(
     if mnemonic.startswith("MOVEA.") and len(operands) == 2:
         destination = _register_name(operands[1])
         if destination is not None:
-            return state.with_register(
-                destination, _source_value(operands[0], state)
+            bits = _operation_bits(mnemonic)
+            return _write_register(
+                state,
+                destination,
+                _source_value(operands[0], state, bits=bits),
+                bits,
             )
     if mnemonic.startswith("MOVE.") and len(operands) == 2:
-        value = _source_value(operands[0], state)
+        bits = _operation_bits(mnemonic)
+        value = _source_value(operands[0], state, bits=bits)
         updated = state
         destination = _register_name(operands[1])
         if destination is not None:
-            updated = updated.with_register(destination, value)
+            updated = _write_register(updated, destination, value, bits)
         immediate = _IMMEDIATE.fullmatch(operands[0].strip())
         absolute = _ABSOLUTE.fullmatch(operands[1].strip())
         if mnemonic == "MOVE.L" and immediate is not None and absolute is not None:
@@ -687,60 +881,57 @@ def transfer_instruction(
                     int(immediate.group(1), 0), address_space="rom"
                 ),
             )
-        return _with_logic_flags(updated, value, _operation_bits(mnemonic))
+        return _with_logic_flags(updated, value, bits)
     if mnemonic.startswith("CLR.") and len(operands) == 1:
-        value = AbstractValue.constant(0)
+        bits = _operation_bits(mnemonic)
+        value = AbstractValue.constant(0, bits)
         updated = state
         destination = _register_name(operands[0])
         if destination is not None:
-            updated = updated.with_register(destination, value)
-        return _with_logic_flags(updated, value, _operation_bits(mnemonic))
-    if (
-        mnemonic.startswith(("ADD", "ADDA", "ADDQ"))
-        and len(operands) == 2
-    ):
+            updated = _write_register(updated, destination, value, bits)
+        return _with_logic_flags(updated, value, bits)
+    arithmetic = (
+        "ADD" if mnemonic.startswith("ADD") and not mnemonic.startswith("ADDX")
+        else "SUB" if mnemonic.startswith("SUB")
+        and not mnemonic.startswith("SUBX")
+        else None
+    )
+    if arithmetic is not None and len(operands) == 2:
         destination = _register_name(operands[1])
         if destination is not None:
-            left = state.register(destination)
-            right = _source_value(operands[0], state)
-            updated = state.with_register(destination, left.add(right))
-            if mnemonic.startswith("ADDA"):
-                return updated
-            flags = _arithmetic_flags(
-                left, right, _operation_bits(mnemonic), subtract=False
-            )
-            return updated.with_flags(**flags, x=flags["c"])
-    if (
-        mnemonic.startswith(("SUB", "SUBA", "SUBQ"))
-        and len(operands) == 2
-    ):
-        destination = _register_name(operands[1])
-        if destination is not None:
-            left = state.register(destination)
-            right = _source_value(operands[0], state)
-            updated = state.with_register(destination, left.subtract(right))
-            if mnemonic.startswith("SUBA"):
-                return updated
-            flags = _arithmetic_flags(
-                left, right, _operation_bits(mnemonic), subtract=True
-            )
+            bits = _operation_bits(mnemonic)
+            subtract = arithmetic == "SUB"
+            if destination.startswith("a"):
+                # Address arithmetic is always 32-bit with a sign-extended
+                # source and leaves the condition codes alone.
+                left = state.register(destination)
+                right = _sign_extend(
+                    _source_value(operands[0], state, bits=bits)
+                )
+                result = left.subtract(right) if subtract else left.add(right)
+                return _write_register(state, destination, result)
+            left = _narrow(state.register(destination), bits)
+            right = _source_value(operands[0], state, bits=bits)
+            result = left.subtract(right) if subtract else left.add(right)
+            updated = _write_register(state, destination, result, bits)
+            flags = _arithmetic_flags(left, right, bits, subtract=subtract)
             return updated.with_flags(**flags, x=flags["c"])
     if mnemonic.startswith("ANDI.") and len(operands) == 2:
         destination = _register_name(operands[1])
         immediate = _IMMEDIATE.fullmatch(operands[0].strip())
         if destination is not None and immediate is not None:
-            value = state.register(destination).bitwise_and(
+            bits = _operation_bits(mnemonic)
+            value = _narrow(state.register(destination), bits).bitwise_and(
                 int(immediate.group(1), 0)
             )
-            updated = state.with_register(destination, value)
-            return _with_logic_flags(
-                updated, value, _operation_bits(mnemonic)
-            )
+            updated = _write_register(state, destination, value, bits)
+            return _with_logic_flags(updated, value, bits)
     if mnemonic.startswith("AND.") and len(operands) == 2:
         destination = _register_name(operands[1])
         if destination is not None:
-            left = state.register(destination)
-            right = _source_value(operands[0], state)
+            bits = _operation_bits(mnemonic)
+            left = _narrow(state.register(destination), bits)
+            right = _source_value(operands[0], state, bits=bits)
             left_values = left.concrete_values(1)
             right_values = right.concrete_values(1)
             if left_values is not None:
@@ -748,43 +939,45 @@ def transfer_instruction(
             elif right_values is not None:
                 value = left.bitwise_and(right_values[0])
             else:
-                value = AbstractValue.unknown()
-            updated = state.with_register(destination, value)
-            return _with_logic_flags(
-                updated, value, _operation_bits(mnemonic)
-            )
+                value = AbstractValue.unknown(bits)
+            updated = _write_register(state, destination, value, bits)
+            return _with_logic_flags(updated, value, bits)
     if mnemonic.startswith("TST.") and len(operands) == 1:
+        bits = _operation_bits(mnemonic)
         return _with_logic_flags(
-            state,
-            _source_value(operands[0], state),
-            _operation_bits(mnemonic),
+            state, _source_value(operands[0], state, bits=bits), bits
         )
-    if mnemonic.startswith("CMP") and len(operands) == 2:
-        right = _source_value(operands[0], state)
+    if mnemonic.startswith("CMPA") and len(operands) == 2:
+        right = _sign_extend(_source_value(
+            operands[0], state, bits=_operation_bits(mnemonic)
+        ))
         left = _source_value(operands[1], state)
         return state.with_flags(**_arithmetic_flags(
-            left, right, _operation_bits(mnemonic), subtract=True
+            left, right, 32, subtract=True
+        ))
+    if mnemonic.startswith("CMP") and len(operands) == 2:
+        bits = _operation_bits(mnemonic)
+        right = _source_value(operands[0], state, bits=bits)
+        left = _source_value(operands[1], state, bits=bits)
+        return state.with_flags(**_arithmetic_flags(
+            left, right, bits, subtract=True
         ))
     if mnemonic.startswith("BTST") and len(operands) == 2:
         bit_value = _source_value(operands[0], state).concrete_values(1)
-        tested = _source_value(operands[1], state).concrete_values()
+        tested = None
+        if _register_name(operands[1]) is not None:
+            tested = _source_value(operands[1], state).concrete_values()
         zero = TruthValue.UNKNOWN
         if bit_value is not None and tested is not None:
-            bit = bit_value[0] % (
-                32 if _register_name(operands[1]) is not None else 8
-            )
+            bit = bit_value[0] % 32
             zero = _uniform_truth({not bool(value & (1 << bit)) for value in tested})
         return state.with_flags(z=zero)
-    # Do not let a value survive across an unmodelled instruction that writes
-    # the same register. A stale constant is unsafe when it later controls an
-    # indirect branch.
+    # Any other instruction that names a register as its last operand is
+    # treated as writing it. A stale constant is unsafe when it later controls
+    # an indirect branch.
     if operands:
         destination = _register_name(operands[-1])
-        if destination is not None and mnemonic.startswith((
-            "OR.", "EOR.", "LSL.", "LSR.", "ASL.", "ASR.",
-            "ROL.", "ROR.", "ROXL.", "ROXR.", "MUL", "DIV",
-            "NEG.", "NEGX.", "NOT.", "EXT.", "SWAP",
-        )):
+        if destination is not None:
             value = AbstractValue.unknown()
             updated = state.with_register(destination, value)
             if mnemonic.startswith(("OR.", "EOR.", "NOT.", "EXT.", "SWAP")):
@@ -808,7 +1001,9 @@ def _successors(
     unresolved = False
     if flow in {"COMPUTED_CALL", "COMPUTED_JUMP"} and indirect is not None:
         register_name = indirect.group(1).lower()
-        values = state.register(register_name).concrete_values(32)
+        values = _narrow(
+            state.register(register_name), 32
+        ).concrete_values(32)
         if values is None:
             unresolved = True
         else:
@@ -829,7 +1024,9 @@ def _successors(
         else:
             base, register, kind, size = indexed
             register_name = f"{kind}{register}"
-            values = state.register(register_name).concrete_values(32)
+            values = _narrow(
+                state.register(register_name), 16 if size == "w" else 32
+            ).concrete_values(32)
             if values is None:
                 unresolved = True
             else:
@@ -964,9 +1161,21 @@ def interpret_known_cfg(
                 and edge.target_address % 2 == 0
             ):
                 edges[(edge.source_address, edge.target_address)] = edge
+        # The callee may change any register or memory before returning, so
+        # the return path must not inherit the caller's facts.
+        return_address = (
+            fact.cpu_address + fact.length
+            if fact.flow_type.upper() in _CALL_FLOWS
+            else None
+        )
         for successor in successors:
             if successor in by_address:
-                queue.append((successor, outgoing))
+                queue.append((
+                    successor,
+                    AbstractState.initial()
+                    if successor == return_address
+                    else outgoing,
+                ))
     return InterpretationResult(
         reached_addresses=tuple(sorted(states)),
         indirect_edges=tuple(edges[key] for key in sorted(edges)),
@@ -985,23 +1194,18 @@ def retain_trusted_instruction_facts(
     *,
     additional_entrypoints: set[int] | frozenset[int] = frozenset(),
 ) -> dict[int, InstructionFact]:
-    """Remove backend code islands that have no trusted control-flow root."""
+    """Remove backend code islands that have no trusted control-flow root.
+
+    Roots are the reset vector, validated exception vectors and planned
+    seeds. Call targets are trusted only when the call itself is reached;
+    a backend function label alone does not make an island trusted.
+    """
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     roots = {image.reset_address, *additional_entrypoints}
     roots.update(
         vector.address
         for vector in image.vector_table[1:]
         if vector.address in by_address
-    )
-    roots.update(
-        target
-        for fact in facts.values()
-        if fact.flow_type.upper() in {"UNCONDITIONAL_CALL", "CALL_TERMINATOR"}
-        for target in fact.flows
-        if target in by_address
-    )
-    roots.update(
-        fact.cpu_address for fact in facts.values() if fact.backend_function
     )
     reached: set[int] = set()
     pending = list(roots)

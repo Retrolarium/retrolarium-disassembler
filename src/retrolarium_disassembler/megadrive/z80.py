@@ -45,11 +45,6 @@ def _absolute_address(operand: str) -> int | None:
     return int(match.group(1), 16) if match else None
 
 
-def _immediate(operand: str) -> int | None:
-    match = re.fullmatch(r"#(-?0x[0-9a-f]+|-?[0-9]+)", operand, re.I)
-    return int(match.group(1), 0) if match else None
-
-
 def _register_constant(fact: InstructionFact, register: str) -> int | None:
     operands = fact.operands.split("|")
     if len(operands) != 2 or operands[1].upper().rstrip("BWL") != register:
@@ -73,6 +68,30 @@ def _source_address(image: MegaDriveImage, fact: InstructionFact) -> int | None:
     if address is None or not image.header.rom_start <= address <= image.actual_rom_end:
         return None
     return address
+
+
+def _writes_register(fact: InstructionFact, register: str) -> bool:
+    destination = _destination_register(fact)
+    return destination is not None and destination.rstrip("BWL") == register
+
+
+def _nearest_write(prior: list[InstructionFact], register: str) -> InstructionFact | None:
+    return next((fact for fact in reversed(prior) if _writes_register(fact, register)), None)
+
+
+Z80_IM1_VECTOR = 0x38
+
+
+def z80_im1_handler_seed(
+    facts: dict[int, InstructionFact], base_address: int, size: int
+) -> int | None:
+    """Return the IM1 vector when decoded code executes both IM 1 and EI."""
+    raws = {fact.raw for fact in facts.values()}
+    if b"\xed\x56" not in raws or b"\xfb" not in raws:
+        return None
+    if not base_address <= Z80_IM1_VECTOR < base_address + size:
+        return None
+    return Z80_IM1_VECTOR
 
 
 def _subroutine_copy_routines(ordered: list[InstructionFact]) -> set[int]:
@@ -116,37 +135,37 @@ def _detect_subroutine_copies(
             continue
         prior = [fact for fact in ordered[max(0, index - 8):index]
                  if call.cpu_address - 0x20 <= fact.cpu_address]
-        count = next((fact for fact in reversed(prior)
-                      if _register_constant(fact, "D0") is not None), None)
-        destination = next((fact for fact in reversed(prior)
-                            if _register_constant(fact, "D1") is not None), None)
-        source = next((fact for fact in reversed(prior) if fact.mnemonic == "LEA"
-                       and fact.operands.upper().endswith("|A0")
-                       and _source_address(image, fact) is not None), None)
+        # The nearest write to each parameter register reaches the call; the
+        # order in which the caller sets them up is irrelevant.
+        count = _nearest_write(prior, "D0")
+        destination = _nearest_write(prior, "D1")
+        source = _nearest_write(prior, "A0")
         if count is None or destination is None or source is None:
+            continue
+        if source.mnemonic != "LEA":
             continue
         count_value = _register_constant(count, "D0")
         destination_value = _register_constant(destination, "D1")
         source_start = _source_address(image, source)
-        assert count_value is not None and destination_value is not None and source_start is not None
-        if count.cpu_address >= source.cpu_address or destination.cpu_address >= source.cpu_address:
+        if count_value is None or destination_value is None or source_start is None:
             continue
         size = (count_value & 0xFFFF) + 1
-        # This analysis lane extracts executable Z80 images, which enter RAM
-        # at zero. Short copies to the sound command area are data transfers.
-        if destination_value != 0 or not 0x20 <= size <= 0x2000:
+        destination_value &= 0xFFFF
+        # Short copies to the sound command area are data transfers; only
+        # program-sized images that fit Z80 RAM are extracted.
+        if not 0x20 <= size <= 0x2000 or destination_value + size > 0x2000:
             continue
         source_end = source_start + size - 1
         if source_end > image.actual_rom_end:
             continue
-        key = (source_start, Z80_WINDOW_START, size)
+        key = (source_start, Z80_WINDOW_START + destination_value, size)
         if key in seen:
             continue
         seen.add(key)
         payload_offset = m68k_to_rom_offset(image, source_start)
         payload = image.data[payload_offset:payload_offset + size]
         copies.append(CrossCpuCopy(
-            edge_id=f"megadrive.cross.m68k-z80.{source_start:06X}.0000",
+            edge_id=f"megadrive.cross.m68k-z80.{source_start:06X}.{destination_value:04X}",
             schema_id="megadrive.m68k-z80.subroutine-copy",
             source_cpu_id="m68k",
             source_space="m68k",
@@ -154,8 +173,8 @@ def _detect_subroutine_copies(
             source_end=source_end,
             target_cpu_id="z80",
             target_space="z80",
-            target_start=0,
-            target_end=size - 1,
+            target_start=destination_value,
+            target_end=destination_value + size - 1,
             size=size,
             payload_sha256=hashlib.sha256(payload).hexdigest(),
             evidence_addresses=(count.cpu_address, destination.cpu_address,
@@ -183,6 +202,21 @@ def detect_z80_copies(
         if source_register == target_register:
             continue
 
+        loop = None
+        for following in ordered[index + 1:index + 4]:
+            operands = following.operands.split("|")
+            if (
+                following.mnemonic == "DBF"
+                and len(operands) == 2
+                and re.fullmatch(r"D[0-7]W?", operands[0].strip().upper())
+                and copy.cpu_address in following.flows
+            ):
+                loop = following
+                break
+        if loop is None:
+            continue
+        count_register = loop.operands.split("|")[0].strip().upper().rstrip("W")
+
         source_fact = None
         target_fact = None
         count_fact = None
@@ -202,37 +236,20 @@ def detect_z80_copies(
                 and _absolute_address(previous.operands.split("|")[0]) is not None
             ):
                 target_fact = previous
-            if count_fact is None and previous.mnemonic == "MOVE.W":
-                operands = previous.operands.split("|")
-                if len(operands) == 2 and _immediate(operands[0]) is not None:
-                    count_fact = previous
+            # Only the nearest write to the DBF counter register counts;
+            # intervening hardware writes such as bus requests are ignored.
+            if count_fact is None and _writes_register(previous, count_register):
+                count_fact = previous
             if source_fact and target_fact and count_fact:
                 break
         if source_fact is None or target_fact is None or count_fact is None:
             continue
 
-        count_operands = count_fact.operands.split("|")
-        count_register = count_operands[1].strip().upper()
-        if not re.fullmatch(r"D[0-7]W?", count_register):
+        count_value = _register_constant(count_fact, count_register)
+        if count_value is None:
             continue
-        count_value = _immediate(count_operands[0])
-        assert count_value is not None
         size = (count_value & 0xFFFF) + 1
         if not 1 <= size <= 0x2000:
-            continue
-
-        loop = None
-        for following in ordered[index + 1:index + 4]:
-            operands = following.operands.split("|")
-            if (
-                following.mnemonic == "DBF"
-                and len(operands) == 2
-                and operands[0].strip().upper() == count_register
-                and copy.cpu_address in following.flows
-            ):
-                loop = following
-                break
-        if loop is None:
             continue
 
         source_start = _source_address(image, source_fact)

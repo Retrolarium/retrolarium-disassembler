@@ -25,8 +25,9 @@ from .m68k_seeds import discover_initial_decoder_seeds
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project
 from .megadrive_pointers import detect_pointer_candidates, write_pointer_report
 from .megadrive_symbols import generate_symbols, write_symbol_report
-from .megadrive_z80 import CrossCpuCopy, detect_z80_copies
+from .megadrive_z80 import CrossCpuCopy, detect_z80_copies, z80_im1_handler_seed
 from .toolchain import toolchain_status
+from .z80_dispatch import discover_z80_dispatch_tables
 
 
 MAX_ABSTRACT_PASSES = 12
@@ -485,6 +486,109 @@ def analyze_megadrive(
         z80_facts = load_z80_ghidra_facts(
             z80_artifacts.facts, payload, base_address=copy.target_start
         )
+        dispatch_by_start = {}
+        for _ in range(4):
+            discovered = discover_z80_dispatch_tables(
+                payload, z80_facts, base_address=copy.target_start
+            )
+            fresh = []
+            for table in discovered:
+                previous = dispatch_by_start.get(table.logical_start)
+                if previous is None:
+                    fresh.append(table)
+                elif previous != table:
+                    # New decoding may only tighten a table or reveal more
+                    # sites sharing it; any other change is a contradiction.
+                    if (table.lookup_address != previous.lookup_address
+                            or previous.targets[:len(table.targets)]
+                            != table.targets):
+                        raise ValueError(
+                            "Z80 dispatch table changed at "
+                            f"0x{table.logical_start:04X}"
+                        )
+                    fresh.append(table)
+            if not fresh:
+                break
+            dispatch_by_start.update(
+                (table.logical_start, table) for table in fresh
+            )
+            dispatch_tables = tuple(
+                dispatch_by_start[address] for address in sorted(dispatch_by_start)
+            )
+            z80_seed_plan = z80_root / "dispatch-seeds.txt"
+            plan_lines = [
+                f"T {table.logical_start - copy.target_start:04X} "
+                f"{table.logical_end - copy.target_start:04X}"
+                for table in dispatch_tables
+            ]
+            seeds = {
+                target
+                for table in dispatch_tables
+                for target in table.targets
+            }
+            im1_handler = z80_im1_handler_seed(
+                z80_facts, copy.target_start, copy.size
+            )
+            if im1_handler is not None and not any(
+                table.logical_start <= im1_handler < table.logical_end
+                for table in dispatch_tables
+            ):
+                seeds.add(im1_handler)
+            plan_lines.extend(
+                f"S {target - copy.target_start:04X}" for target in sorted(seeds)
+            )
+            z80_seed_plan.write_text(
+                "\n".join(plan_lines) + "\n", encoding="ascii", newline="\n"
+            )
+            z80_artifacts = run_z80_analysis(
+                z80_input,
+                z80_root,
+                ghidra_home.resolve(),
+                scripts,
+                base_address=copy.target_start,
+                seed_plan=z80_seed_plan,
+            )
+            z80_facts = load_z80_ghidra_facts(
+                z80_artifacts.facts, payload, base_address=copy.target_start
+            )
+            for table in dispatch_tables:
+                if any(
+                    fact.cpu_address < table.logical_end
+                    and fact.cpu_address + fact.length > table.logical_start
+                    for fact in z80_facts.values()
+                ):
+                    raise ValueError(
+                        f"Z80 decoder ignored proven word table "
+                        f"0x{table.logical_start:04X}..0x{table.logical_end:04X}"
+                    )
+        else:
+            raise ValueError("Z80 dispatch analysis did not converge")
+        dispatch_tables = tuple(
+            dispatch_by_start[address] for address in sorted(dispatch_by_start)
+        )
+        dispatch_path = z80_root / "dispatch-tables.json"
+        dispatch_path.write_text(
+            json.dumps({
+                "schema": "retrolarium.z80.dispatch-tables",
+                "schema_version": 1,
+                "input_sha256": _sha256(z80_input),
+                "tables": [
+                    {
+                        "logical_start": table.logical_start,
+                        "logical_end": table.logical_end,
+                        "dispatch_address": table.dispatch_address,
+                        "dispatch_addresses": list(
+                            table.dispatch_addresses or (table.dispatch_address,)
+                        ),
+                        "lookup_address": table.lookup_address,
+                        "targets": list(table.targets),
+                    }
+                    for table in dispatch_tables
+                ],
+            }, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
         z80_instructions = z80_root / "instructions.json"
         cpu_id = f"z80.{index:02d}"
         _write_instructions(
@@ -506,6 +610,8 @@ def analyze_megadrive(
             analysis_input=z80_input,
         )
         program["derived_from"] = copy.edge_id
+        program["dispatch_tables"] = dispatch_path.relative_to(output).as_posix()
+        program["dispatch_tables_sha256"] = _sha256(dispatch_path)
         programs.append(program)
         z80_symbol_programs.append((cpu_id, copy.target_start, z80_facts))
         edges.append(

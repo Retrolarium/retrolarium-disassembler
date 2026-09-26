@@ -53,6 +53,52 @@ class M68kAbstractTests(unittest.TestCase):
 
         self.assertEqual({0x200}, set(retained))
 
+    def test_trusted_fact_filter_rejects_unreferenced_backend_function(
+        self,
+    ) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        entry = replace(
+            fact(0x200, "RTS", ""),
+            flow_type="TERMINATOR",
+        )
+        island = replace(
+            fact(0x300, "RTS", ""),
+            flow_type="TERMINATOR",
+            backend_function="FUN_00000300",
+        )
+
+        retained = retain_trusted_instruction_facts(image, {
+            item.physical_offset: item for item in (entry, island)
+        })
+
+        self.assertEqual({0x200}, set(retained))
+
+    def test_trusted_fact_filter_retains_reached_call_target(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        entry = replace(
+            fact(0x200, "JSR", "0x300"),
+            length=6,
+            raw=bytes(6),
+            flow_type="UNCONDITIONAL_CALL",
+            flows=(0x300,),
+        )
+        after_call = replace(
+            fact(0x206, "RTS", ""),
+            flow_type="TERMINATOR",
+        )
+        callee = replace(
+            fact(0x300, "RTS", ""),
+            flow_type="TERMINATOR",
+            backend_function="FUN_00000300",
+        )
+
+        retained = retain_trusted_instruction_facts(image, {
+            item.physical_offset: item
+            for item in (entry, after_call, callee)
+        })
+
+        self.assertEqual({0x200, 0x206, 0x300}, set(retained))
+
     def test_trusted_fact_filter_retains_explicit_decoder_seed(self) -> None:
         image = parse_megadrive(cartridge(size=0x500))
         seeded = replace(
@@ -339,6 +385,162 @@ class M68kAbstractTests(unittest.TestCase):
              0x230, 0x234} <= set(result.reached_addresses)
         )
         self.assertNotIn(0x212, result.reached_addresses)
+
+    def _flow(self, address, mnemonic, operands, length, flow_type, flows=()):
+        return replace(
+            fact(address, mnemonic, operands, flows=flows),
+            raw=bytes(length),
+            length=length,
+            flow_type=flow_type,
+        )
+
+    def test_register_facts_do_not_survive_subroutine_call(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        instructions = (
+            self._flow(0x200, "LEA", "(0x300).l|A0", 6, "FALL_THROUGH"),
+            self._flow(
+                0x206, "BSR.W", "0x00000240", 4,
+                "UNCONDITIONAL_CALL", (0x240,),
+            ),
+            self._flow(0x20A, "JMP", "(A0)", 2, "COMPUTED_JUMP"),
+            self._flow(0x240, "LEA", "(0x400).l|A0", 6, "FALL_THROUGH"),
+            self._flow(0x246, "RTS", "", 2, "TERMINATOR"),
+        )
+
+        result = interpret_known_cfg(image, {
+            item.physical_offset: item for item in instructions
+        })
+
+        self.assertIn(0x20A, result.reached_addresses)
+        self.assertEqual((), result.indirect_edges)
+        self.assertIn(0x20A, result.unresolved_indirect_addresses)
+
+    def test_memory_facts_do_not_survive_subroutine_call(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        instructions = (
+            self._flow(
+                0x200, "MOVE.L", "#0x300|(0xfffffa7e).w", 8, "FALL_THROUGH"
+            ),
+            self._flow(
+                0x208, "JSR", "(0x240).l", 6,
+                "UNCONDITIONAL_CALL", (0x240,),
+            ),
+            self._flow(
+                0x20E, "MOVEA.L", "(0xfffffa7e).w|A1", 4, "FALL_THROUGH"
+            ),
+            self._flow(0x212, "JMP", "(A1)", 2, "COMPUTED_JUMP"),
+            self._flow(0x240, "RTS", "", 2, "TERMINATOR"),
+        )
+
+        result = interpret_known_cfg(image, {
+            item.physical_offset: item for item in instructions
+        })
+
+        self.assertEqual((), result.indirect_edges)
+        self.assertIn(0x212, result.unresolved_indirect_addresses)
+
+    def test_movem_restore_clobbers_listed_registers(self) -> None:
+        initial = (
+            AbstractState.initial()
+            .with_register("a0", AbstractValue.constant(0x300))
+            .with_register("d1", AbstractValue.constant(4))
+            .with_register("a2", AbstractValue.constant(0x400))
+        )
+
+        single = transfer_instruction(
+            fact(0x200, "MOVEM.L", "(SP)+|A0"), initial
+        )
+        listed = transfer_instruction(
+            fact(0x200, "MOVEM.L", "(SP)+|D0-D1/A0"), initial
+        )
+
+        self.assertEqual(ValueKind.UNKNOWN, single.register("a0").kind)
+        self.assertEqual(ValueKind.UNKNOWN, listed.register("a0").kind)
+        self.assertEqual(ValueKind.UNKNOWN, listed.register("d1").kind)
+        self.assertEqual((0x400,), listed.register("a2").values)
+
+    def test_unmodelled_register_writes_clear_stale_values(self) -> None:
+        initial = (
+            AbstractState.initial()
+            .with_register("d0", AbstractValue.constant(8))
+            .with_register("a0", AbstractValue.constant(0x300))
+            .with_register("a1", AbstractValue.constant(0x400))
+        )
+
+        for mnemonic, operands in (
+            ("SEQ", "D0b"),
+            ("BSET.L", "#0x1|D0"),
+            ("ABCD.B", "D1b|D0b"),
+            ("MOVEP.W", "(0x0,A1)|D0w"),
+            ("ADDX.L", "D1|D0"),
+        ):
+            with self.subTest(mnemonic=mnemonic):
+                state = transfer_instruction(
+                    fact(0x200, mnemonic, operands), initial
+                )
+                self.assertNotEqual((8,), state.register("d0").values)
+
+        swapped = transfer_instruction(fact(0x200, "EXG", "A0|A1"), initial)
+        self.assertEqual((0x400,), swapped.register("a0").values)
+        self.assertEqual((0x300,), swapped.register("a1").values)
+
+        counted = transfer_instruction(
+            fact(0x200, "DBF", "D0w|0x00000218"), initial
+        )
+        self.assertEqual(ValueKind.UNKNOWN, counted.register("d0").kind)
+
+    def test_address_register_auto_increment_clears_value(self) -> None:
+        initial = AbstractState.initial().with_register(
+            "a0", AbstractValue.constant(0x300)
+        )
+
+        for operands in ("(A0)+|D1", "D1|-(A0)"):
+            with self.subTest(operands=operands):
+                state = transfer_instruction(
+                    fact(0x200, "MOVE.W", operands), initial
+                )
+                self.assertEqual(ValueKind.UNKNOWN, state.register("a0").kind)
+
+    def test_memory_writes_invalidate_tracked_values(self) -> None:
+        initial = AbstractState.initial().with_memory(
+            0xFFFA7E, AbstractValue.constant(0x300)
+        )
+
+        for mnemonic, operands in (
+            ("MOVE.L", "A1|(0xfffffa7e).w"),
+            ("CLR.L", "(0xfffffa7e).w"),
+            ("MOVE.W", "D0w|(0xfffffa80).w"),
+            ("MOVE.L", "D0|(A0)"),
+        ):
+            with self.subTest(mnemonic=mnemonic, operands=operands):
+                state = transfer_instruction(
+                    fact(0x200, mnemonic, operands), initial
+                )
+                self.assertEqual((), state.memory)
+
+        unrelated = transfer_instruction(
+            fact(0x200, "MOVE.L", "D0|(0xfffffa90).w"), initial
+        )
+        self.assertEqual(initial.memory, unrelated.memory)
+        compared = transfer_instruction(
+            fact(0x200, "CMPI.L", "#0x0|(0xfffffa7e).w"), initial
+        )
+        self.assertEqual(initial.memory, compared.memory)
+
+    def test_word_write_preserves_upper_data_register_bits(self) -> None:
+        initial = AbstractState.initial().with_register(
+            "d0", AbstractValue.constant(0x12340000)
+        )
+
+        moved = transfer_instruction(fact(0x200, "MOVE.W", "#0x8|D0w"), initial)
+        self.assertEqual((0x12340008,), moved.register("d0").values)
+
+        partial = transfer_instruction(
+            fact(0x200, "MOVE.W", "#0x8|D0w"), AbstractState.initial()
+        )
+        self.assertEqual(16, partial.register("d0").bits)
+        full = transfer_instruction(fact(0x202, "MOVE.L", "D0|D1"), partial)
+        self.assertEqual(ValueKind.UNKNOWN, full.register("d1").kind)
 
 
 if __name__ == "__main__":

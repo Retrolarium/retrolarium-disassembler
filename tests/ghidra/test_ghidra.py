@@ -71,6 +71,54 @@ class GhidraBackendTests(unittest.TestCase):
             self.assertEqual("SeedNesVectors.java", command[seed_index + 1])
             self.assertLess(seed_index, command.index("-postScript"))
 
+    def test_nes_entry_seed_plan_reaches_vector_script(self) -> None:
+        from retrolarium_kit.pipeline import _run_seeded_nes_analysis
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image, ghidra_home, scripts = self.fake_layout(root)
+            workspace = root / "analysis"
+            seed_plan = root / "entry-seeds.txt"
+            seed_plan.write_text("8000\nC123\n", encoding="utf-8")
+
+            def complete(
+                command: list[str], **_: object
+            ) -> subprocess.CompletedProcess[str]:
+                report = Path(command[command.index("InspectProgram.java") + 1])
+                facts = Path(command[command.index("ExportInstructionFacts.java") + 1])
+                report.write_text(
+                    json.dumps(
+                        {"language": "6502:LE:16:default", "compiler": "default"}
+                    ),
+                    encoding="utf-8",
+                )
+                facts.write_text("facts", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "ok")
+
+            with patch(
+                "retrolarium_kit.ghidra.subprocess.run", side_effect=complete
+            ) as run:
+                _run_seeded_nes_analysis(
+                    image, workspace, ghidra_home, scripts, seed_plan
+                )
+
+            command = run.call_args.args[0]
+            seed_index = command.index("SeedNesVectors.java")
+            self.assertEqual("-preScript", command[seed_index - 1])
+            self.assertEqual(str(seed_plan.resolve()), command[seed_index + 1])
+            self.assertEqual("-postScript", command[seed_index + 2])
+
+        # The script must consume that single argument as a hex address plan.
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "src" / "retrolarium_kit" / "ghidra_scripts" / "SeedNesVectors.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("getScriptArgs()", source)
+        self.assertIn("args.length > 1", source)
+        self.assertIn("[0-9A-Fa-f]{1,4}", source)
+        self.assertIn("Long.parseLong(line, 16)", source)
+        self.assertIn("isExecutable(memory, target)", source)
+
     def test_script_error_is_fatal_even_when_ghidra_returns_success(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -214,6 +262,19 @@ class GhidraBackendTests(unittest.TestCase):
             )
             facts_index = command.index("ExportInstructionFacts.java")
             self.assertEqual("Z80_RAM", command[facts_index + 2])
+            plan = root / "dispatch-seeds.txt"
+            plan.write_text("T 0080 0088\nS 00A0\n", encoding="ascii")
+            with patch(
+                "retrolarium_kit.ghidra.subprocess.run", side_effect=complete
+            ) as run:
+                run_z80_analysis(
+                    image, workspace, ghidra_home, scripts, seed_plan=plan
+                )
+            command = run.call_args.args[0]
+            self.assertEqual(
+                str(plan.resolve()),
+                command[command.index("SeedZ80Entry.java") + 1],
+            )
 
     def test_snes_uses_pinned_24_bit_language_and_context_plan(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -102,6 +102,76 @@ def accepted_pointer_tables(
     )
 
 
+RTS_SCHEMAS = frozenset({"nes.u16le.rts_minus_one", "nes.split_lo_hi.rts_minus_one"})
+DISPATCH_WINDOW = 8
+DISPATCH_EVIDENCE_PREFIX = "dispatch_reference="
+
+
+def accepted_code_entry_tables(
+    candidates: tuple[PointerCandidate, ...]
+) -> tuple[PointerCandidate, ...]:
+    """Accepted tables whose targets are backed by dispatch code evidence."""
+    return tuple(
+        candidate
+        for candidate in candidates
+        if candidate.status == "accepted"
+        and (
+            candidate.schema_id in RTS_SCHEMAS
+            or any(
+                item.startswith(DISPATCH_EVIDENCE_PREFIX)
+                for item in candidate.evidence
+            )
+        )
+    )
+
+
+def _dispatch_references(
+    image: InesImage, facts: dict[int, InstructionFact]
+) -> dict[int, str]:
+    """Map indexed-load table offsets to the dispatch idiom that consumes them.
+
+    ``rts`` means the loaded byte is pushed and consumed by RTS (target - 1);
+    ``jmp_indirect`` means the byte feeds a later ``JMP (abs)``.
+    """
+    ordered = [facts[offset] for offset in sorted(facts)]
+    references: dict[int, str] = {}
+    for index, fact in enumerate(ordered):
+        if fact.mnemonic.upper() not in {"LDA", "LDX", "LDY"}:
+            continue
+        operands = fact.operands.replace(" ", "").upper()
+        if operands.startswith(("#", "(")) or not operands.endswith((",X", ",Y")):
+            continue
+        match = OPERAND_HEX_RE.search(fact.operands)
+        if match is None:
+            continue
+        try:
+            table_offset = cpu_to_prg_offset(image, int(match.group(1), 16))
+        except ValueError:
+            continue
+        pushed = False
+        kind: str | None = None
+        expected = fact.physical_offset + fact.length
+        for follower in ordered[index + 1:index + 1 + DISPATCH_WINDOW]:
+            if follower.physical_offset != expected:
+                break
+            expected += follower.length
+            mnemonic = follower.mnemonic.upper()
+            if mnemonic == "PHA":
+                pushed = True
+            elif mnemonic == "RTS":
+                kind = "rts" if pushed else None
+                break
+            elif mnemonic == "JMP":
+                if follower.operands.lstrip().startswith("("):
+                    kind = "jmp_indirect"
+                break
+            elif follower.flow_type.upper() == "TERMINATOR":
+                break
+        if kind is not None:
+            references.setdefault(table_offset, kind)
+    return references
+
+
 def _instruction_sets(
     image: InesImage, facts: dict[int, InstructionFact],
 ) -> tuple[set[int], set[int], set[int], set[int]]:
@@ -161,6 +231,7 @@ def _evaluate_u16le(
     instruction_starts: set[int],
     control_targets: set[int],
     operand_reference_offsets: set[int],
+    dispatch: str | None = None,
 ) -> PointerCandidate:
     start = entries[0].physical_offset
     end = entries[-1].physical_offset + 2
@@ -169,10 +240,20 @@ def _evaluate_u16le(
     evidence = ["all_entries_map_to_prg", f"entry_count={len(entries)}"]
     contradictions: list[str] = []
     score = 30 + min(len(entries) * 2, 20)
+    rts = dispatch == "rts"
+    if dispatch is not None:
+        evidence.append(f"{DISPATCH_EVIDENCE_PREFIX}{dispatch}")
+        score += 15
+    if rts:
+        evidence.append("stored_values_are_target_minus_one")
 
     if all(left < right for left, right in zip(targets, targets[1:])):
         evidence.append("targets_strictly_increasing")
         score += 20
+    elif dispatch is not None:
+        # Jump tables are ordered by selector, not by handler address.
+        evidence.append("targets_unordered_under_dispatch")
+        score -= 5
     else:
         contradictions.append("targets_not_strictly_increasing")
         score -= 20
@@ -181,6 +262,9 @@ def _evaluate_u16le(
     if span <= MAX_ACCEPTED_TARGET_SPAN:
         evidence.append(f"compact_target_span={span}")
         score += 15
+    elif dispatch is not None:
+        evidence.append(f"wide_target_span_under_dispatch={span}")
+        score -= 10
     else:
         contradictions.append(f"wide_target_span={span}")
         score -= 10
@@ -209,7 +293,9 @@ def _evaluate_u16le(
         score -= 30
 
     hard_rejection = bool(contradictions)
-    promotion_evidence = referenced or span <= MAX_UNREFERENCED_TARGET_SPAN
+    promotion_evidence = (
+        referenced or dispatch is not None or span <= MAX_UNREFERENCED_TARGET_SPAN
+    )
     if not promotion_evidence:
         evidence.append("awaiting_reference_or_tighter_target_cluster")
     accepted = (
@@ -219,8 +305,10 @@ def _evaluate_u16le(
     )
     status = "accepted" if accepted else "rejected" if hard_rejection else "candidate"
     return PointerCandidate(
-        candidate_id=f"PtrTable_B00_{cpu_start:04X}",
-        schema_id="nes.u16le",
+        candidate_id=(
+            f"PtrTableRts_B00_{cpu_start:04X}" if rts else f"PtrTable_B00_{cpu_start:04X}"
+        ),
+        schema_id="nes.u16le.rts_minus_one" if rts else "nes.u16le",
         physical_start=start,
         physical_end=end,
         cpu_start=cpu_start,
@@ -239,6 +327,7 @@ def _u16le_candidates(
         image, facts
     )
     operand_reference_offsets = _operand_reference_offsets(image, facts)
+    dispatch_references = _dispatch_references(image, facts)
     candidates: list[PointerCandidate] = []
     scan_end = max(0, len(image.prg) - 6)
     cpu_base = canonical_prg_start(image)
@@ -266,6 +355,18 @@ def _u16le_candidates(
                 entries.append(PointerEntry(offset, cpu_base + offset, target))
                 offset += 2
             if len(entries) >= MIN_CANDIDATE_ENTRIES:
+                dispatch = dispatch_references.get(
+                    start, dispatch_references.get(start + 1)
+                )
+                if dispatch == "rts":
+                    adjusted = [
+                        replace(entry, target=(entry.target + 1) & 0xFFFF)
+                        for entry in entries
+                    ]
+                    if all(_mapped_target(image, entry.target) for entry in adjusted):
+                        entries = adjusted
+                    else:
+                        dispatch = None
                 evaluated = _evaluate_u16le(
                     image,
                     tuple(entries),
@@ -273,6 +374,7 @@ def _u16le_candidates(
                     instruction_starts,
                     control_targets,
                     operand_reference_offsets,
+                    dispatch,
                 )
                 instruction_target_count = sum(
                     cpu_to_prg_offset(image, entry.target) in instruction_starts
@@ -282,6 +384,7 @@ def _u16le_candidates(
                     "targets_strictly_increasing" in evaluated.evidence
                     or evaluated.physical_start in operand_reference_offsets
                     or instruction_target_count >= 2
+                    or dispatch is not None
                 )
                 if interesting:
                     candidates.append(evaluated)
@@ -298,6 +401,7 @@ def _split_lo_hi_candidates(
     )
     cpu_base = canonical_prg_start(image)
     scan_end = max(0, len(image.prg) - 6)
+    dispatch_references = _dispatch_references(image, facts)
     referenced_offsets = sorted(
         offset
         for offset in _operand_reference_offsets(image, facts)
@@ -315,9 +419,17 @@ def _split_lo_hi_candidates(
                 offset in occupied for offset in range(low_offset, end)
             ):
                 continue
+            low_dispatch = dispatch_references.get(low_offset)
+            high_dispatch = dispatch_references.get(high_offset)
+            dispatch = low_dispatch if low_dispatch == high_dispatch else None
+            rts = dispatch == "rts"
             targets = tuple(
-                image.prg[low_offset + index]
-                | (image.prg[high_offset + index] << 8)
+                (
+                    image.prg[low_offset + index]
+                    | (image.prg[high_offset + index] << 8)
+                )
+                + (1 if rts else 0)
+                & 0xFFFF
                 for index in range(count)
             )
             if not all(_mapped_target(image, target) for target in targets):
@@ -332,9 +444,17 @@ def _split_lo_hi_candidates(
             ]
             contradictions: list[str] = []
             score = 60 + min(count * 2, 20)
+            if dispatch is not None:
+                evidence.append(f"{DISPATCH_EVIDENCE_PREFIX}{dispatch}")
+                score += 15
+            if rts:
+                evidence.append("stored_values_are_target_minus_one")
             if all(left < right for left, right in zip(targets, targets[1:])):
                 evidence.append("targets_strictly_increasing")
                 score += 20
+            elif dispatch is not None:
+                evidence.append("targets_unordered_under_dispatch")
+                score -= 5
             else:
                 contradictions.append("targets_not_strictly_increasing")
                 score -= 20
@@ -374,9 +494,12 @@ def _split_lo_hi_candidates(
             candidates.append(
                 PointerCandidate(
                     candidate_id=(
-                        f"PtrTableSplit_B00_{low_address:04X}_{high_address:04X}"
+                        f"PtrTableSplit{'Rts' if rts else ''}_B00_"
+                        f"{low_address:04X}_{high_address:04X}"
                     ),
-                    schema_id="nes.split_lo_hi",
+                    schema_id=(
+                        "nes.split_lo_hi.rts_minus_one" if rts else "nes.split_lo_hi"
+                    ),
                     physical_start=low_offset,
                     physical_end=end,
                     cpu_start=low_address,
@@ -700,6 +823,27 @@ def pointer_report(
                 "minimum_accepted_entries": MIN_ACCEPTED_ENTRIES,
                 "maximum_accepted_entries": 256,
                 "required_evidence": "both array starts referenced by instructions",
+            },
+            {
+                "id": "nes.u16le.rts_minus_one",
+                "entry_size": 2,
+                "endianness": "little",
+                "target_adjustment": 1,
+                "required_evidence": (
+                    "indexed table load pushed with PHA and consumed by RTS"
+                ),
+                "ordering": "confidence factor only",
+            },
+            {
+                "id": "nes.split_lo_hi.rts_minus_one",
+                "entry_size": 2,
+                "endianness": "little",
+                "layout": "adjacent low-byte array followed by high-byte array",
+                "target_adjustment": 1,
+                "required_evidence": (
+                    "both arrays loaded indexed, pushed with PHA and consumed by RTS"
+                ),
+                "ordering": "confidence factor only",
             },
         ],
         "candidates": [candidate.as_dict() for candidate in candidates],

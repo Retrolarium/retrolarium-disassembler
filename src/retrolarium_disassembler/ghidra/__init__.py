@@ -90,7 +90,10 @@ def run_z80_analysis(
     script_directory: Path,
     *,
     base_address: int = 0,
+    seed_plan: Path | None = None,
 ) -> GhidraArtifacts:
+    if seed_plan is not None and not seed_plan.is_file():
+        raise GhidraError(f"Z80 decoder seed plan not found: {seed_plan}")
     return _run_analysis(
         image,
         workspace,
@@ -110,6 +113,7 @@ def run_z80_analysis(
             "z80:LE:16:default",
         ),
         seed_script="SeedZ80Entry.java",
+        seed_arguments=((str(seed_plan.resolve()),) if seed_plan is not None else ()),
         export_block="Z80_RAM",
     )
 

@@ -11,9 +11,11 @@ import subprocess
 from .ca65 import emit_project
 from .contracts import validate_disassembly_manifest
 from .facts import InstructionFact, load_ghidra_facts
-from .ghidra import run_nes_analysis
+from .ghidra import GhidraArtifacts, _run_analysis, run_nes_analysis
 from .ines import (
     InesImage,
+    PrgAnalysisTarget,
+    cpu_to_prg_offset,
     load_ines,
     mapper_profile,
     mapper_projections,
@@ -21,6 +23,8 @@ from .ines import (
     prg_analysis_targets,
 )
 from .pointers import (
+    PointerCandidate,
+    accepted_code_entry_tables,
     accepted_pointer_tables,
     detect_banked_pointer_candidates,
     write_pointer_report,
@@ -209,6 +213,66 @@ def _write_instruction_facts(
     )
 
 
+MAX_ENTRY_SEED_PASSES = 1
+MAX_ENTRY_SEEDS_PER_BANK = 256
+
+
+def _script_directory() -> Path:
+    return Path(__file__).resolve().parent / "ghidra_scripts"
+
+
+def _run_seeded_nes_analysis(
+    image: Path,
+    workspace: Path,
+    ghidra_home: Path,
+    script_directory: Path,
+    seed_plan: Path,
+) -> GhidraArtifacts:
+    """Rerun NES analysis with a plan of extra code entry points.
+
+    The plan is passed to the vector seed script as its first argument; one
+    hexadecimal CPU address per line.
+    """
+    return _run_analysis(
+        image,
+        workspace,
+        ghidra_home,
+        script_directory,
+        project_name="retrolarium_nes",
+        project_prefix="nes_",
+        expected_language="6502:LE:16:default",
+        import_arguments=(),
+        seed_script="SeedNesVectors.java",
+        seed_arguments=(str(seed_plan.resolve()),),
+        export_block=None,
+    )
+
+
+def _bank_record(
+    image: InesImage,
+    target: PrgAnalysisTarget,
+    output: Path,
+    analysis_input: Path,
+    artifacts: GhidraArtifacts,
+    bank_facts: dict[int, InstructionFact],
+) -> dict[str, object]:
+    report = json.loads(artifacts.report.read_text(encoding="utf-8"))
+    return {
+        "bank": target.bank,
+        "physical_start": target.physical_start,
+        "physical_end": target.physical_end,
+        "cpu_start": target.cpu_start,
+        "analysis_input": analysis_input.relative_to(output).as_posix(),
+        "analysis_input_sha256": target.image.sha256,
+        "synthesized_mapper_zero_view": target.synthesized,
+        "language": report["language"],
+        "compiler": report["compiler"],
+        "instruction_count": len(bank_facts),
+        "facts": artifacts.facts.relative_to(output).as_posix(),
+        "facts_sha256": sha256_file(artifacts.facts),
+    }
+
+
 def _analyze_prg_banks(
     image: InesImage,
     output: Path,
@@ -216,7 +280,7 @@ def _analyze_prg_banks(
 ) -> tuple[dict[int, InstructionFact], list[dict[str, object]], Path]:
     targets = prg_analysis_targets(image)
     toolchain_status(ghidra_home)
-    script_directory = Path(__file__).resolve().parent / "ghidra_scripts"
+    script_directory = _script_directory()
     combined_facts: dict[int, InstructionFact] = {}
     banks: list[dict[str, object]] = []
     for target in targets:
@@ -236,27 +300,135 @@ def _analyze_prg_banks(
             first = min(overlap)
             raise PipelineError(f"PRG analyses overlap at physical offset {first:#x}")
         combined_facts.update(bank_facts)
-        report = json.loads(artifacts.report.read_text(encoding="utf-8"))
         banks.append(
-            {
-                "bank": target.bank,
-                "physical_start": target.physical_start,
-                "physical_end": target.physical_end,
-                "cpu_start": target.cpu_start,
-                "analysis_input": analysis_input.relative_to(output).as_posix(),
-                "analysis_input_sha256": target.image.sha256,
-                "synthesized_mapper_zero_view": target.synthesized,
-                "language": report["language"],
-                "compiler": report["compiler"],
-                "instruction_count": len(bank_facts),
-                "facts": artifacts.facts.relative_to(output).as_posix(),
-                "facts_sha256": sha256_file(artifacts.facts),
-            }
+            _bank_record(image, target, output, analysis_input, artifacts, bank_facts)
         )
     facts_path = output / "instructions.json"
     output.mkdir(parents=True, exist_ok=True)
     _write_instruction_facts(facts_path, image, combined_facts)
     return combined_facts, banks, facts_path
+
+
+def dispatch_entry_seeds(
+    image: InesImage,
+    facts: dict[int, InstructionFact],
+    candidates: tuple[PointerCandidate, ...],
+) -> dict[int, tuple[int, ...]]:
+    """Undecoded targets of accepted dispatch tables, grouped by PRG bank."""
+    targets = {target.bank: target for target in prg_analysis_targets(image)}
+    seeds: dict[int, set[int]] = {}
+    for candidate in accepted_code_entry_tables(candidates):
+        target = targets.get(candidate.bank)
+        if target is None:
+            continue
+        for entry in candidate.entries:
+            try:
+                local = cpu_to_prg_offset(target.image, entry.target)
+            except ValueError:
+                continue
+            if target.physical_start + local in facts:
+                continue
+            seeds.setdefault(candidate.bank, set()).add(entry.target)
+    return {
+        bank: tuple(sorted(addresses)[:MAX_ENTRY_SEEDS_PER_BANK])
+        for bank, addresses in sorted(seeds.items())
+    }
+
+
+def _reanalyze_with_entry_seeds(
+    image: InesImage,
+    output: Path,
+    ghidra_home: Path,
+    facts: dict[int, InstructionFact],
+    banks: list[dict[str, object]],
+    seeds: dict[int, tuple[int, ...]],
+    pass_number: int,
+) -> tuple[dict[int, InstructionFact], list[dict[str, object]], Path]:
+    """Rerun only the banks that gained entry points; keep other banks as-is."""
+    script_directory = _script_directory()
+    targets = {target.bank: target for target in prg_analysis_targets(image)}
+    combined = dict(facts)
+    records = {int(record["bank"]): record for record in banks}
+    for bank, addresses in seeds.items():
+        target = targets[bank]
+        bank_directory = output / "banks" / f"bank{bank:02d}" / f"pass{pass_number}"
+        bank_directory.mkdir(parents=True, exist_ok=True)
+        analysis_input = bank_directory / "analysis-input.nes"
+        analysis_input.write_bytes(target.image.data)
+        seed_plan = bank_directory / "entry-seeds.txt"
+        seed_plan.write_text(
+            "".join(f"{address:04X}\n" for address in addresses),
+            encoding="utf-8",
+            newline="\n",
+        )
+        artifacts = _run_seeded_nes_analysis(
+            analysis_input,
+            bank_directory,
+            ghidra_home.resolve(),
+            script_directory,
+            seed_plan,
+        )
+        bank_facts = load_ghidra_facts(artifacts.facts, image, bank=bank)
+        for offset in [
+            offset
+            for offset in combined
+            if target.physical_start <= offset <= target.physical_end
+        ]:
+            del combined[offset]
+        combined.update(bank_facts)
+        decoded = sum(
+            target.physical_start + cpu_to_prg_offset(target.image, address)
+            in bank_facts
+            for address in addresses
+        )
+        record = _bank_record(
+            image, target, output, analysis_input, artifacts, bank_facts
+        )
+        record["entry_seed_pass"] = {
+            "pass": pass_number,
+            "plan": seed_plan.relative_to(output).as_posix(),
+            "requested": len(addresses),
+            "decoded": decoded,
+        }
+        records[bank] = record
+    facts_path = output / "instructions.json"
+    _write_instruction_facts(facts_path, image, combined)
+    return combined, [records[bank] for bank in sorted(records)], facts_path
+
+
+def _analyze_with_dispatch_passes(
+    image: InesImage,
+    output: Path,
+    ghidra_home: Path,
+) -> tuple[
+    dict[int, InstructionFact],
+    list[dict[str, object]],
+    Path,
+    tuple[PointerCandidate, ...],
+]:
+    facts, banks, facts_path = _analyze_prg_banks(image, output, ghidra_home)
+    candidates = detect_banked_pointer_candidates(image, facts)
+    attempted: set[tuple[int, int]] = set()
+    for pass_number in range(2, 2 + MAX_ENTRY_SEED_PASSES):
+        seeds = {
+            bank: tuple(
+                address for address in addresses if (bank, address) not in attempted
+            )
+            for bank, addresses in dispatch_entry_seeds(
+                image, facts, candidates
+            ).items()
+        }
+        seeds = {bank: addresses for bank, addresses in seeds.items() if addresses}
+        if not seeds:
+            break
+        attempted.update(
+            (bank, address) for bank, addresses in seeds.items() for address in addresses
+        )
+        facts, banks, facts_path = _reanalyze_with_entry_seeds(
+            image, output, ghidra_home, facts, banks, seeds, pass_number
+        )
+        candidates = detect_banked_pointer_candidates(image, facts)
+    return facts, banks, facts_path, candidates
 
 
 def analyze_mapper_banks(
@@ -304,10 +476,9 @@ def disassemble_nes(
     image = load_ines(rom)
     analysis_dir = output / "analysis"
     generated_dir = output / "generated"
-    facts, banks, facts_path = _analyze_prg_banks(
+    facts, banks, facts_path, pointer_candidates = _analyze_with_dispatch_passes(
         image, analysis_dir, ghidra_home
     )
-    pointer_candidates = detect_banked_pointer_candidates(image, facts)
     write_pointer_report(analysis_dir / "pointers.json", image, pointer_candidates)
     emission = emit_project(generated_dir, image, facts, pointer_candidates)
     targets = prg_analysis_targets(image)
