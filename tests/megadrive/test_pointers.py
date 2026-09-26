@@ -10,12 +10,137 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from retrolarium_kit.facts import InstructionFact, InstructionReference
 from retrolarium_kit.megadrive import parse_megadrive
-from retrolarium_kit.megadrive_pointers import detect_pointer_candidates
+from retrolarium_kit.megadrive_pointers import (
+    detect_pointer_candidates,
+    discover_dispatch_table_seeds,
+)
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 
 
+def dispatch_image(*targets: int):
+    data = bytearray(cartridge(size=0x800))
+    data[0x300:0x320] = bytes(0x20)
+    for index, target in enumerate(targets):
+        offset = 0x300 + index * 4
+        data[offset:offset + 4] = target.to_bytes(4, "big")
+    return parse_megadrive(bytes(data))
+
+
+def dispatch_facts(index_source: str = "D0w|A0") -> dict[int, InstructionFact]:
+    index_mnemonic = "MOVEA.W" if index_source.startswith("D") else "LEA"
+    items = (
+        fact(0x200, index_mnemonic, index_source),
+        replace(fact(0x202, "MOVEA.L", "(0x300,A0)|A0"), length=4),
+        replace(fact(0x206, "JSR", "(A0)"), flow_type="COMPUTED_CALL"),
+        replace(fact(0x208, "RTS", ""), flow_type="TERMINATOR"),
+    )
+    return {item.physical_offset: item for item in items}
+
+
 class MegaDrivePointerTests(unittest.TestCase):
+    def test_indexed_movea_dispatch_table_seeds_handler_targets(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420)
+
+        seeds = discover_dispatch_table_seeds(image, dispatch_facts())
+
+        self.assertEqual((0x400, 0x410, 0x420), tuple(
+            seed.address for seed in seeds
+        ))
+        self.assertEqual(
+            {"indexed_pointer_table_target"}, {seed.kind for seed in seeds}
+        )
+        self.assertEqual({0x202}, {seed.source_address for seed in seeds})
+
+    def test_dispatch_table_is_accepted_once_targets_decode(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420)
+        facts = dispatch_facts()
+        undecoded = {
+            item.physical_start: item
+            for item in detect_pointer_candidates(image, facts)
+            if item.candidate_id.startswith("Ptr_u32be-dispatch")
+        }
+        self.assertEqual("candidate", undecoded[0x300].status)
+
+        for target in (0x400, 0x410, 0x420):
+            facts[target] = replace(
+                fact(target, "RTS", ""), flow_type="TERMINATOR"
+            )
+        decoded = {
+            item.physical_start: item
+            for item in detect_pointer_candidates(image, facts)
+            if item.status == "accepted"
+        }
+
+        table = decoded[0x300]
+        self.assertEqual("megadrive.u32be.absolute", table.schema_id)
+        self.assertEqual(0x30C, table.physical_end)
+        self.assertEqual((0x400, 0x410, 0x420), tuple(
+            entry.target for entry in table.entries
+        ))
+
+    def test_dispatch_table_requires_data_register_index(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420)
+
+        seeds = discover_dispatch_table_seeds(
+            image, dispatch_facts("(0x1000).l|A0")
+        )
+
+        self.assertEqual((), seeds)
+
+    def test_dispatch_table_stops_at_odd_or_out_of_rom_target(self) -> None:
+        for bad_target in (0x411, 0x100, 0x10000):
+            with self.subTest(target=bad_target):
+                image = dispatch_image(0x400, bad_target, 0x420)
+                seeds = discover_dispatch_table_seeds(image, dispatch_facts())
+                self.assertEqual((), seeds)
+
+    def test_dispatch_table_stops_before_code_and_self_targets(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420, 0x430)
+        facts = dispatch_facts()
+        facts[0x308] = fact(0x308, "NOP", "")
+        self.assertEqual((0x400, 0x410), tuple(
+            seed.address
+            for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+
+        image = dispatch_image(0x400, 0x410, 0x304)
+        self.assertEqual((0x400, 0x410), tuple(
+            seed.address
+            for seed in discover_dispatch_table_seeds(image, dispatch_facts())
+        ))
+
+    def test_dispatch_table_ignores_base_register_displacement_refs(
+        self,
+    ) -> None:
+        image = dispatch_image(0x400, 0x400, 0x410, 0x420)
+        facts = dispatch_facts()
+        # Ghidra tags struct accesses like (0x304,A5) as DATA refs to $304.
+        for address, displacement in ((0x210, 0x304), (0x212, 0x308)):
+            facts[address] = fact(
+                address,
+                "MOVE.L",
+                f"({displacement:#x},A5)|D1",
+                references=(InstructionReference(displacement, "DATA", 0),),
+            )
+
+        self.assertEqual((0x400, 0x400, 0x410, 0x420), tuple(
+            seed.address
+            for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+
+        # An absolute reference still bounds the table.
+        facts[0x214] = fact(
+            0x214,
+            "MOVE.L",
+            "(0x308).l|D1",
+            references=(InstructionReference(0x308, "DATA", 0),),
+        )
+        self.assertEqual((0x400, 0x400), tuple(
+            seed.address
+            for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+
     def test_recovers_counted_animation_offsets_into_ram_copy(self) -> None:
         data = bytearray(cartridge(size=0x1200))
         data[0x220:0x23C] = bytes.fromhex(

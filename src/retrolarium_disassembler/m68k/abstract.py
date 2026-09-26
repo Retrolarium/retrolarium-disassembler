@@ -1084,10 +1084,19 @@ def interpret_known_cfg(
     facts: dict[int, InstructionFact],
     *,
     widening_after: int = 3,
+    additional_entrypoints: set[int] | frozenset[int] = frozenset(),
 ) -> InterpretationResult:
-    """Propagate abstract states over backend-decoded instructions."""
+    """Propagate abstract states over backend-decoded instructions.
+
+    Additional entrypoints are validated planned seeds; each one present
+    among the decoded facts starts from the initial state even when no
+    call path from reset reaches it.
+    """
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     entrypoints = {image.reset_address}
+    entrypoints.update(
+        address for address in additional_entrypoints if address in by_address
+    )
     entrypoints.update(
         target
         for fact in facts.values()

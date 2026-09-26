@@ -10,6 +10,7 @@ import re
 from .facts import InstructionFact
 from .megadrive import MegaDriveImage
 from .m68k_seeds import (
+    DecoderSeed,
     RamCopyRegion,
     discover_ram_copy_regions,
     discover_ram_trampoline_tables,
@@ -19,6 +20,8 @@ from .m68k_seeds import (
 MIN_ENTRIES = 3
 MIN_ACCEPTED_ENTRIES = 4
 MAX_ENTRIES = 64
+MIN_DISPATCH_ENTRIES = 2
+DISPATCH_INDEX_WINDOW = 8
 
 
 @dataclass(frozen=True)
@@ -672,11 +675,237 @@ def _animation_candidates(
     return tuple(candidates)
 
 
+_REGISTER_INDIRECT = re.compile(r"\(([Aa][0-7])\)$")
+_DATA_TO_ADDRESS = re.compile(r"[Dd][0-7]w?\|([Aa][0-7])$", re.I)
+
+
+@dataclass(frozen=True)
+class _DispatchTable:
+    candidate: PointerCandidate
+    load_address: int
+    call_address: int
+    call_mnemonic: str
+
+
+_REGISTER_DISPLACEMENT = re.compile(
+    r"\((-?0x[0-9a-f]+|-?\d+),[Aa][0-7](?:,[^)]*)?\)", re.I
+)
+
+
+def _absolute_referenced_addresses(
+    facts: dict[int, InstructionFact],
+) -> set[int]:
+    """Return data references that name an absolute address.
+
+    Ghidra attaches DATA references to the raw displacement of
+    ``(d16,An)`` operands; those are struct offsets from a runtime base,
+    not table starts, so they must not bound a ROM table.
+    """
+    addresses: set[int] = set()
+    for fact in facts.values():
+        displacements = {
+            int(value, 0) & 0xFFFFFFFF
+            for value in _REGISTER_DISPLACEMENT.findall(fact.operands)
+        }
+        addresses.update(
+            reference.address
+            for reference in fact.references
+            if (
+                "DATA" in reference.reference_type
+                or "READ" in reference.reference_type
+            )
+            and reference.address not in displacements
+        )
+    return addresses
+
+
+def _index_register_from_data_register(
+    ends: dict[int, InstructionFact],
+    load: InstructionFact,
+    register: str,
+) -> bool:
+    """Prove the base register was last set from a data register.
+
+    Only straight-line predecessors are inspected, so a struct pointer
+    loaded by LEA or an absolute MOVEA never qualifies as a table index.
+    """
+    current = load
+    for _ in range(DISPATCH_INDEX_WINDOW):
+        previous = ends.get(current.cpu_address)
+        if previous is None or previous.flow_type.upper() != "FALL_THROUGH":
+            return False
+        destination = previous.operands.rsplit("|", 1)[-1].upper()
+        if destination == register:
+            return (
+                previous.mnemonic.upper() in {"MOVEA.W", "MOVEA.L"}
+                and _DATA_TO_ADDRESS.fullmatch(previous.operands) is not None
+            )
+        current = previous
+    return False
+
+
+def _dispatch_tables(
+    image: MegaDriveImage, facts: dict[int, InstructionFact]
+) -> tuple[_DispatchTable, ...]:
+    """Recover u32 handler tables selected by an indexed MOVEA.L dispatch.
+
+    The table base comes only from the displacement of a decoded
+    ``MOVEA.L (d16,An),Am`` whose successor is ``JSR/JMP (Am)``; nothing
+    is scanned blindly. Entries stop at the first odd, unmapped,
+    self-referencing, code-overlapping or structurally invalid target.
+    """
+    occupied, interiors, instruction_starts = _instruction_sets(facts)
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+    # Tables end at another dispatch base or an absolute data reference;
+    # base-register displacements are never treated as boundaries.
+    boundaries = _absolute_referenced_addresses(facts)
+    for fact in facts.values():
+        match = _DISPLACEMENT_ADDRESS.fullmatch(fact.operands)
+        if fact.mnemonic.upper() == "MOVEA.L" and match is not None:
+            call = by_address.get(fact.cpu_address + fact.length)
+            if (
+                call is not None
+                and call.mnemonic.upper() in {"JSR", "JMP"}
+                and _REGISTER_INDIRECT.fullmatch(call.operands) is not None
+            ):
+                boundaries.add(int(match.group(1), 0))
+    ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
+    rom_start = image.header.rom_start
+    data = image.data
+    tables: dict[int, _DispatchTable] = {}
+    for load in sorted(facts.values(), key=lambda item: item.cpu_address):
+        if load.mnemonic.upper() != "MOVEA.L":
+            continue
+        match = _DISPLACEMENT_ADDRESS.fullmatch(load.operands)
+        if match is None:
+            continue
+        table = int(match.group(1), 0)
+        base_register = match.group(2).upper()
+        loaded_register = match.group(3).upper()
+        call = by_address.get(load.cpu_address + load.length)
+        if (
+            call is None
+            or call.mnemonic.upper() not in {"JSR", "JMP"}
+            or (target := _REGISTER_INDIRECT.fullmatch(call.operands)) is None
+            or target.group(1).upper() != loaded_register
+        ):
+            continue
+        physical_start = table - rom_start
+        if (
+            table in tables
+            or physical_start < 0x200
+            or table & 1
+            or physical_start + MIN_DISPATCH_ENTRIES * 4 > len(data)
+            or not _index_register_from_data_register(
+                ends, load, base_register
+            )
+        ):
+            continue
+        entries: list[PointerEntry] = []
+        offset = physical_start
+        while offset + 4 <= len(data) and len(entries) < MAX_ENTRIES:
+            if any(byte in occupied for byte in range(offset, offset + 4)):
+                break
+            logical_offset = rom_start + offset
+            if entries and logical_offset in boundaries:
+                break
+            raw = int.from_bytes(data[offset:offset + 4], "big")
+            physical_target = raw - rom_start
+            if (
+                not _mapped(image, raw)
+                or physical_target < 0x200
+                or physical_target + 2 > len(data)
+                or physical_target in interiors
+                or physical_start <= physical_target < offset + 4
+                or data[physical_target:physical_target + 2]
+                in {b"\x00\x00", b"\xff\xff"}
+            ):
+                break
+            entries.append(PointerEntry(
+                physical_offset=offset,
+                logical_address=logical_offset,
+                raw_value=raw,
+                target=raw,
+            ))
+            offset += 4
+        # A later entry may still aim back into earlier table bytes.
+        while entries:
+            end = physical_start + len(entries) * 4
+            inside = [
+                index for index, entry in enumerate(entries)
+                if physical_start <= entry.target - rom_start < end
+            ]
+            if not inside:
+                break
+            entries = entries[:inside[0]]
+        if len(entries) < MIN_DISPATCH_ENTRIES:
+            continue
+        target_starts = sum(
+            entry.target in instruction_starts for entry in entries
+        )
+        accepted = target_starts == len(entries)
+        tables[table] = _DispatchTable(
+            candidate=PointerCandidate(
+                candidate_id=f"Ptr_u32be-dispatch_{table:06X}",
+                schema_id="megadrive.u32be.absolute",
+                physical_start=physical_start,
+                physical_end=physical_start + len(entries) * 4,
+                logical_start=table,
+                entry_size=4,
+                status="accepted" if accepted else "candidate",
+                score=100 if accepted else 60,
+                entries=tuple(entries),
+                evidence=(
+                    f"indexed_movea_l_at_{load.cpu_address:06X}",
+                    f"{call.mnemonic.lower()}_indirect_at_"
+                    f"{call.cpu_address:06X}",
+                    "index_register_from_data_register",
+                    f"entry_count={len(entries)}",
+                    f"instruction_targets={target_starts}",
+                ),
+                contradictions=(),
+            ),
+            load_address=load.cpu_address,
+            call_address=call.cpu_address,
+            call_mnemonic=call.mnemonic.upper(),
+        )
+    return tuple(tables[address] for address in sorted(tables))
+
+
+def discover_dispatch_table_seeds(
+    image: MegaDriveImage, facts: dict[int, InstructionFact]
+) -> tuple[DecoderSeed, ...]:
+    """Turn indexed MOVEA.L dispatch tables into decoder seeds."""
+    seeds = []
+    for table in _dispatch_tables(image, facts):
+        candidate = table.candidate
+        evidence = (
+            f"u32 handler table at 0x{candidate.logical_start:06X} "
+            f"({len(candidate.entries)} entries) selected by MOVEA.L at "
+            f"0x{table.load_address:06X} and {table.call_mnemonic} at "
+            f"0x{table.call_address:06X}"
+        )
+        seeds.extend(
+            DecoderSeed(
+                address=entry.target,
+                kind="indexed_pointer_table_target",
+                confidence="high",
+                evidence=evidence,
+                source_address=table.load_address,
+            )
+            for entry in candidate.entries
+        )
+    return tuple(seeds)
+
+
 def detect_pointer_candidates(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[PointerCandidate, ...]:
     candidates = [_vector_candidate(image)]
     candidates.extend(_ram_trampoline_candidates(image, facts))
+    candidates.extend(
+        table.candidate for table in _dispatch_tables(image, facts)
+    )
     absolute = tuple(_absolute_candidates(image, facts, 4))
     candidates.extend(absolute)
     candidates.extend(_animation_candidates(image, facts, absolute))

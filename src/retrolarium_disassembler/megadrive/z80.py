@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import re
 
@@ -296,3 +296,92 @@ def detect_z80_copies(
         )
     copies.extend(_detect_subroutine_copies(image, ordered, seen))
     return tuple(sorted(copies, key=lambda copy: (copy.source_start, copy.target_start)))
+
+
+@dataclass(frozen=True)
+class Z80LogicalImage:
+    """Copies that tile one contiguous Z80 RAM range, analyzed as one program."""
+
+    fragments: tuple[CrossCpuCopy, ...]
+
+    @property
+    def target_start(self) -> int:
+        return self.fragments[0].target_start
+
+    @property
+    def target_end(self) -> int:
+        return self.fragments[-1].target_end
+
+    @property
+    def size(self) -> int:
+        return self.target_end - self.target_start + 1
+
+    def payload(self, image: MegaDriveImage) -> bytes:
+        return b"".join(copy_payload(image, fragment) for fragment in self.fragments)
+
+
+def copy_payload(image: MegaDriveImage, copy: CrossCpuCopy) -> bytes:
+    offset = m68k_to_rom_offset(image, copy.source_start)
+    payload = image.data[offset:offset + copy.size]
+    if hashlib.sha256(payload).hexdigest() != copy.payload_sha256:
+        raise ValueError(f"Z80 copy payload changed: {copy.edge_id}")
+    return payload
+
+
+def group_z80_copies(
+    copies: tuple[CrossCpuCopy, ...]
+) -> tuple[Z80LogicalImage, ...]:
+    """Join copies whose Z80 destinations are exactly adjacent.
+
+    Only gap-free chains are joined, so no uncovered RAM byte is ever part of
+    an analysis input. Any copy whose destination overlaps another copy may
+    describe a conflicting upload and stays a standalone program.
+    """
+    ordered = sorted(
+        copies, key=lambda copy: (copy.target_start, copy.target_end, copy.source_start)
+    )
+    overlapping: set[int] = set()
+    for index, first in enumerate(ordered):
+        for other_index in range(index + 1, len(ordered)):
+            if ordered[other_index].target_start > first.target_end:
+                break
+            overlapping.update((index, other_index))
+    images: list[Z80LogicalImage] = []
+    run: list[CrossCpuCopy] = []
+    for index, copy in enumerate(ordered):
+        if index in overlapping:
+            if run:
+                images.append(Z80LogicalImage(tuple(run)))
+                run = []
+            images.append(Z80LogicalImage((copy,)))
+        elif run and copy.target_start == run[-1].target_end + 1:
+            run.append(copy)
+        else:
+            if run:
+                images.append(Z80LogicalImage(tuple(run)))
+            run = [copy]
+    if run:
+        images.append(Z80LogicalImage(tuple(run)))
+    return tuple(sorted(
+        images,
+        key=lambda item: (item.fragments[0].source_start, item.fragments[0].target_start),
+    ))
+
+
+def fragment_z80_facts(
+    logical: Z80LogicalImage,
+    facts: dict[int, InstructionFact],
+    fragment: CrossCpuCopy,
+) -> dict[int, InstructionFact]:
+    """Rebase logical-image facts onto one fragment's payload offsets.
+
+    Instructions straddling a fragment boundary cannot be emitted inside
+    either fragment, so their bytes are left as data.
+    """
+    start = fragment.target_start - logical.target_start
+    end = start + fragment.size
+    return {
+        offset - start: replace(fact, physical_offset=fact.physical_offset - start)
+        for offset, fact in facts.items()
+        if start <= offset and offset + fact.length <= end
+    }

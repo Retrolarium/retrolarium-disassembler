@@ -10,7 +10,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from retrolarium_kit.facts import InstructionFact, InstructionReference
 from retrolarium_kit.megadrive import parse_megadrive
-from retrolarium_kit.megadrive_z80 import detect_z80_copies, z80_im1_handler_seed
+from retrolarium_kit.megadrive_z80 import (
+    CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
+    group_z80_copies, z80_im1_handler_seed,
+)
 from test_megadrive import cartridge
 
 
@@ -52,6 +55,50 @@ COPY_ROUTINE = (
 
 
 class MegaDriveZ80Tests(unittest.TestCase):
+    def test_adjacent_fragments_form_one_logical_image(self) -> None:
+        first = CrossCpuCopy(
+            edge_id="first", schema_id="test", source_cpu_id="m68k",
+            source_space="m68k", source_start=0x280, source_end=0x283,
+            target_cpu_id="z80.00", target_space="z80", target_start=0,
+            target_end=3, size=4, payload_sha256="0" * 64,
+            evidence_addresses=(), confidence="proven-static-copy",
+        )
+        second = replace(
+            first, edge_id="second", source_start=0x290,
+            source_end=0x293, target_start=4, target_end=7,
+        )
+        logical, = group_z80_copies((second, first))
+        self.assertEqual(("first", "second"), tuple(
+            copy.edge_id for copy in logical.fragments
+        ))
+        facts = {
+            3: fact(3, "JP", "0x0004"),
+            4: fact(4, "RET", ""),
+        }
+        self.assertEqual({}, fragment_z80_facts(logical, facts, first))
+        sliced = fragment_z80_facts(logical, facts, second)
+        self.assertEqual([0], list(sliced))
+        self.assertEqual(4, sliced[0].cpu_address)
+
+    def test_gaps_and_overlaps_stay_separate(self) -> None:
+        first = CrossCpuCopy(
+            edge_id="first", schema_id="test", source_cpu_id="m68k",
+            source_space="m68k", source_start=0x280, source_end=0x283,
+            target_cpu_id="z80.00", target_space="z80", target_start=0,
+            target_end=3, size=4, payload_sha256="0" * 64,
+            evidence_addresses=(), confidence="proven-static-copy",
+        )
+        gap = replace(
+            first, edge_id="gap", source_start=0x290, source_end=0x293,
+            target_start=8, target_end=11,
+        )
+        overlap = replace(
+            first, edge_id="overlap", source_start=0x2A0,
+            source_end=0x2A3, target_start=2, target_end=5,
+        )
+        self.assertEqual(2, len(group_z80_copies((first, gap))))
+        self.assertEqual(2, len(group_z80_copies((first, overlap))))
+
     def test_recovers_driver_passed_to_shared_z80_copy_subroutine(self) -> None:
         image = parse_megadrive(cartridge())
         sequence = (

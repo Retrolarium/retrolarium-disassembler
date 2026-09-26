@@ -21,6 +21,7 @@ from .megadrive_symbols import (
     pc_indexed_jsr_target,
 )
 from .megadrive_z80 import CrossCpuCopy
+from .z80_dispatch import Z80DispatchTable
 
 
 MODULE_SIZE = 0x10000
@@ -35,6 +36,7 @@ SIMPLE_OPCODES = {
     "TRAPV": bytes.fromhex("4E76"),
     "ILLEGAL": bytes.fromhex("4AFC"),
 }
+AMBIGUOUS_IMMEDIATE_BASES = {"ADD", "SUB", "CMP", "AND", "OR"}
 
 
 class MegaDriveEmitError(ValueError):
@@ -51,6 +53,8 @@ class EmitResult:
     asset_bytes: int
     raw_bytes: int
     padding_bytes: int
+    # Subset of instruction_bytes emitted as mnemonics rather than dc.b.
+    symbolic_instruction_bytes: int = 0
 
 
 def _sha256(payload: bytes) -> str:
@@ -166,6 +170,13 @@ def _asm_instruction(
         # The 68000 ignores the upper byte of these immediate extension words.
         # Assemblers canonicalize it to zero, so preserve unusual ROM encodings
         # as data to keep rebuilds byte exact.
+        return None
+    if (fact.mnemonic.upper().split(".", 1)[0] in AMBIGUOUS_IMMEDIATE_BASES
+            and len(fact.raw) >= 2
+            and (int.from_bytes(fact.raw[:2], "big") & 0x3F == 0x3C
+                 or fact.operands.lstrip().startswith("#"))):
+        # Ea-form immediates such as D07C (add.w #imm,d0) have ADDI/SUBI/
+        # CMPI/ANDI/ORI twins that assemblers prefer, so keep exact bytes.
         return None
     opcode = SIMPLE_OPCODES.get(fact.mnemonic.upper())
     if opcode is not None and not fact.operands and fact.raw == opcode:
@@ -670,15 +681,62 @@ def _z80_asm(raw: bytes, address: int) -> str | None:
     return None
 
 
-def _emit_z80_source(path: Path, payload: bytes, facts: dict[int, InstructionFact]) -> None:
-    lines = ["    cpu z80", "    page 0", "    org 0", "", "Z80_Entry:"]
+def _emit_z80_source(
+    path: Path,
+    payload: bytes,
+    facts: dict[int, InstructionFact],
+    *,
+    base_address: int = 0,
+    dispatch_tables: tuple[Z80DispatchTable, ...] = (),
+) -> None:
+    occupied: set[int] = set()
+    interiors: set[int] = set()
+    for start, fact in facts.items():
+        occupied.update(range(start, start + fact.length))
+        interiors.update(range(start + 1, start + fact.length))
+    tables: dict[int, int] = {}
+    for table in dispatch_tables:
+        start = table.logical_start - base_address
+        end = table.logical_end - base_address
+        span = set(range(start, end))
+        if (not 0 <= start < end <= len(payload) or (end - start) % 2
+                or span & occupied):
+            raise MegaDriveEmitError(
+                f"Z80 dispatch table ${table.logical_start:04X} does not fit "
+                "between instructions"
+            )
+        tables[start] = end
+        occupied.update(span)
+        interiors.update(range(start + 1, end))
+    # Only words read from the payload are emitted, so labels always
+    # reassemble to the original little-endian bytes.
+    labels: dict[int, str] = {}
+    for start, end in tables.items():
+        labels[start] = f"Z80_Table_{base_address + start:04X}"
+        for entry in range(start, end, 2):
+            target = int.from_bytes(payload[entry:entry + 2], "little")
+            offset = target - base_address
+            if 0 <= offset < len(payload) and offset not in interiors:
+                labels.setdefault(offset, f"Z80_Loc_{target:04X}")
+
+    lines = ["    cpu z80", "    page 0", f"    org {base_address}", "", "Z80_Entry:"]
     offset = 0
     while offset < len(payload):
+        if offset in labels:
+            lines.append(f"{labels[offset]}:")
+        table_end = tables.get(offset)
+        if table_end is not None:
+            for entry in range(offset, table_end, 2):
+                value = int.from_bytes(payload[entry:entry + 2], "little")
+                target = labels.get(value - base_address)
+                lines.append(f"    dw {target if target is not None else value}")
+            offset = table_end
+            continue
         fact = facts.get(offset)
         if fact is not None:
             if payload[offset:offset + fact.length] != fact.raw:
                 raise MegaDriveEmitError(f"Z80 fact disagrees with payload at {offset:#x}")
-            asm = _z80_asm(fact.raw, offset)
+            asm = _z80_asm(fact.raw, base_address + offset)
             if asm is not None:
                 asm = re.sub(r"\$([0-9A-F]+)", lambda match: str(int(match.group(1), 16)), asm)
                 lines.append(f"    {asm}")
@@ -689,7 +747,10 @@ def _emit_z80_source(path: Path, payload: bytes, facts: dict[int, InstructionFac
                 )
             offset += fact.length
         else:
-            next_fact = min((start for start in facts if start > offset), default=len(payload))
+            next_fact = min(
+                (start for start in (*facts, *tables, *labels) if start > offset),
+                default=len(payload),
+            )
             limit = min(offset + 16, next_fact, len(payload))
             lines.append(f"    db {', '.join(str(value) for value in payload[offset:limit])}")
             offset = limit
@@ -708,9 +769,10 @@ def _emit_payload_module(
     asset_ranges: dict[int, tuple[int, str]],
     primary: dict[int, TechnicalSymbol],
     aliases: dict[int, tuple[str, ...]],
-) -> tuple[int, int, int, int, int, int]:
+) -> tuple[int, int, int, int, int, int, int]:
     lines = [f"; ROM ${start:06X}..${limit - 1:06X}"]
     instruction_bytes = 0
+    symbolic_bytes = 0
     pointer_bytes = 0
     asset_bytes = 0
     raw_bytes = 0
@@ -763,6 +825,7 @@ def _emit_payload_module(
             asm = _asm_instruction(instruction, primary)
             if asm is not None:
                 lines.append(f"{M68K_INDENT}{asm}")
+                symbolic_bytes += instruction.length
             else:
                 lines.append(
                     f"{M68K_INDENT}dc.b    {_hex_bytes(instruction.raw)}"
@@ -794,7 +857,10 @@ def _emit_payload_module(
         encoding="utf-8",
         newline="\n",
     )
-    return offset, instruction_bytes, pointer_bytes, asset_bytes, raw_bytes, padding_bytes
+    return (
+        offset, instruction_bytes, pointer_bytes, asset_bytes, raw_bytes,
+        padding_bytes, symbolic_bytes,
+    )
 
 
 def emit_project(
@@ -805,6 +871,7 @@ def emit_project(
     symbols: tuple[TechnicalSymbol, ...],
     z80_copies: tuple[CrossCpuCopy, ...],
     z80_programs: tuple[tuple[str, int, dict[int, InstructionFact]], ...] = (),
+    z80_dispatch_tables: tuple[tuple[Z80DispatchTable, ...], ...] = (),
 ) -> EmitResult:
     root.mkdir(parents=True, exist_ok=True)
     source_root = root / "src"
@@ -854,6 +921,8 @@ def emit_project(
     z80_builds: list[dict[str, str]] = []
     if z80_copies and len(z80_programs) != len(z80_copies):
         raise MegaDriveEmitError("Z80 source facts are required for every extracted program")
+    if z80_dispatch_tables and len(z80_dispatch_tables) != len(z80_copies):
+        raise MegaDriveEmitError("Z80 dispatch tables must be given per extracted program")
     for index, copy in enumerate(z80_copies):
         offset = copy.source_start - image.header.rom_start
         payload = image.data[offset:offset + copy.size]
@@ -869,7 +938,13 @@ def emit_project(
         _, base_address, z80_facts = z80_programs[index]
         if base_address != copy.target_start:
             raise MegaDriveEmitError("Z80 source base does not match copy destination")
-        _emit_z80_source(root / source_relative, payload, z80_facts)
+        _emit_z80_source(
+            root / source_relative,
+            payload,
+            z80_facts,
+            base_address=base_address,
+            dispatch_tables=z80_dispatch_tables[index] if z80_dispatch_tables else (),
+        )
         z80_builds.append({
             "source": source_relative,
             "object": f"build/z80-program{index:02d}.p",
@@ -898,6 +973,22 @@ def emit_project(
         setup.physical_start: setup
         for setup in discover_standard_boot_setups(image, m68k_facts)
     }
+    # A label inside a directive that emits several bytes cannot be defined at
+    # that address.  Keep references to such addresses numeric as well.
+    consumed_interiors = {
+        image.header.rom_start + offset
+        for start, end in (
+            *((table.physical_start, table.physical_end) for table in tables.values()),
+            *((setup.physical_start, setup.physical_end) for setup in boot_setups.values()),
+            *((start, start + size) for start, (size, _) in asset_ranges.items()),
+        )
+        for offset in range(start + 1, end)
+    }
+    primary = {
+        address: symbol for address, symbol in primary.items()
+        if address not in consumed_interiors
+    }
+    aliases = {address: names for address, names in aliases.items() if address in primary}
     for start, end in _opaque_include_ranges(
         image, m68k_facts, tables, asset_ranges, primary
     ):
@@ -928,7 +1019,7 @@ def emit_project(
         )
 
     source_units = ["src/system/vectors.s", "src/data/header.s"]
-    counts = [0, 0, 0, 0, 0]
+    counts = [0, 0, 0, 0, 0, 0]
     offset = 0x200
     while offset < len(image.data):
         nominal_limit = min(
@@ -988,7 +1079,7 @@ def emit_project(
     )
     source_units.insert(0, "src/main.s")
     source_units.extend(item["source"] for item in z80_builds)
-    covered = 0x100 + len(image.header_data) + sum(counts)
+    covered = 0x100 + len(image.header_data) + sum(counts[:5])
     if covered != len(image.data):
         raise MegaDriveEmitError(
             f"emitter covered {covered} of {len(image.data)} ROM bytes"
@@ -1002,4 +1093,5 @@ def emit_project(
         asset_bytes=counts[2] + len(image.header_data),
         raw_bytes=counts[3],
         padding_bytes=counts[4],
+        symbolic_instruction_bytes=counts[5],
     )

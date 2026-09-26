@@ -21,13 +21,20 @@ from .m68k_abstract import (
     interpret_known_cfg,
     retain_trusted_instruction_facts,
 )
-from .m68k_seeds import discover_initial_decoder_seeds
+from .m68k_seeds import DecoderSeed, discover_initial_decoder_seeds
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project
-from .megadrive_pointers import detect_pointer_candidates, write_pointer_report
+from .megadrive_pointers import (
+    detect_pointer_candidates,
+    discover_dispatch_table_seeds,
+    write_pointer_report,
+)
 from .megadrive_symbols import generate_symbols, write_symbol_report
-from .megadrive_z80 import CrossCpuCopy, detect_z80_copies, z80_im1_handler_seed
+from .megadrive_z80 import (
+    CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
+    group_z80_copies, z80_im1_handler_seed,
+)
 from .toolchain import toolchain_status
-from .z80_dispatch import discover_z80_dispatch_tables
+from .z80_dispatch import Z80DispatchTable, discover_z80_dispatch_tables
 
 
 MAX_ABSTRACT_PASSES = 12
@@ -133,7 +140,9 @@ def _program_record(
     }
 
 
-def _edge_record(copy: CrossCpuCopy, payload_path: str) -> dict[str, object]:
+def _edge_record(
+    copy: CrossCpuCopy, payload_path: str, *, target_cpu_id: str | None = None
+) -> dict[str, object]:
     return {
         "id": copy.edge_id,
         "schema_id": copy.schema_id,
@@ -145,7 +154,7 @@ def _edge_record(copy: CrossCpuCopy, payload_path: str) -> dict[str, object]:
             "end": copy.source_end,
         },
         "target": {
-            "cpu_id": copy.target_cpu_id,
+            "cpu_id": target_cpu_id or copy.target_cpu_id,
             "address_space": copy.target_space,
             "start": copy.target_start,
             "end": copy.target_end,
@@ -208,9 +217,56 @@ def analyze_megadrive(
             seed_plan=seed_plan,
         )
         facts = load_megadrive_ghidra_facts(artifacts.facts, image)
-        abstract_result = interpret_known_cfg(image, facts)
+        abstract_result = interpret_known_cfg(
+            image, facts, additional_entrypoints=planned_seeds
+        )
         abstract_candidates = discover_ram_handler_candidates(image, facts)
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
+        # Dispatch sites must themselves be trusted code, never an island.
+        trusted_facts = retain_trusted_instruction_facts(
+            image,
+            facts,
+            additional_entrypoints=planned_seeds | {
+                edge.target_address
+                for edge in abstract_result.indirect_edges
+                if edge.confidence == "proven"
+            },
+        )
+        dispatch_seeds = list(discover_dispatch_table_seeds(image, trusted_facts))
+        # A structurally proven dispatcher can itself be an unreachable code
+        # island. Bootstrap only strong tables from backend facts, then make
+        # the dispatcher a planned root on the next decoder pass.
+        raw_dispatch = discover_dispatch_table_seeds(image, facts)
+        decoded_starts = {fact.cpu_address for fact in facts.values()}
+        trusted_starts = {fact.cpu_address for fact in trusted_facts.values()}
+        by_dispatch: dict[int, list[DecoderSeed]] = {}
+        for seed in raw_dispatch:
+            if seed.source_address is not None:
+                by_dispatch.setdefault(seed.source_address, []).append(seed)
+        for site, table_seeds in by_dispatch.items():
+            if site in trusted_starts:
+                continue
+            targets = {seed.address for seed in table_seeds}
+            decoded_targets = len(targets & decoded_starts)
+            if (
+                len(targets) < 4
+                or decoded_targets == 0
+                or (decoded_targets == 1 and len(table_seeds) < 8)
+            ):
+                continue
+            dispatch_seeds.extend(table_seeds)
+            dispatch_seeds.append(DecoderSeed(
+                address=site,
+                kind="indexed_dispatch_site",
+                confidence="high",
+                evidence=table_seeds[0].evidence,
+                source_address=site,
+            ))
+        dispatch_targets = {
+            seed.address
+            for seed in dispatch_seeds
+            if seed.address not in planned_seeds
+        }
         indirect_targets = {
             edge.target_address
             for edge in abstract_result.indirect_edges
@@ -234,7 +290,20 @@ def analyze_megadrive(
         }
         discovered = sorted(
             indirect_targets | handler_targets | orphan_targets
+            | dispatch_targets
         )
+        for seed in dispatch_seeds:
+            if seed.address in discovered:
+                seed_evidence.setdefault(seed.address, set()).add(
+                    seed.evidence
+                )
+                seed_kinds.setdefault(seed.address, set()).add(seed.kind)
+                seed_confidence.setdefault(seed.address, set()).add(
+                    seed.confidence
+                )
+                seed_sources.setdefault(seed.address, set()).add(
+                    seed.source_address
+                )
         for edge in abstract_result.indirect_edges:
             if edge.target_address in discovered:
                 seed_evidence.setdefault(edge.target_address, set()).add(
@@ -322,7 +391,9 @@ def analyze_megadrive(
         for offset, fact in unfiltered_facts.items()
         if offset not in facts
     )
-    abstract_result = interpret_known_cfg(image, facts)
+    abstract_result = interpret_known_cfg(
+        image, facts, additional_entrypoints=planned_seeds
+    )
     abstract_candidates = discover_ram_handler_candidates(image, facts)
     orphan_candidates = discover_packed_orphan_candidates(image, facts)
     abstract_path = program_root / "abstract-analysis.json"
@@ -469,11 +540,12 @@ def analyze_megadrive(
         programs[0]["abstract_decoder_seeds_sha256"] = _sha256(seed_plan)
     edges = []
     z80_symbol_programs = []
-    for index, copy in enumerate(detect_z80_copies(image, facts)):
+    copies = detect_z80_copies(image, facts)
+    for index, logical in enumerate(group_z80_copies(copies)):
         z80_root = output / "z80" / f"program{index:02d}"
         z80_root.mkdir(parents=True, exist_ok=True)
-        payload_offset = copy.source_start - image.header.rom_start
-        payload = image.data[payload_offset:payload_offset + copy.size]
+        payload = logical.payload(image)
+        base_address = logical.target_start
         z80_input = z80_root / "analysis-input.bin"
         z80_input.write_bytes(payload)
         z80_artifacts = run_z80_analysis(
@@ -481,15 +553,15 @@ def analyze_megadrive(
             z80_root,
             ghidra_home.resolve(),
             scripts,
-            base_address=copy.target_start,
+            base_address=base_address,
         )
         z80_facts = load_z80_ghidra_facts(
-            z80_artifacts.facts, payload, base_address=copy.target_start
+            z80_artifacts.facts, payload, base_address=base_address
         )
         dispatch_by_start = {}
         for _ in range(4):
             discovered = discover_z80_dispatch_tables(
-                payload, z80_facts, base_address=copy.target_start
+                payload, z80_facts, base_address=base_address
             )
             fresh = []
             for table in discovered:
@@ -517,8 +589,8 @@ def analyze_megadrive(
             )
             z80_seed_plan = z80_root / "dispatch-seeds.txt"
             plan_lines = [
-                f"T {table.logical_start - copy.target_start:04X} "
-                f"{table.logical_end - copy.target_start:04X}"
+                f"T {table.logical_start - base_address:04X} "
+                f"{table.logical_end - base_address:04X}"
                 for table in dispatch_tables
             ]
             seeds = {
@@ -527,7 +599,7 @@ def analyze_megadrive(
                 for target in table.targets
             }
             im1_handler = z80_im1_handler_seed(
-                z80_facts, copy.target_start, copy.size
+                z80_facts, base_address, logical.size
             )
             if im1_handler is not None and not any(
                 table.logical_start <= im1_handler < table.logical_end
@@ -535,7 +607,7 @@ def analyze_megadrive(
             ):
                 seeds.add(im1_handler)
             plan_lines.extend(
-                f"S {target - copy.target_start:04X}" for target in sorted(seeds)
+                f"S {target - base_address:04X}" for target in sorted(seeds)
             )
             z80_seed_plan.write_text(
                 "\n".join(plan_lines) + "\n", encoding="ascii", newline="\n"
@@ -545,11 +617,11 @@ def analyze_megadrive(
                 z80_root,
                 ghidra_home.resolve(),
                 scripts,
-                base_address=copy.target_start,
+                base_address=base_address,
                 seed_plan=z80_seed_plan,
             )
             z80_facts = load_z80_ghidra_facts(
-                z80_artifacts.facts, payload, base_address=copy.target_start
+                z80_artifacts.facts, payload, base_address=base_address
             )
             for table in dispatch_tables:
                 if any(
@@ -609,14 +681,23 @@ def analyze_megadrive(
             byte_order="little",
             analysis_input=z80_input,
         )
-        program["derived_from"] = copy.edge_id
+        program["derived_from"] = [
+            copy.edge_id for copy in logical.fragments
+        ]
         program["dispatch_tables"] = dispatch_path.relative_to(output).as_posix()
         program["dispatch_tables_sha256"] = _sha256(dispatch_path)
         programs.append(program)
-        z80_symbol_programs.append((cpu_id, copy.target_start, z80_facts))
-        edges.append(
-            _edge_record(copy, z80_input.relative_to(output).as_posix())
-        )
+        z80_symbol_programs.append((cpu_id, base_address, z80_facts))
+        for fragment_index, copy in enumerate(logical.fragments):
+            fragment_path = z80_root / f"fragment{fragment_index:02d}.bin"
+            fragment_path.write_bytes(logical.payload(image)[
+                copy.target_start - base_address:
+                copy.target_end - base_address + 1
+            ])
+            edges.append(_edge_record(
+                copy, fragment_path.relative_to(output).as_posix(),
+                target_cpu_id=cpu_id,
+            ))
 
     evidence = {
         "schema": "retrolarium.cross-cpu-evidence",
@@ -693,19 +774,38 @@ def _build_emitted_project(project: Path, container: str) -> Path:
         "--workdir",
         "/work",
         container,
-        "asm68k",
-        "/p",
-        "src/main.s,rebuilt.bin",
+        "sh",
+        "-lc",
+        "mkdir -p build && asl -xx -n -q -A -L -U -i . "
+        "-o build/main.p src/main.s && "
+        "p2bin build/main.p rebuilt.bin -p=FF",
     ]
     result = subprocess.run(command, text=True)
     if result.returncode:
         raise MegaDriveEmitError(
-            f"ASM68K container build failed with exit code {result.returncode}"
+            f"ASL container build failed with exit code {result.returncode}"
         )
     rebuilt = project / "rebuilt.bin"
     if not rebuilt.is_file():
         raise MegaDriveEmitError(f"expected rebuilt ROM was not produced: {rebuilt}")
     return rebuilt
+
+
+def _load_z80_dispatch_tables(path: Path) -> tuple[Z80DispatchTable, ...]:
+    if not path.is_file():
+        return ()
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return tuple(
+        Z80DispatchTable(
+            logical_start=table["logical_start"],
+            logical_end=table["logical_end"],
+            dispatch_address=table["dispatch_address"],
+            lookup_address=table["lookup_address"],
+            targets=tuple(table["targets"]),
+            dispatch_addresses=tuple(table.get("dispatch_addresses", ())),
+        )
+        for table in document["tables"]
+    )
 
 
 def _emitted_assets(result: EmitResult) -> dict[str, object]:
@@ -755,20 +855,37 @@ def disassemble_megadrive(
     pointers = detect_pointer_candidates(image, m68k_facts)
     copies = detect_z80_copies(image, m68k_facts)
     z80_programs = []
-    for index, copy in enumerate(copies):
-        offset = copy.source_start - image.header.rom_start
-        payload = image.data[offset:offset + copy.size]
+    z80_dispatch_tables = []
+    z80_by_edge = {}
+    for index, logical in enumerate(group_z80_copies(copies)):
+        payload = logical.payload(image)
+        program_root = analysis_root / "z80" / f"program{index:02d}"
         facts = load_z80_ghidra_facts(
-            analysis_root / "z80" / f"program{index:02d}" / "instructions.tsv",
+            program_root / "instructions.tsv",
             payload,
-            base_address=copy.target_start,
+            base_address=logical.target_start,
         )
-        z80_programs.append((f"z80.{index:02d}", copy.target_start, facts))
+        tables = _load_z80_dispatch_tables(program_root / "dispatch-tables.json")
+        for copy in logical.fragments:
+            fragment_facts = fragment_z80_facts(logical, facts, copy)
+            fragment_tables = tuple(
+                table for table in tables
+                if copy.target_start <= table.logical_start
+                and table.logical_end <= copy.target_end + 1
+            )
+            z80_by_edge[copy.edge_id] = (
+                f"z80.{index:02d}", fragment_facts, fragment_tables
+            )
+    for index, copy in enumerate(copies):
+        cpu_id, facts, tables = z80_by_edge[copy.edge_id]
+        z80_programs.append((cpu_id, copy.target_start, facts))
+        z80_dispatch_tables.append(tables)
     symbols = generate_symbols(image, m68k_facts, pointers, tuple(z80_programs))
     generated = output / "generated"
     emitted = emit_project(
         generated, image, m68k_facts, pointers, symbols, copies,
         tuple(z80_programs),
+        tuple(z80_dispatch_tables),
     )
 
     verification: dict[str, object] = {"status": "not-run"}
@@ -815,17 +932,23 @@ def disassemble_megadrive(
                 "rom_bytes": len(image.data),
                 "vector_bytes": 0x100,
                 "instruction_bytes": emitted.instruction_bytes,
+                "symbolic_instruction_bytes": emitted.symbolic_instruction_bytes,
                 "pointer_bytes": emitted.pointer_bytes,
                 "asset_bytes": emitted.asset_bytes,
                 "raw_bytes": emitted.raw_bytes,
                 "padding_bytes": emitted.padding_bytes,
             },
-            "instruction_encoding": "verified-mnemonics-with-exact-byte-fallback",
+            # Mnemonics count as verified only once ASL reproduced the ROM.
+            "instruction_encoding": (
+                "verified-mnemonics-with-exact-byte-fallback"
+                if verification.get("status") == "exact"
+                else "unverified-mnemonics-with-exact-byte-fallback"
+            ),
         },
         "operations": {
             "build": {
                 "id": "retrolarium.project.build",
-                "runner": "retrolarium-kit",
+                "runner": "docker" if build_container else "retrolarium-kit",
                 "toolchain_suite": "megadrive",
                 "recipe": "asl-p2bin-v1",
                 "default_container": build_container,
@@ -833,7 +956,12 @@ def disassemble_megadrive(
                 "source": "src/main.s",
                 "object": "build/main.p",
                 "z80_prebuild": list(emitted.z80_builds),
-                "argv": ["asm68k", "/p", "src/main.s,rebuilt.bin"],
+                **({"argv": [
+                    "sh", "-lc",
+                    "mkdir -p build && asl -xx -n -q -A -L -U -i . "
+                    "-o build/main.p src/main.s && "
+                    "p2bin build/main.p rebuilt.bin -p=FF",
+                ]} if build_container else {}),
                 "output": "generated/rebuilt.bin",
             },
             "verify": {

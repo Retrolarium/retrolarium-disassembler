@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -255,6 +256,137 @@ class MegaDriveContractTests(unittest.TestCase):
             self.assertEqual("megadriv", plan["arguments"][0])
             with self.assertRaisesRegex(Exception, "unsupported megadrive"):
                 launch_plan(path, mame=mame, machine="nes")
+
+
+class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
+    def _disassemble(self, root: Path, *, build_container: str | None):
+        from retrolarium_kit import megadrive_pipeline as pipeline
+        from retrolarium_kit.z80_dispatch import Z80DispatchTable
+
+        analysis = root / "out" / "analysis"
+        (analysis / "m68k").mkdir(parents=True)
+        (analysis / "z80" / "program00").mkdir(parents=True)
+        for name in (
+            "analysis.json", "pointers.json", "symbols.json",
+            "cross-cpu-evidence.json",
+        ):
+            (analysis / name).write_text("{}", encoding="utf-8")
+        (analysis / "m68k" / "abstract-analysis.json").write_text(
+            json.dumps({
+                "control_flow": {"indirect_edges": []},
+                "decoder_seed_addresses": [],
+            }),
+            encoding="utf-8",
+        )
+        (analysis / "z80" / "program00" / "dispatch-tables.json").write_text(
+            json.dumps({
+                "schema": "retrolarium.z80.dispatch-tables",
+                "schema_version": 1,
+                "tables": [{
+                    "logical_start": 2,
+                    "logical_end": 6,
+                    "dispatch_address": 0,
+                    "dispatch_addresses": [0],
+                    "lookup_address": 2,
+                    "targets": [0, 1],
+                }],
+            }),
+            encoding="utf-8",
+        )
+        data = bytes(0x800)
+        image = SimpleNamespace(
+            data=data,
+            sha256=digest(data),
+            header=SimpleNamespace(rom_start=0),
+            actual_rom_end=0x7FF,
+            checksum_status="valid",
+        )
+        copy = SimpleNamespace(
+            edge_id="copy.00", source_start=0x400, source_end=0x405,
+            target_start=0, target_end=5, size=6,
+            payload_sha256=digest(bytes(6)),
+        )
+        emitted = SimpleNamespace(
+            source_units=("src/main.s",),
+            assets=(),
+            z80_builds=(),
+            instruction_bytes=0,
+            symbolic_instruction_bytes=0,
+            pointer_bytes=0,
+            asset_bytes=0,
+            raw_bytes=0,
+            padding_bytes=0,
+        )
+        rebuilt = root / "out" / "generated" / "rebuilt.bin"
+        with patch.object(pipeline, "load_megadrive", return_value=image), \
+                patch.object(pipeline, "analyze_megadrive",
+                             return_value={"programs": []}), \
+                patch.object(pipeline, "load_megadrive_ghidra_facts",
+                             return_value={}), \
+                patch.object(pipeline, "retain_trusted_instruction_facts",
+                             return_value={}), \
+                patch.object(pipeline, "detect_pointer_candidates",
+                             return_value=()), \
+                patch.object(pipeline, "detect_z80_copies",
+                             return_value=(copy,)), \
+                patch.object(pipeline, "load_z80_ghidra_facts",
+                             return_value={}), \
+                patch.object(pipeline, "generate_symbols", return_value=()), \
+                patch.object(pipeline, "image_manifest", return_value={}), \
+                patch.object(pipeline, "emit_project",
+                             return_value=emitted) as emit, \
+                patch.object(pipeline, "validate_megadrive_disassembly_manifest"), \
+                patch.object(pipeline, "_build_emitted_project",
+                             return_value=rebuilt) as build, \
+                patch("retrolarium_kit.pipeline.verify_exact",
+                      return_value={"status": "exact"}):
+            manifest = pipeline.disassemble_megadrive(
+                root / "rom.bin", root / "out", root / "ghidra",
+                build_container=build_container,
+            )
+        expected_tables = ((Z80DispatchTable(
+            logical_start=2, logical_end=6, dispatch_address=0,
+            lookup_address=2, targets=(0, 1), dispatch_addresses=(0,),
+        ),),)
+        return manifest, emit, build, expected_tables
+
+    def test_metadata_describes_asl_and_is_unverified_without_build(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest, emit, build, tables = self._disassemble(
+                Path(directory), build_container=None
+            )
+        build.assert_not_called()
+        self.assertEqual(tables, emit.call_args.args[7])
+        source = manifest["source"]
+        operation = manifest["operations"]["build"]
+        self.assertEqual("asl-exact-first", source["dialect"])
+        self.assertEqual(
+            "unverified-mnemonics-with-exact-byte-fallback",
+            source["instruction_encoding"],
+        )
+        self.assertEqual("asl-p2bin-v1", operation["recipe"])
+        self.assertEqual("retrolarium-kit", operation["runner"])
+        self.assertEqual("build/main.p", operation["object"])
+        self.assertNotIn("argv", operation)
+        self.assertEqual({"status": "not-run"}, manifest["verification"])
+
+    def test_instruction_encoding_is_verified_after_exact_rebuild(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest, _, build, _ = self._disassemble(
+                Path(directory), build_container="asl:latest"
+            )
+        build.assert_called_once()
+        self.assertEqual("exact", manifest["verification"]["status"])
+        self.assertEqual(
+            "verified-mnemonics-with-exact-byte-fallback",
+            manifest["source"]["instruction_encoding"],
+        )
+        operation = manifest["operations"]["build"]
+        self.assertEqual("docker", operation["runner"])
+        self.assertEqual("sh", operation["argv"][0])
+        self.assertIn("asl -xx", operation["argv"][2])
 
 
 if __name__ == "__main__":

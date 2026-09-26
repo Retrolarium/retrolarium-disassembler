@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from retrolarium_kit.build_toolchains import materialize_build_toolchain
 from retrolarium_kit.facts import InstructionReference
 from retrolarium_kit.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_emit import (
+    MegaDriveEmitError,
     _asm_instruction,
     _pointer_lines,
     emit_project,
@@ -26,11 +28,63 @@ from retrolarium_kit.megadrive_pointers import (
 from retrolarium_kit.megadrive_symbols import TechnicalSymbol, generate_symbols
 from retrolarium_kit.megadrive_z80 import CrossCpuCopy
 from retrolarium_kit.project import _asl_build
+from retrolarium_kit.z80_dispatch import Z80DispatchTable
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 
 
 class MegaDriveEmitTests(unittest.TestCase):
+    def test_pointer_to_interior_of_emitted_table_uses_numeric_address(self) -> None:
+        data = bytearray(cartridge(size=0x500))
+        data[0x220:0x224] = (0x304).to_bytes(4, "big")
+        data[0x300:0x308] = (0x400).to_bytes(4, "big") + (0x404).to_bytes(4, "big")
+        image = parse_megadrive(bytes(data))
+
+        def candidate(start: int, targets: tuple[int, ...]) -> PointerCandidate:
+            return PointerCandidate(
+                candidate_id=f"table-{start:x}",
+                schema_id="megadrive.u32be.absolute",
+                physical_start=start,
+                physical_end=start + 4 * len(targets),
+                logical_start=start,
+                entry_size=4,
+                status="accepted",
+                score=100,
+                entries=tuple(
+                    PointerEntry(
+                        physical_offset=start + 4 * index,
+                        logical_address=start + 4 * index,
+                        raw_value=target,
+                        target=target,
+                    )
+                    for index, target in enumerate(targets)
+                ),
+                evidence=("test",),
+                contradictions=(),
+            )
+
+        symbol = TechnicalSymbol(
+            symbol_id="interior",
+            name="loc_M68K_000304",
+            kind="location",
+            cpu_id="m68k",
+            address_space="m68k",
+            logical_address=0x304,
+            physical_offset=0x304,
+            aliases=(),
+            evidence=("test",),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            emit_project(
+                root, image, {},
+                (candidate(0x220, (0x304,)), candidate(0x300, (0x400, 0x404))),
+                (symbol,), (),
+            )
+            source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
+        self.assertIn("dc.l    $000304", source)
+        self.assertNotIn("loc_M68K_000304", source)
+
     def test_emits_counted_ram_copy_offsets_symbolically(self) -> None:
         data = bytearray(cartridge(size=0x800))
         data[0x500:0x506] = bytes.fromhex("02 03 03 00 03 08")
@@ -448,6 +502,97 @@ class MegaDriveEmitTests(unittest.TestCase):
                     z80_payload, (root / "build/z80-program00.bin").read_bytes()
                 )
                 self.assertEqual(image.data, rebuilt.read_bytes())
+
+    def test_ambiguous_add_word_immediate_keeps_exact_bytes(self) -> None:
+        # D07C 0001 is ADD.W #1,D0; assemblers prefer the ADDI.W twin (0640).
+        add = replace(
+            fact(0x300, "ADD.W", "#0x1,D0"),
+            raw=bytes.fromhex("D0 7C 00 01"),
+            length=4,
+        )
+        self.assertIsNone(_asm_instruction(add))
+
+        data = bytearray(cartridge(size=0x800))
+        data[0x300:0x304] = add.raw
+        image = parse_megadrive(bytes(data))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = emit_project(root, image, {0x300: add}, (), (), ())
+            source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
+
+        self.assertIn("dc.b    $D0, $7C, $00, $01", source)
+        self.assertFalse(any(
+            line.strip().lower().startswith(("add", "addi"))
+            for line in source.splitlines()
+        ))
+        self.assertEqual(4, result.instruction_bytes)
+
+    def test_emit_project_writes_z80_dispatch_table_words(self) -> None:
+        # RET, RET, then a two-entry little-endian table pointing at both.
+        payload = bytes.fromhex("C9 C9 00 00 01 00")
+        data = bytearray(cartridge(size=0x800))
+        data[0x400:0x400 + len(payload)] = payload
+        image = parse_megadrive(bytes(data))
+        copy = CrossCpuCopy(
+            edge_id="copy.z80.00",
+            schema_id="test",
+            source_cpu_id="m68k",
+            source_space="m68k",
+            source_start=0x400,
+            source_end=0x400 + len(payload) - 1,
+            target_cpu_id="z80.00",
+            target_space="z80",
+            target_start=0x0000,
+            target_end=len(payload) - 1,
+            size=len(payload),
+            payload_sha256=hashlib.sha256(payload).hexdigest(),
+            evidence_addresses=(),
+            confidence="test",
+        )
+        z80_facts = {
+            address: replace(
+                fact(address, "RET", ""), raw=b"\xC9", length=1,
+                flow_type="TERMINATOR",
+            )
+            for address in (0, 1)
+        }
+        table = Z80DispatchTable(
+            logical_start=2,
+            logical_end=6,
+            dispatch_address=0,
+            lookup_address=2,
+            targets=(0, 1),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            emit_project(
+                root, image, {}, (), (), (copy,),
+                (("z80.00", 0, z80_facts),),
+                ((table,),),
+            )
+            source = (root / "src/sound/z80/program00.asm").read_text(
+                encoding="utf-8"
+            )
+
+        lines = source.splitlines()
+        self.assertIn("Z80_Table_0002:", lines)
+        self.assertIn("Z80_Loc_0000:", lines)
+        self.assertIn("Z80_Loc_0001:", lines)
+        start = lines.index("Z80_Table_0002:")
+        self.assertEqual(
+            ["    dw Z80_Loc_0000", "    dw Z80_Loc_0001"],
+            lines[start + 1:start + 3],
+        )
+
+    def test_emit_project_rejects_dispatch_tables_without_per_program_shape(
+        self,
+    ) -> None:
+        image = parse_megadrive(cartridge(size=0x800))
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(MegaDriveEmitError):
+                emit_project(
+                    Path(directory), image, {}, (), (), (), (), ((),),
+                )
 
 
 if __name__ == "__main__":

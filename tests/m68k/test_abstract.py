@@ -415,6 +415,31 @@ class M68kAbstractTests(unittest.TestCase):
         self.assertEqual((), result.indirect_edges)
         self.assertIn(0x20A, result.unresolved_indirect_addresses)
 
+    def test_additional_entrypoint_interprets_isolated_handler(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        instructions = (
+            self._flow(0x200, "BRA.S", "0x00000200", 2,
+                       "UNCONDITIONAL_JUMP", (0x200,)),
+            self._flow(0x300, "LEA", "(0x400).l|A0", 6, "FALL_THROUGH"),
+            self._flow(0x306, "JMP", "(A0)", 2, "COMPUTED_JUMP"),
+        )
+        facts = {item.physical_offset: item for item in instructions}
+
+        without_seed = interpret_known_cfg(image, facts)
+        with_seed = interpret_known_cfg(
+            image, facts, additional_entrypoints={0x300, 0x480}
+        )
+
+        self.assertNotIn(0x300, without_seed.reached_addresses)
+        self.assertEqual((), without_seed.indirect_edges)
+        self.assertIn(0x306, with_seed.reached_addresses)
+        self.assertNotIn(0x480, with_seed.reached_addresses)
+        self.assertEqual(
+            [(0x306, 0x400)],
+            [(edge.source_address, edge.target_address)
+             for edge in with_seed.indirect_edges],
+        )
+
     def test_memory_facts_do_not_survive_subroutine_call(self) -> None:
         image = parse_megadrive(cartridge(size=0x500))
         instructions = (
