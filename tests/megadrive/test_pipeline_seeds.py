@@ -24,6 +24,11 @@ class _StopAfterAbstractAnalysis(Exception):
 
 
 class MegaDrivePipelineSeedTests(unittest.TestCase):
+    def setUp(self):
+        probe = patch.object(pipeline, "_discover_unused_code", return_value=((), ()))
+        probe.start()
+        self.addCleanup(probe.stop)
+
     def test_decoded_but_untrusted_packed_function_gets_a_planned_root(self) -> None:
         payload = bytearray(dispatch_image().data)
         payload[0x202:0x220] = bytes.fromhex("70 01 4E 75") + bytes(26)

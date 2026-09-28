@@ -19,6 +19,7 @@ class GhidraArtifacts:
     facts: Path
     report: Path
     log: Path
+    orphan_facts: Path | None = None
 
 
 def find_headless(ghidra_home: Path) -> Path:
@@ -56,6 +57,7 @@ def run_megadrive_analysis(
     script_directory: Path,
     *,
     seed_plan: Path,
+    probe_orphans: bool = False,
 ) -> GhidraArtifacts:
     if not seed_plan.is_file():
         raise GhidraError(f"Mega Drive decoder seed plan not found: {seed_plan}")
@@ -80,6 +82,7 @@ def run_megadrive_analysis(
         seed_script="SeedMegaDriveVectors.java",
         seed_arguments=(str(seed_plan.resolve()),),
         export_block="ROM",
+        probe_m68k_orphans=probe_orphans,
     )
 
 
@@ -214,6 +217,7 @@ def _run_analysis(
     seed_script: str,
     export_block: str | None,
     seed_arguments: tuple[str, ...] = (),
+    probe_m68k_orphans: bool = False,
 ) -> GhidraArtifacts:
     image = image.resolve()
     if not image.is_file():
@@ -227,6 +231,9 @@ def _run_analysis(
     facts = workspace / "instructions.tsv"
     report = workspace / "program.json"
     log = workspace / "headless.log"
+    orphan_facts = workspace / "unused-probes.tsv" if probe_m68k_orphans else None
+    if orphan_facts is not None:
+        orphan_facts.unlink(missing_ok=True)
     export_arguments = [str(facts.resolve())]
     if export_block is not None:
         export_arguments.append(export_block)
@@ -252,6 +259,8 @@ def _run_analysis(
             "-postScript",
             "ExportInstructionFacts.java",
             *export_arguments,
+            *(["-postScript", "ProbeM68kUnusedCode.java", str(orphan_facts.resolve())]
+              if orphan_facts is not None else []),
             "-deleteProject",
         ]
         result = subprocess.run(
@@ -276,10 +285,12 @@ def _run_analysis(
         )
     if not facts.is_file() or not report.is_file():
         raise GhidraError("Ghidra completed without required fact artifacts")
+    if orphan_facts is not None and not orphan_facts.is_file():
+        raise GhidraError("Ghidra completed without speculative M68K facts")
     try:
         metadata = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise GhidraError(f"invalid Ghidra program report: {exc}") from exc
     if metadata.get("language") != expected_language:
         raise GhidraError(f"unexpected Ghidra language: {metadata.get('language')}")
-    return GhidraArtifacts(facts=facts, report=report, log=log)
+    return GhidraArtifacts(facts=facts, report=report, log=log, orphan_facts=orphan_facts)

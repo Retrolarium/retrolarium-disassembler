@@ -425,17 +425,23 @@ def discover_packed_orphan_candidates(
     image: MegaDriveImage,
     facts: dict[int, InstructionFact],
     *,
-    maximum_gap: int = 128,
+    maximum_gap: int = 2048,
 ) -> tuple[OrphanCandidate, ...]:
-    """Find short code-shaped gaps immediately after a terminal instruction.
+    """Find bounded code-shaped gaps immediately after a terminal instruction.
 
     This deliberately avoids scanning arbitrary ROM. A candidate needs known
     code on both sides, an exact boundary after a terminating flow, a
     non-table-like first word, and either a short gap, a return opcode or a
-    relative branch back into known code. Ghidra still decodes the candidate.
+    relative branch back into known code. Gaps over 128 bytes additionally
+    require a branch/call to an existing instruction boundary; a return-looking
+    word alone does not qualify. Ghidra still decodes the candidate.
     """
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     addresses = sorted(by_address)
+    instruction_interiors = {
+        address for fact in facts.values()
+        for address in range(fact.cpu_address + 1, fact.cpu_address + fact.length)
+    }
     referenced_data = {
         reference.address & 0xFFFFFF
         for fact in facts.values()
@@ -466,8 +472,37 @@ def discover_packed_orphan_candidates(
             continue
         payload = image.data[start:following]
         first_word = int.from_bytes(payload[:2], "big")
-        if not _plausible_orphan_start(first_word) or len(set(payload)) <= 1:
+        bit_operation_entry = (
+            first_word & 0xFF00 == 0x0800
+            and (first_word >> 3) & 7 != 1
+            and (first_word & 0x38 != 0x38 or first_word & 7 <= 1)
+        )
+        immediate_entry = (
+            # ORI encodings start with zero words very common in assets.
+            # A branch-looking word elsewhere in a gap does not disambiguate
+            # them; keep these entries unrooted without stronger evidence.
+            first_word & 0xFF00 in {0x0200, 0x0400, 0x0600, 0x0A00}
+            and (first_word >> 6) & 3 != 3
+            and (first_word >> 3) & 7 != 1
+            and (first_word & 0x38 != 0x38 or first_word & 7 <= 1)
+        )
+        if (not (_plausible_orphan_start(first_word) or bit_operation_entry or immediate_entry)
+                or len(set(payload)) <= 1):
             continue
+        if first_word & 0xF000 == 0x6000:
+            displacement = first_word & 0xFF
+            if displacement == 0:
+                if len(payload) < 4:
+                    continue
+                displacement = int.from_bytes(payload[2:4], "big", signed=True)
+            elif displacement & 0x80:
+                displacement -= 0x100
+            target = (start + 2 + displacement) & 0xFFFFFF
+            if (target & 1 or not 0x200 <= target < len(image.data)
+                    or target in instruction_interiors):
+                # Data can resemble BSR.W. A target inside already known code
+                # contradicts this speculative entry and must not split it.
+                continue
         words = {
             int.from_bytes(payload[offset:offset + 2], "big")
             for offset in range(0, len(payload) - 1, 2)
@@ -476,6 +511,17 @@ def discover_packed_orphan_candidates(
         known_branch = False
         for offset in range(0, len(payload) - 1, 2):
             opcode = int.from_bytes(payload[offset:offset + 2], "big")
+            if opcode in {0x4EB9, 0x4EF9} and offset + 6 <= len(payload):
+                target = int.from_bytes(payload[offset + 2:offset + 6], "big") & 0xFFFFFF
+                if target in by_address:
+                    known_branch = True
+                    break
+            if opcode in {0x4EBA, 0x4EFA} and offset + 4 <= len(payload):
+                target = start + offset + 2 + int.from_bytes(
+                    payload[offset + 2:offset + 4], "big", signed=True)
+                if target in by_address:
+                    known_branch = True
+                    break
             if opcode & 0xF000 != 0x6000:
                 continue
             displacement = opcode & 0xFF
@@ -492,6 +538,10 @@ def discover_packed_orphan_candidates(
                 break
         if gap_size > 24 and not has_return and not known_branch:
             continue
+        if gap_size > 128 and not known_branch:
+            continue
+        if (bit_operation_entry or immediate_entry) and not known_branch:
+            continue
         candidates.append(
             OrphanCandidate(
                 address=start,
@@ -501,7 +551,7 @@ def discover_packed_orphan_candidates(
                 confidence="high",
                 evidence=(
                     "packed gap after terminal flow with return opcode"
-                    if has_return
+                    if has_return and gap_size <= 128
                     else "packed gap after terminal flow with branch to known code"
                     if known_branch
                     else "short packed gap after terminal flow"

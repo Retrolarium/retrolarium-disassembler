@@ -18,6 +18,7 @@ from .megadrive_structures import (
 from .megadrive_symbols import (
     TechnicalSymbol,
     pc_displacement_target,
+    pc_indexed_target,
     pc_indexed_jsr_target,
 )
 from .megadrive_z80 import CrossCpuCopy
@@ -114,20 +115,20 @@ def _m68k_operand(
     pc_indexed = re.fullmatch(
         r"\((0x[0-9a-f]+),PC,([DA][0-7])([wl])\*0x1\)", operand, re.I
     )
-    if pc_indexed and primary is not None:
-        target = int(pc_indexed.group(1), 0)
-        symbol = primary.get(target)
-        if symbol is not None:
+    if pc_indexed and fact is not None:
+        indexed_target = pc_indexed_target(fact)
+        if indexed_target is not None:
+            target = indexed_target[0]
             return (
-                f"{symbol.name}(pc,{pc_indexed.group(2).lower()}."
+                f"{_target_expression(target, primary or {}, 6)}"
+                f"(pc,{pc_indexed.group(2).lower()}."
                 f"{pc_indexed.group(3).lower()})"
             )
     pc_displacement = re.fullmatch(r"\((-?0x[0-9a-f]+),PC\)", operand, re.I)
-    if pc_displacement and fact is not None and primary is not None:
+    if pc_displacement and fact is not None:
         target = pc_displacement_target(fact)
-        symbol = primary.get(target) if target is not None else None
-        if symbol is not None:
-            return f"{symbol.name}(pc)"
+        if target is not None:
+            return f"{_target_expression(target, primary or {}, 6)}(pc)"
     return None
 
 
@@ -166,6 +167,7 @@ def _asm_instruction(
         "BSET.B", "BSET.L",
     }
     if (fact.mnemonic.upper() in byte_immediate_mnemonics
+            and fact.operands.lstrip().startswith("#")
             and len(fact.raw) >= 4 and fact.raw[2] != 0):
         # The 68000 ignores the upper byte of these immediate extension words.
         # Assemblers canonicalize it to zero, so preserve unusual ROM encodings
@@ -199,6 +201,42 @@ def _asm_instruction(
         value = int.from_bytes(fact.raw[2:], "big")
         if fact.operands.lower() == f"#0x{value:x}":
             return f"move #{value},ccr"
+    if len(fact.raw) == 4:
+        opcode = int.from_bytes(fact.raw[:2], "big")
+        if opcode in (0x4EBA, 0x4EFA):
+            mnemonic = "jsr" if opcode == 0x4EBA else "jmp"
+            displacement = int.from_bytes(fact.raw[2:], "big", signed=True)
+            target = (fact.cpu_address + 2 + displacement) & 0xFFFFFF
+            operand = re.fullmatch(r"0x[0-9a-f]+", fact.operands.strip(), re.I)
+            if (fact.mnemonic.lower() == mnemonic and operand is not None
+                    and int(operand.group(), 16) == target):
+                return f"{mnemonic} {_target_expression(target, primary or {}, 6)}(pc)"
+            return None
+        status_immediates = {
+            0x003C: ("ori", "ccr"), 0x007C: ("ori", "sr"),
+            0x023C: ("andi", "ccr"), 0x027C: ("andi", "sr"),
+            0x0A3C: ("eori", "ccr"), 0x0A7C: ("eori", "sr"),
+        }
+        if opcode in status_immediates:
+            mnemonic, register = status_immediates[opcode]
+            value = int.from_bytes(fact.raw[2:], "big")
+            match = re.fullmatch(
+                r"#(-?0x[0-9a-f]+|-?\d+)(?:\|(SR|CCR))?",
+                fact.operands, re.I,
+            )
+            mask = 0xFF if register == "ccr" else 0xFFFF
+            if (fact.mnemonic.lower() == mnemonic and match is not None
+                    and value <= mask
+                    and int(match.group(1), 0) & mask == value
+                    and (match.group(2) is None
+                         or match.group(2).lower() == register)):
+                return f"{mnemonic} #${value:X},{register}"
+            return None
+        if opcode == 0x4E72 and fact.mnemonic.upper() == "STOP":
+            value = int.from_bytes(fact.raw[2:], "big")
+            match = re.fullmatch(r"#(-?0x[0-9a-f]+|-?\d+)", fact.operands, re.I)
+            if match is not None and int(match.group(1), 0) & 0xFFFF == value:
+                return f"stop #${value:X}"
     if len(fact.raw) in (2, 4) and 0x60 <= fact.raw[0] <= 0x6F:
         condition = (
             "bra", "bsr", "bhi", "bls", "bcc", "bcs", "bne", "beq",
@@ -271,13 +309,17 @@ def _asm_instruction(
         "AND.B", "AND.W", "AND.L", "EOR.B", "EOR.W", "EOR.L",
         "OR.B", "OR.W", "OR.L", "ADDI.B", "ADDI.W", "ADDI.L",
         "SUBI.B", "SUBI.W", "SUBI.L", "ANDI.B", "ANDI.W", "ANDI.L",
-        "ORI.B", "ORI.W", "ORI.L", "CMPI.B", "CMPI.W", "CMPI.L",
+        "ORI.B", "ORI.W", "ORI.L", "EORI.B", "EORI.W", "EORI.L",
+        "CMPI.B", "CMPI.W", "CMPI.L",
         "ADDQ.B", "ADDQ.W", "ADDQ.L", "SUBQ.B", "SUBQ.W", "SUBQ.L",
         "LSL.B", "LSL.W", "LSL.L", "LSR.B", "LSR.W", "LSR.L",
         "ASL.B", "ASL.W", "ASL.L", "ASR.B", "ASR.W", "ASR.L",
         "ROL.B", "ROL.W", "ROL.L", "ROR.B", "ROR.W", "ROR.L",
         "ROXL.B", "ROXL.W", "ROXL.L", "ROXR.B", "ROXR.W", "ROXR.L",
         "SWAP", "NEG.B", "NEG.W", "NEG.L", "NOT.B", "NOT.W", "NOT.L",
+        "NEGX.B", "NEGX.W", "NEGX.L", "NBCD", "EXG", "PEA", "LINK", "UNLK",
+        "ADDX.B", "ADDX.W", "ADDX.L", "SUBX.B", "SUBX.W", "SUBX.L",
+        "ASL", "ASR", "LSL", "LSR", "ROL", "ROR", "ROXL", "ROXR",
         "ABCD", "SBCD", "MULU.W", "MULS.W", "DIVU.W", "DIVS.W",
         "ST", "SF", "SHI", "SLS", "SCC", "SCS", "SNE", "SEQ",
         "SVC", "SVS", "SPL", "SMI", "SGE", "SLT", "SGT", "SLE",
@@ -287,6 +329,16 @@ def _asm_instruction(
     if fact.mnemonic.upper() in allowed:
         operands = fact.operands.split("|") if fact.operands else []
         if fact.mnemonic.upper() == "MOVE" and len(operands) != 2:
+            return None
+        if (operands and operands[-1].strip().startswith("#")
+                and fact.mnemonic.upper() != "LINK"):
+            # None of the generic forms accepts an immediate destination.
+            return None
+        if fact.mnemonic.upper().endswith(".B") and any(
+            re.fullmatch(r"(?:A[0-7][bwl]?|SP)", operand.strip(), re.I)
+            for operand in operands
+        ):
+            # Address registers have no byte-sized direct operand on 68000.
             return None
         if fact.mnemonic.upper().startswith(("ADDQ.", "SUBQ.")) and operands:
             operands[0] = "#" + operands[0].lstrip("#")
@@ -398,9 +450,12 @@ def _pointer_lines(
             encoded = ((entry.target - entry.logical_address) & 0xFFFF).to_bytes(
                 2, "big"
             )
-        elif candidate.schema_id == "megadrive.counted-u16be.ram-copy-offset":
+        elif candidate.schema_id in {
+            "megadrive.counted-u16be.ram-copy-offset",
+            "megadrive.s16be.target-code_base",
+        }:
             if entry.base_address is None:
-                raise MegaDriveEmitError("RAM-copy offset is missing its ROM base")
+                raise MegaDriveEmitError("relative pointer is missing its ROM base")
             base = _target_expression(entry.base_address, primary, 6)
             lines.append(f"{M68K_INDENT}dc.w    {target}-{base}")
             encoded = ((entry.target - entry.base_address) & 0xFFFF).to_bytes(
@@ -597,6 +652,13 @@ def _z80_asm(raw: bytes, address: int) -> str | None:
     conditions = ("nz", "z", "nc", "c", "po", "pe", "p", "m")
     if len(raw) == 2:
         opcode, value = raw
+        if opcode in (0xDD, 0xFD):
+            index = "ix" if opcode == 0xDD else "iy"
+            if value in (0x23, 0x2B):
+                return f"{'inc' if value == 0x23 else 'dec'} {index}"
+            if value in (0x09, 0x19, 0x29, 0x39):
+                pair = ("bc", "de", index, "sp")[(value >> 4) & 3]
+                return f"add {index},{pair}"
         if opcode in (0x10, 0x18, 0x20, 0x28, 0x30, 0x38):
             target = (address + 2 + int.from_bytes(raw[1:], "little", signed=True)) & 0xFFFF
             if opcode == 0x10:
@@ -659,6 +721,15 @@ def _z80_asm(raw: bytes, address: int) -> str | None:
                            0xB6: "or ", 0xBE: "cp "}
             if subcode in indexed_alu:
                 return indexed_alu[subcode] + indexed
+    if len(raw) == 4 and raw[0] == 0xED:
+        opcode = raw[1]
+        value = int.from_bytes(raw[2:], "little")
+        # ED63/ED6B alias the shorter LD (nn),HL / LD HL,(nn) encodings.
+        # Assemblers prefer 22/2A, so those aliases must retain their raw bytes.
+        if opcode in (0x43, 0x53, 0x73):
+            return f"ld (${value:04X}),{pairs[(opcode >> 4) & 3]}"
+        if opcode in (0x4B, 0x5B, 0x7B):
+            return f"ld {pairs[(opcode >> 4) & 3]},(${value:04X})"
     if len(raw) == 4 and raw[0] in (0xDD, 0xFD):
         index = "ix" if raw[0] == 0xDD else "iy"
         subcode = raw[1]

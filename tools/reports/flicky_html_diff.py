@@ -204,6 +204,7 @@ def write_html(
     output: Path,
     *,
     differences_only: bool = False,
+    opcodes_only: bool = False,
     rom: Path | None = None,
     reference_listing: Path | None = None,
     generated_listing: Path | None = None,
@@ -218,8 +219,10 @@ def write_html(
     original = listing_source(reference_listing, max_address=len(reference_rom) - 1)
     produced = listing_source(generated_listing, max_address=len(reference_rom) - 1)
     # Replace six-byte listing prefixes with recovered complete instructions.
+    instruction_addresses = []
     for records, listing in ((original, reference_listing), (produced, generated_listing)):
         instructions, _ = read_listing(listing, reference_rom)
+        instruction_addresses.append(set(instructions))
         for address, raw in instructions.items():
             if address in records:
                 records[address].encoded = [raw.hex(" ").upper()]
@@ -232,7 +235,10 @@ def write_html(
     rows: list[str] = []
     visible_addresses: list[int] = []
     visible_statuses: list[str] = []
+    opcode_addresses = instruction_addresses[0] | instruction_addresses[1]
     for address in addresses:
+        if opcodes_only and address not in opcode_addresses:
+            continue
         ref = original.get(address, SourceAtAddress())
         gen = produced.get(address, SourceAtAddress())
         include_index = bisect_right(include_starts, address) - 1
@@ -250,6 +256,10 @@ def write_html(
                 )
         else:
             status = _status(ref, gen)
+        if (opcodes_only and address in instruction_addresses[1]
+                and address not in instruction_addresses[0]):
+            # Same bytes do not make a mnemonic equivalent to reference data.
+            status = "generated-only"
         if differences_only and not _is_difference(status):
             continue
         counts[status] += 1
@@ -285,6 +295,9 @@ def write_html(
         if differences_only
         else "Every address of the listings is shown."
     )
+    if opcodes_only:
+        report_title += " — opcodes"
+        report_note += " Lines with only data and labels are left out; extra instructions are shown."
     navigation = "".join(
         f'<a href="#a{target:06X}">{label}</a>'
         for start, end, label in (
@@ -370,6 +383,8 @@ def main(default_title: str = "Flicky") -> None:
     parser.add_argument("--reference-listing", type=Path)
     parser.add_argument("--generated-listing", type=Path)
     parser.add_argument("--title", default=default_title)
+    parser.add_argument("--opcodes-only", action="store_true",
+                        help="include only instruction addresses, retaining missing and extra code")
     parser.add_argument(
         "--differences-only",
         action="store_true",
@@ -381,6 +396,7 @@ def main(default_title: str = "Flicky") -> None:
         args.generated,
         args.output,
         differences_only=args.differences_only,
+        opcodes_only=args.opcodes_only,
         rom=args.rom,
         reference_listing=args.reference_listing,
         generated_listing=args.generated_listing,

@@ -678,6 +678,11 @@ def _animation_candidates(
 
 _REGISTER_INDIRECT = re.compile(r"\(([Aa][0-7])\)$")
 _DATA_TO_ADDRESS = re.compile(r"[Dd][0-7]w?\|([Aa][0-7])$", re.I)
+_PC_INDEXED_ADDRESS = re.compile(
+    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7]w\*0x1\)\|([Aa][0-7])$", re.I
+)
+_IMMEDIATE_ADDRESS = re.compile(r"#(-?0x[0-9a-f]+|-?\d+)\|([Aa][0-7])$", re.I)
+_INDIRECT_TO_ADDRESS = re.compile(r"\(([Aa][0-7])\)\|([Aa][0-7])$", re.I)
 
 
 @dataclass(frozen=True)
@@ -696,10 +701,10 @@ def _absolute_referenced_addresses(
 ) -> set[int]:
     """Return data references that name an absolute address.
 
-    Struct displacements and backend-inferred effective addresses of
-    ``(An)`` accesses depend on runtime state. They do not mark an explicit
-    ROM table boundary. Inspect the referenced operand, so an absolute
-    destination still qualifies when the source is register-indirect.
+    Struct displacements, literal immediates, and backend-inferred effective
+    addresses of ``(An)`` accesses do not identify a separate ROM object.
+    Inspect each referenced operand, so an absolute destination still
+    qualifies when the source is indirect or an immediate scalar.
     """
     addresses: set[int] = set()
     for fact in facts.values():
@@ -715,6 +720,16 @@ def _absolute_referenced_addresses(
                 if 0 <= reference.operand_index < len(operands)
                 else fact.operands
             )
+            if operand.startswith("#"):
+                # A DATA annotation on #size/#flags does not mean the value
+                # addresses ROM. Dispatch bases are proven separately from
+                # the indexed reader; literal constants alone cannot cut it.
+                continue
+            if re.fullmatch(r"(?:[DA][0-7][bwl]?|SP|SR|CCR|USP)", operand, re.I):
+                # Ghidra can attach a DATA reference to a register's inferred
+                # scalar value. It is not an explicit address and must not
+                # split a table which happens to contain the same number.
+                continue
             if (
                 "(" in operand
                 and _ADDRESS_REGISTER.search(operand)
@@ -755,9 +770,9 @@ def _dispatch_tables(
 ) -> tuple[_DispatchTable, ...]:
     """Recover u32 handler tables selected by an indexed MOVEA.L dispatch.
 
-    The table base comes only from the displacement of a decoded
-    ``MOVEA.L (d16,An),Am`` whose successor is ``JSR/JMP (Am)``; nothing
-    is scanned blindly. Entries stop at the first odd, unmapped,
+    The table base comes from a decoded ``MOVEA.L (d16,An),Am`` with a
+    proven data-register index, or ``MOVEA.L (table,PC,Rn.W),Am``. Both
+    must be followed by ``JSR/JMP (Am)``. Entries stop at the first odd, unmapped,
     self-referencing, code-overlapping or structurally invalid target.
     """
     occupied, interiors, instruction_starts = _instruction_sets(facts)
@@ -766,7 +781,8 @@ def _dispatch_tables(
     # base-register displacements are never treated as boundaries.
     boundaries = _absolute_referenced_addresses(facts)
     for fact in facts.values():
-        match = _DISPLACEMENT_ADDRESS.fullmatch(fact.operands)
+        match = (_DISPLACEMENT_ADDRESS.fullmatch(fact.operands)
+                 or _PC_INDEXED_ADDRESS.fullmatch(fact.operands))
         if fact.mnemonic.upper() == "MOVEA.L" and match is not None:
             call = by_address.get(fact.cpu_address + fact.length)
             if (
@@ -783,11 +799,24 @@ def _dispatch_tables(
         if load.mnemonic.upper() != "MOVEA.L":
             continue
         match = _DISPLACEMENT_ADDRESS.fullmatch(load.operands)
-        if match is None:
+        pc_indexed = _PC_INDEXED_ADDRESS.fullmatch(load.operands)
+        if load.flow_type.upper() != "FALL_THROUGH" or (match is None and pc_indexed is None):
             continue
-        table = int(match.group(1), 0)
-        base_register = match.group(2).upper()
-        loaded_register = match.group(3).upper()
+        if pc_indexed is not None:
+            table = int(pc_indexed.group(1), 0)
+            loaded_register = pc_indexed.group(2).upper()
+            index_evidence = (
+                "pc_relative_address_register_word_index"
+                if ",A" in load.operands.upper()
+                else "pc_relative_data_register_word_index"
+            )
+        else:
+            assert match is not None
+            table = int(match.group(1), 0)
+            loaded_register = match.group(3).upper()
+            if not _index_register_from_data_register(ends, load, match.group(2).upper()):
+                continue
+            index_evidence = "index_register_from_data_register"
         call = by_address.get(load.cpu_address + load.length)
         if (
             call is None
@@ -802,9 +831,6 @@ def _dispatch_tables(
             or physical_start < 0x200
             or table & 1
             or physical_start + MIN_DISPATCH_ENTRIES * 4 > len(data)
-            or not _index_register_from_data_register(
-                ends, load, base_register
-            )
         ):
             continue
         entries: list[PointerEntry] = []
@@ -865,7 +891,7 @@ def _dispatch_tables(
                     f"indexed_movea_l_at_{load.cpu_address:06X}",
                     f"{call.mnemonic.lower()}_indirect_at_"
                     f"{call.cpu_address:06X}",
-                    "index_register_from_data_register",
+                    index_evidence,
                     f"entry_count={len(entries)}",
                     f"instruction_targets={target_starts}",
                 ),
@@ -881,13 +907,13 @@ def _dispatch_tables(
 def discover_dispatch_table_seeds(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[DecoderSeed, ...]:
-    """Turn indexed MOVEA.L dispatch tables into decoder seeds."""
+    """Turn instruction-proven absolute and relative dispatch tables into seeds."""
     seeds = []
-    for table in _dispatch_tables(image, facts):
+    for table in (*_dispatch_tables(image, facts), *_word_dispatch_tables(image, facts)):
         candidate = table.candidate
         evidence = (
-            f"u32 handler table at 0x{candidate.logical_start:06X} "
-            f"({len(candidate.entries)} entries) selected by MOVEA.L at "
+            f"{candidate.schema_id} handler table at 0x{candidate.logical_start:06X} "
+            f"({len(candidate.entries)} entries) selected by load at "
             f"0x{table.load_address:06X} and {table.call_mnemonic} at "
             f"0x{table.call_address:06X}"
         )
@@ -904,6 +930,133 @@ def discover_dispatch_table_seeds(
     return tuple(seeds)
 
 
+def _word_dispatch_tables(
+    image: MegaDriveImage, facts: dict[int, InstructionFact]
+) -> tuple[_DispatchTable, ...]:
+    """Prove signed-word dispatches with a constant or entry-address base.
+
+    MOVEA.W (table,PC,Dn.W),An / ADDA.L #base,An uses a constant base.
+    LEA (table,PC,Dn.W),An / ADDA.W (An),An uses each entry's own address.
+    Both must end with JMP/JSR (An); ADDA.W sign-extends its source word.
+    Read until code, another explicit data boundary, or an invalid target;
+    a forward code base also bounds the table before the first handler.
+    """
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+    occupied, interiors, instruction_starts = _instruction_sets(facts)
+    boundaries = _absolute_referenced_addresses(facts)
+    rom_start = image.header.rom_start
+    data = image.data
+    tables: dict[int, _DispatchTable] = {}
+    for load in sorted(facts.values(), key=lambda fact: fact.cpu_address):
+        word_load = load.mnemonic.upper() == "MOVEA.W"
+        if not word_load and load.mnemonic.upper() != "LEA":
+            continue
+        indexed = _PC_INDEXED_ADDRESS.fullmatch(load.operands)
+        if indexed is None or load.flow_type.upper() != "FALL_THROUGH":
+            continue
+        table = int(indexed.group(1), 0)
+        register = indexed.group(2).upper()
+        add = by_address.get(load.cpu_address + load.length)
+        if (
+            add is None or add.mnemonic.upper() != ("ADDA.L" if word_load else "ADDA.W")
+            or add.flow_type.upper() != "FALL_THROUGH"
+        ):
+            continue
+        if word_load:
+            immediate = _IMMEDIATE_ADDRESS.fullmatch(add.operands)
+            if immediate is None or immediate.group(2).upper() != register:
+                continue
+            base = int(immediate.group(1), 0) & 0xFFFFFF
+            schema = "megadrive.s16be.target-code_base"
+            base_evidence = f"adda_l_base_{base:06X}_at_{add.cpu_address:06X}"
+            arithmetic_evidence = "signed_word_offsets_added_to_constant_base"
+        else:
+            indirect = _INDIRECT_TO_ADDRESS.fullmatch(add.operands)
+            if indirect is None or any(group.upper() != register for group in indirect.groups()):
+                continue
+            base = None
+            schema = "megadrive.s16be.target-entry_address"
+            base_evidence = f"adda_w_entry_base_at_{add.cpu_address:06X}"
+            arithmetic_evidence = "signed_word_offsets_added_to_entry_address"
+        call = by_address.get(add.cpu_address + add.length)
+        if (
+            call is None or call.mnemonic.upper() not in {"JMP", "JSR"}
+            or (target_register := _REGISTER_INDIRECT.fullmatch(call.operands)) is None
+            or target_register.group(1).upper() != register
+        ):
+            continue
+        start = table - rom_start
+        if (
+            table in tables or start < 0x200 or table & 1
+            or start + 2 * MIN_DISPATCH_ENTRIES > len(data)
+            or (base is not None and not _mapped(image, base))
+        ):
+            continue
+        limit = min(len(data), start + 2 * MAX_DISPATCH_ENTRIES)
+        if base is not None and table < base:
+            limit = min(limit, base - rom_start)
+        forward_code_start = limit
+        entries: list[PointerEntry] = []
+        for offset in range(start, limit - 1, 2):
+            if offset + 2 > forward_code_start:
+                break
+            if offset in occupied or offset + 1 in occupied:
+                break
+            if entries and rom_start + offset in boundaries:
+                break
+            raw = int.from_bytes(data[offset:offset + 2], "big")
+            entry_base = base if base is not None else rom_start + offset
+            target = (entry_base + (raw - 0x10000 if raw & 0x8000 else raw)) & 0xFFFFFF
+            physical = target - rom_start
+            if (
+                not _mapped(image, target) or physical < 0x200
+                or physical + 2 > len(data) or physical in interiors
+                or start <= physical < offset + 2
+                or data[physical:physical + 2] in {b"\x00\x00", b"\xff\xff"}
+            ):
+                break
+            entries.append(PointerEntry(offset, rom_start + offset, raw, target, entry_base))
+            if physical >= start:
+                # A forward handler is also a structural end boundary. Without
+                # this, undecoded handler opcodes can resemble more offsets and
+                # make the whole table appear self-referencing on the next pass.
+                forward_code_start = min(forward_code_start, physical)
+        while entries:
+            end = start + 2 * len(entries)
+            inside = next((
+                index for index, entry in enumerate(entries)
+                if start <= entry.target - rom_start < end
+            ), None)
+            if inside is None:
+                break
+            entries = entries[:inside]
+        if len(entries) < MIN_DISPATCH_ENTRIES:
+            continue
+        decoded = sum(entry.target in instruction_starts for entry in entries)
+        accepted = decoded == len(entries)
+        tables[table] = _DispatchTable(
+            candidate=PointerCandidate(
+                candidate_id=f"Ptr_s16be-dispatch_{'code' if word_load else 'entry'}_{table:06X}",
+                schema_id=schema,
+                physical_start=start, physical_end=start + 2 * len(entries),
+                logical_start=table, entry_size=2,
+                status="accepted" if accepted else "candidate", score=100 if accepted else 60,
+                entries=tuple(entries),
+                evidence=(
+                    f"indexed_{'movea_w' if word_load else 'lea'}_at_{load.cpu_address:06X}",
+                    base_evidence,
+                    f"{call.mnemonic.lower()}_indirect_at_{call.cpu_address:06X}",
+                    arithmetic_evidence,
+                    f"entry_count={len(entries)}", f"instruction_targets={decoded}",
+                ),
+                contradictions=(),
+            ),
+            load_address=load.cpu_address, call_address=call.cpu_address,
+            call_mnemonic=call.mnemonic.upper(),
+        )
+    return tuple(tables[address] for address in sorted(tables))
+
+
 def detect_pointer_candidates(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[PointerCandidate, ...]:
@@ -912,6 +1065,7 @@ def detect_pointer_candidates(
     candidates.extend(
         table.candidate for table in _dispatch_tables(image, facts)
     )
+    candidates.extend(table.candidate for table in _word_dispatch_tables(image, facts))
     absolute = tuple(_absolute_candidates(image, facts, 4))
     candidates.extend(absolute)
     candidates.extend(_animation_candidates(image, facts, absolute))

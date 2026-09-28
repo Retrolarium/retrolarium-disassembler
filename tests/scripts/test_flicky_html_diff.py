@@ -120,6 +120,36 @@ class FlickyHtmlDiffTests(unittest.TestCase):
             self.assertNotIn('id="a021000"', html)
             self.assertIn("Alien Soldier EU", html)
 
+    def test_opcode_filter_omits_data_differences_but_keeps_extra_code(self) -> None:
+        def line(index, address, encoded, source):
+            return f"{index}/ {address:X} : {encoded:<21}{source}\n"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            generated = root / "generated"
+            generated.mkdir()
+            rom = bytes.fromhex("4E75 0039 4E71")
+            rom_path = root / "rom.bin"
+            rom_path.write_bytes(rom)
+            (generated / "rebuilt.bin").write_bytes(rom)
+            ref = root / "ref.lst"
+            gen = root / "gen.lst"
+            ref.write_text(line(1, 0, "4E75", "rts")
+                           + line(2, 2, "0039", "dc.w $39")
+                           + line(3, 4, "4E71", "dc.w $4E71"), encoding="utf-8")
+            gen.write_text(line(1, 0, "4E75", "dc.b $4E,$75")
+                           + line(2, 2, "0039", "dc.b $00,$39")
+                           + line(3, 4, "4E71", "nop"), encoding="utf-8")
+            output = root / "diff.html"
+            counts = write_html(root, generated, output, rom=rom_path,
+                                reference_listing=ref, generated_listing=gen,
+                                differences_only=True, opcodes_only=True)
+            self.assertEqual({"raw-fallback": 1, "generated-only": 1}, dict(counts))
+            html = output.read_text(encoding="utf-8")
+            self.assertIn('id="a000000"', html)
+            self.assertNotIn('id="a000002"', html)
+            self.assertIn('id="a000004"', html)
+
     def test_raw_fallback_is_not_semantically_equal(self) -> None:
         reference = SourceAtAddress(
             lines=["                bra.w ReferenceTarget"],

@@ -14,7 +14,7 @@ from .facts import (
     load_z80_ghidra_facts,
 )
 from .ghidra import GhidraArtifacts, run_megadrive_analysis, run_z80_analysis
-from .megadrive import image_manifest, load_megadrive
+from .megadrive import MegaDriveImage, image_manifest, load_megadrive
 from .m68k_abstract import (
     discover_packed_orphan_candidates,
     discover_ram_handler_candidates,
@@ -22,7 +22,9 @@ from .m68k_abstract import (
     retain_trusted_instruction_facts,
 )
 from .m68k_seeds import DecoderSeed, discover_initial_decoder_seeds
-from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project
+from .m68k_ram_copies import discover_descriptor_ram_code_seeds
+from .m68k_unused import UnusedCodeCandidate, discover_validated_unused_candidates
+from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project, _asm_instruction
 from .megadrive_pointers import (
     detect_pointer_candidates,
     discover_dispatch_table_seeds,
@@ -37,7 +39,7 @@ from .toolchain import toolchain_status
 from .z80_dispatch import Z80DispatchTable, discover_z80_dispatch_tables
 
 
-MAX_ABSTRACT_PASSES = 12
+MAX_ABSTRACT_PASSES = 32
 
 
 def _sha256(path: Path) -> str:
@@ -174,6 +176,27 @@ def _edge_record(
     }
 
 
+def _discover_unused_code(
+    image: MegaDriveImage,
+    trusted_facts: dict[int, InstructionFact],
+    facts: dict[int, InstructionFact],
+    artifacts: GhidraArtifacts,
+) -> tuple[tuple[UnusedCodeCandidate, ...], tuple[dict[str, object], ...]]:
+    speculative_facts = load_megadrive_ghidra_facts(artifacts.orphan_facts, image)
+    protected_ranges = tuple(
+        (candidate.physical_start, candidate.physical_end)
+        for candidate in detect_pointer_candidates(image, trusted_facts)
+        if candidate.status == "accepted"
+    ) + tuple(
+        (copy.source_start, copy.source_end)
+        for copy in detect_z80_copies(image, trusted_facts)
+    )
+    return discover_validated_unused_candidates(
+        image, trusted_facts, {**speculative_facts, **facts},
+        protected_ranges=protected_ranges, render_instruction=_asm_instruction,
+    )
+
+
 def analyze_megadrive(
     rom: Path, output: Path, ghidra_home: Path
 ) -> dict[str, object]:
@@ -207,6 +230,8 @@ def analyze_megadrive(
         newline="\n",
     )
     abstract_passes = []
+    unused_candidates: dict[int, UnusedCodeCandidate] = {}
+    unused_rejections = ()
     converged = False
     for pass_index in range(MAX_ABSTRACT_PASSES):
         artifacts = run_megadrive_analysis(
@@ -215,6 +240,7 @@ def analyze_megadrive(
             ghidra_home.resolve(),
             scripts,
             seed_plan=seed_plan,
+            probe_orphans=True,
         )
         facts = load_megadrive_ghidra_facts(artifacts.facts, image)
         abstract_result = interpret_known_cfg(
@@ -241,7 +267,12 @@ def analyze_megadrive(
                 *discover_packed_orphan_candidates(image, trusted_facts),
             )
         }.values())
+        validated_unused, unused_rejections = _discover_unused_code(
+            image, trusted_facts, facts, artifacts)
+        for candidate in validated_unused:
+            unused_candidates.setdefault(candidate.address, candidate)
         dispatch_seeds = list(discover_dispatch_table_seeds(image, trusted_facts))
+        dispatch_seeds.extend(discover_descriptor_ram_code_seeds(image, trusted_facts))
         # A structurally proven dispatcher can itself be an unreachable code
         # island. Bootstrap only strong tables from backend facts, then make
         # the dispatcher a planned root on the next decoder pass.
@@ -297,10 +328,20 @@ def analyze_megadrive(
             and candidate.address not in trusted_facts
             and candidate.address not in planned_seeds
         }
+        unused_targets = {
+            candidate.address for candidate in validated_unused
+            if candidate.address not in planned_seeds
+        }
         discovered = sorted(
             indirect_targets | handler_targets | orphan_targets
-            | dispatch_targets
+            | dispatch_targets | unused_targets
         )
+        for candidate in validated_unused:
+            if candidate.address in discovered:
+                seed_evidence.setdefault(candidate.address, set()).add(candidate.evidence)
+                seed_kinds.setdefault(candidate.address, set()).add("validated_unused_function")
+                seed_confidence.setdefault(candidate.address, set()).add(candidate.confidence)
+                seed_sources.setdefault(candidate.address, set()).add(candidate.preceding_address)
         for seed in dispatch_seeds:
             if seed.address in discovered:
                 seed_evidence.setdefault(seed.address, set()).add(
@@ -370,6 +411,14 @@ def analyze_megadrive(
                 for address in discovered
             ],
         })
+        # Keep progress even when the safety limit or a later backend run fails.
+        (program_root / "decoder-passes.json").write_text(
+            json.dumps({
+                "schema": "retrolarium.m68k.decoder-passes", "schema_version": 1,
+                "input_sha256": image.sha256, "converged": not discovered,
+                "passes": abstract_passes,
+            }, indent=2) + "\n", encoding="utf-8", newline="\n",
+        )
         if not discovered:
             converged = True
             break
@@ -406,6 +455,25 @@ def analyze_megadrive(
     abstract_candidates = discover_ram_handler_candidates(image, facts)
     orphan_candidates = discover_packed_orphan_candidates(image, facts)
     abstract_path = program_root / "abstract-analysis.json"
+    unused_path = program_root / "unused-code.json"
+    unused_path.write_text(json.dumps({
+        "schema": "retrolarium.m68k.unused-code", "schema_version": 1,
+        "input_sha256": image.sha256,
+        "runtime_status": "unknown",
+        "search_scope": "gaps up to 2048 bytes after trusted terminal instructions",
+        "accepted_candidates": [
+            {**candidate.as_dict(), "emitted_as_instructions": all(
+                address in facts and _asm_instruction(facts[address]) is not None
+                for address in candidate.instruction_addresses
+            ), "known_callers_after_analysis": sorted(
+                fact.cpu_address for fact in facts.values()
+                if not candidate.address <= fact.cpu_address < candidate.end
+                and any(candidate.address <= target < candidate.end for target in fact.flows)
+            )}
+            for candidate in sorted(unused_candidates.values(), key=lambda item: item.address)
+        ],
+        "rejected_gaps": list(unused_rejections),
+    }, indent=2) + "\n", encoding="utf-8", newline="\n")
     abstract_path.write_text(
         json.dumps(
             {
@@ -539,6 +607,11 @@ def analyze_megadrive(
     ]
     programs[0]["abstract_analysis"] = abstract_path.relative_to(output).as_posix()
     programs[0]["abstract_analysis_sha256"] = _sha256(abstract_path)
+    programs[0]["unused_code"] = unused_path.relative_to(output).as_posix()
+    programs[0]["unused_code_sha256"] = _sha256(unused_path)
+    if artifacts.orphan_facts is not None:
+        programs[0]["unused_probe_facts"] = artifacts.orphan_facts.relative_to(output).as_posix()
+        programs[0]["unused_probe_facts_sha256"] = _sha256(artifacts.orphan_facts)
     programs[0]["abstract_entrypoint_candidates"] = len(abstract_candidates)
     programs[0]["abstract_orphan_candidates"] = len(orphan_candidates)
     programs[0]["abstract_decoder_seed_count"] = len(planned_seeds)
@@ -837,9 +910,37 @@ def disassemble_megadrive(
 ) -> dict[str, object]:
     rom = rom.resolve()
     output = output.resolve()
+    analysis_root = output / "analysis"
+    analyze_megadrive(rom, analysis_root, ghidra_home)
+    return emit_analyzed_megadrive(rom, output, build_container=build_container)
+
+
+def emit_analyzed_megadrive(
+    rom: Path, output: Path, *, build_container: str | None = None,
+) -> dict[str, object]:
+    """Regenerate sources from immutable ROM facts without running the decoder."""
+    rom = rom.resolve()
+    output = output.resolve()
     image = load_megadrive(rom)
     analysis_root = output / "analysis"
-    analysis = analyze_megadrive(rom, analysis_root, ghidra_home)
+    analysis = json.loads((analysis_root / "analysis.json").read_text(encoding="utf-8"))
+    if (analysis.get("schema") != "retrolarium.megadrive.analysis"
+            or analysis.get("input", {}).get("sha256") != image.sha256
+            or analysis["input"].get("size") != len(image.data)):
+        raise MegaDriveEmitError("cached analysis belongs to a different ROM")
+    # The facts and seed plan determine what is emitted. Check their provenance
+    # before reusing a cache; imported facts also validate every byte against ROM.
+    for record in [analysis, *analysis["programs"]]:
+        for key, digest in record.items():
+            if not key.endswith("_sha256"):
+                continue
+            path_key = key.removesuffix("_sha256")
+            if path_key not in record:
+                continue
+            artifact = (analysis_root / record[path_key]).resolve()
+            if (not artifact.is_relative_to(analysis_root)
+                    or not artifact.is_file() or _sha256(artifact) != digest):
+                raise MegaDriveEmitError(f"cached analysis artifact changed: {path_key}")
     m68k_facts = load_megadrive_ghidra_facts(
         analysis_root / "m68k" / "instructions.tsv", image
     )

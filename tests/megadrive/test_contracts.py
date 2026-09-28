@@ -259,6 +259,33 @@ class MegaDriveContractTests(unittest.TestCase):
 
 
 class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
+    def test_cached_emission_rejects_another_rom_and_tampered_facts(self) -> None:
+        from retrolarium_kit import megadrive_pipeline as pipeline
+        from retrolarium_kit.megadrive_emit import MegaDriveEmitError
+        from test_megadrive import cartridge
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            data = cartridge(size=0x800)
+            rom = root / "rom.bin"
+            rom.write_bytes(data)
+            analysis = root / "out" / "analysis"
+            analysis.mkdir(parents=True)
+            artifact = analysis / "facts.tsv"
+            artifact.write_bytes(b"changed")
+            record = {
+                "schema": "retrolarium.megadrive.analysis",
+                "input": {"sha256": "0" * 64, "size": len(data)},
+                "programs": [{"raw_facts": "facts.tsv", "raw_facts_sha256": digest(b"original")}],
+            }
+            with patch.object(pipeline, "emit_project") as emit:
+                for expected in ("different ROM", "artifact changed"):
+                    (analysis / "analysis.json").write_text(json.dumps(record), encoding="utf-8")
+                    with self.assertRaisesRegex(MegaDriveEmitError, expected):
+                        pipeline.emit_analyzed_megadrive(rom, root / "out")
+                    record["input"]["sha256"] = digest(data)
+                emit.assert_not_called()
+
     def _disassemble(self, root: Path, *, build_container: str | None):
         from retrolarium_kit import megadrive_pipeline as pipeline
         from retrolarium_kit.z80_dispatch import Z80DispatchTable
@@ -294,6 +321,11 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
             encoding="utf-8",
         )
         data = bytes(0x800)
+        (analysis / "analysis.json").write_text(json.dumps({
+            "schema": "retrolarium.megadrive.analysis",
+            "input": {"sha256": digest(data), "size": len(data)},
+            "programs": [],
+        }), encoding="utf-8")
         image = SimpleNamespace(
             data=data,
             sha256=digest(data),

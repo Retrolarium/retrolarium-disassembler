@@ -18,6 +18,7 @@ from retrolarium_kit.megadrive_emit import (
     MegaDriveEmitError,
     _asm_instruction,
     _pointer_lines,
+    _z80_asm,
     emit_project,
 )
 from retrolarium_kit.megadrive_pointers import (
@@ -31,9 +32,43 @@ from retrolarium_kit.project import _asl_build
 from retrolarium_kit.z80_dispatch import Z80DispatchTable
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
+from test_megadrive_pointers import word_dispatch_image
 
 
 class MegaDriveEmitTests(unittest.TestCase):
+    def test_z80_absolute_register_pair_transfers_use_canonical_encodings(self):
+        for opcode, expected in (
+            (0x43, "ld ($1234),bc"), (0x53, "ld ($1234),de"), (0x73, "ld ($1234),sp"),
+            (0x4B, "ld bc,($1234)"), (0x5B, "ld de,($1234)"), (0x7B, "ld sp,($1234)"),
+        ):
+            with self.subTest(opcode=opcode):
+                self.assertEqual(expected, _z80_asm(bytes((0xED, opcode, 0x34, 0x12)), 0))
+        for opcode in (0x63, 0x6B):
+            self.assertIsNone(_z80_asm(bytes((0xED, opcode, 0x34, 0x12)), 0))
+
+    def test_z80_index_register_arithmetic_preserves_prefix(self):
+        for prefix, register in ((0xDD, "ix"), (0xFD, "iy")):
+            for opcode, expected in (
+                (0x23, f"inc {register}"), (0x2B, f"dec {register}"),
+                (0x09, f"add {register},bc"), (0x19, f"add {register},de"),
+                (0x29, f"add {register},{register}"), (0x39, f"add {register},sp"),
+            ):
+                with self.subTest(prefix=prefix, opcode=opcode):
+                    self.assertEqual(expected, _z80_asm(bytes((prefix, opcode)), 0))
+            # Ignored prefixes cannot be emitted as their shorter unprefixed twin.
+            self.assertIsNone(_z80_asm(bytes((prefix, 0x03)), 0))
+
+    def test_emits_signed_dispatch_offsets_using_the_code_base(self) -> None:
+        image, facts, targets = word_dispatch_image()
+        for target in targets:
+            facts[target] = replace(fact(target, "RTS", ""), flow_type="TERMINATOR")
+        candidate = next(item for item in detect_pointer_candidates(image, facts)
+                         if item.schema_id == "megadrive.s16be.target-code_base")
+        lines = _pointer_lines(candidate, image, {})
+        self.assertIn("                dc.w    $000340-$000340", lines)
+        self.assertIn("                dc.w    $000280-$000340", lines)
+        self.assertFalse(any("dc.b" in line for line in lines))
+
     def test_pointer_to_interior_of_emitted_table_uses_numeric_address(self) -> None:
         data = bytearray(cartridge(size=0x500))
         data[0x220:0x224] = (0x304).to_bytes(4, "big")
@@ -239,7 +274,34 @@ class MegaDriveEmitTests(unittest.TestCase):
             "lea off_M68K_000294(pc),a5",
             _asm_instruction(instruction, {0x294: symbol}),
         )
-        self.assertIsNone(_asm_instruction(instruction))
+        self.assertEqual("lea $000294(pc),a5", _asm_instruction(instruction))
+
+    def test_pc_control_transfers_validate_encoding_and_render_both_directions(self) -> None:
+        for address, mnemonic, operand, raw, expected in (
+            (0x300, "JMP", "0x00000308", "4E FA 00 06", "jmp $000308(pc)"),
+            (0x400, "JSR", "0x00000308", "4E BA FF 06", "jsr $000308(pc)"),
+            (0x500, "JSR", "0x00000502", "4E BA 00 00", "jsr $000502(pc)"),
+            (0x300, "JMP", "0x0000030a", "4E FA 00 06", None),
+        ):
+            with self.subTest(address=address, raw=raw):
+                instruction = replace(fact(address, mnemonic, operand),
+                                      raw=bytes.fromhex(raw), length=4)
+                self.assertEqual(expected, _asm_instruction(instruction))
+
+    def test_status_immediates_and_dynamic_bits_preserve_extension_words(self) -> None:
+        for mnemonic, operand, raw, expected in (
+            ("ORI", "#0x700|SR", "00 7C 07 00", "ori #$700,sr"),
+            ("ANDI", "#-0x5", "02 3C 00 FB", "andi #$FB,ccr"),
+            ("EORI", "#0x1|CCR", "0A 3C 00 01", "eori #$1,ccr"),
+            ("ANDI", "#0x700|SR", "02 7C 07 01", None),
+            ("ORI", "#0x1|CCR", "00 3C 01 01", None),
+            ("BSET.B", "D0|(0x12e,A5)", "01 ED 01 2E", "bset d0,302(a5)"),
+            ("BCLR.B", "D0|(0x18e,A5)", "01 AD 01 8E", "bclr d0,398(a5)"),
+        ):
+            with self.subTest(mnemonic=mnemonic, raw=raw):
+                instruction = replace(fact(0x300, mnemonic, operand),
+                                      raw=bytes.fromhex(raw), length=4)
+                self.assertEqual(expected, _asm_instruction(instruction))
 
     def test_renders_flicky_bset_displacement(self) -> None:
         instruction = replace(
@@ -260,6 +322,17 @@ class MegaDriveEmitTests(unittest.TestCase):
                 instruction = replace(
                     fact(0x200, mnemonic, operands), raw=raw, length=len(raw)
                 )
+                self.assertIsNone(_asm_instruction(instruction))
+
+    def test_illegal_backend_operand_combinations_remain_raw_bytes(self) -> None:
+        for mnemonic, operands, raw_hex in (
+            ("ORI.L", "#0x302d0004|#0x307b000a", "00 BC 30 2D 00 04 30 7B 00 0A"),
+            ("SUB.B", "A0b|D2b", "94 08"),
+            ("MOVE.B", "D0b|A0b", "10 40"),
+        ):
+            with self.subTest(mnemonic=mnemonic):
+                raw = bytes.fromhex(raw_hex)
+                instruction = replace(fact(0x200, mnemonic, operands), raw=raw, length=len(raw))
                 self.assertIsNone(_asm_instruction(instruction))
 
     def test_branch_and_dbcc_use_existing_target_symbols(self) -> None:

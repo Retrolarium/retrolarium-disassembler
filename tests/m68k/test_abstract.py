@@ -270,6 +270,19 @@ class M68kAbstractTests(unittest.TestCase):
         self.assertEqual(0x206, result.indirect_edges[0].source_address)
         self.assertEqual(0x300, result.indirect_edges[0].target_address)
 
+    def test_packed_branch_to_instruction_interior_is_not_a_code_root(self) -> None:
+        payload = bytearray(cartridge(size=0x500))
+        payload[0x202:0x20A] = bytes.fromhex("61 00 00 FE 70 01 4E 75")
+        facts = {
+            0x200: replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR"),
+            0x20A: replace(fact(0x20A, "RTS", ""), flow_type="TERMINATOR"),
+            0x300: replace(fact(0x300, "MOVE.W", "#0x1|D0w"), length=4),
+        }
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+        payload[0x204:0x206] = bytes.fromhex("00 FC")  # $300 is a valid instruction boundary.
+        candidates = discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)
+        self.assertEqual((0x202,), tuple(item.address for item in candidates))
+
     def test_packed_gap_without_return_requires_branch_to_known_code(self) -> None:
         payload = bytearray(cartridge(size=0x500))
         payload[0x202:0x220] = bytes.fromhex("70 01") * 15
@@ -282,10 +295,63 @@ class M68kAbstractTests(unittest.TestCase):
         payload[0x21C:0x21E] = bytes.fromhex("60 02")  # BRA.s $220
         candidates = discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)
         self.assertEqual((0x202,), tuple(item.address for item in candidates))
+
         payload[0x21C:0x21E] = bytes.fromhex("60 04")  # Unknown $222 is insufficient.
         self.assertEqual((), discover_packed_orphan_candidates(
             parse_megadrive(bytes(payload)), facts
         ))
+
+    def test_long_packed_gap_requires_branch_to_known_instruction_boundary(self) -> None:
+        payload = bytearray(cartridge(size=0x500))
+        payload[0x202:0x302] = bytes.fromhex("70 01") * 128
+        payload[0x300:0x302] = bytes.fromhex("4E 75")
+        facts = {
+            0x200: replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR"),
+            0x302: replace(fact(0x302, "RTS", ""), flow_type="TERMINATOR"),
+        }
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+        payload[0x2FC:0x300] = bytes.fromhex("61 00 00 04")  # BSR.W $302.
+        found = discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)
+        self.assertEqual((0x202,), tuple(item.address for item in found))
+        payload[0x2FE:0x300] = bytes.fromhex("00 06")  # An interior/unmapped start is not evidence.
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+
+    def test_static_bit_entry_requires_known_absolute_call(self) -> None:
+        payload = bytearray(cartridge(size=0x500))
+        payload[0x202:0x302] = bytes.fromhex("4E 71") * 128
+        payload[0x202:0x208] = bytes.fromhex("08 38 00 02 F7 06")
+        payload[0x300:0x302] = bytes.fromhex("4E 75")
+        facts = {
+            0x200: replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR"),
+            0x302: replace(fact(0x302, "RTS", ""), flow_type="TERMINATOR"),
+        }
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+        payload[0x208:0x20E] = bytes.fromhex("4E B9 00 00 03 02")
+        self.assertEqual((0x202,), tuple(item.address for item in
+                         discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)))
+        payload[0x20A:0x20E] = bytes.fromhex("00 00 03 04")
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+
+    def test_immediate_entry_requires_call_to_known_code_and_legal_destination(self) -> None:
+        payload = bytearray(cartridge(size=0x500))
+        payload[0x202:0x302] = bytes.fromhex("4E 71") * 128
+        payload[0x202:0x208] = bytes.fromhex("0A 6D 80 00 00 02")
+        payload[0x300:0x302] = bytes.fromhex("4E 75")
+        facts = {
+            0x200: replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR"),
+            0x302: replace(fact(0x302, "RTS", ""), flow_type="TERMINATOR"),
+        }
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+        payload[0x208:0x20C] = bytes.fromhex("4E BA 00 F8")
+        self.assertEqual((0x202,), tuple(item.address for item in
+                         discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)))
+        payload[0x20A:0x20C] = bytes.fromhex("00 FA")
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+        payload[0x20A:0x20C] = bytes.fromhex("00 F8")
+        payload[0x202:0x204] = bytes.fromhex("0A 49")  # Immediate to An is illegal.
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+        payload[0x202:0x204] = bytes.fromhex("00 00")  # ORI-shaped zero data is ambiguous.
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
 
     def test_interpreter_resolves_pc_indexed_call_from_masked_register(self) -> None:
         payload = bytearray(cartridge(size=0x500))

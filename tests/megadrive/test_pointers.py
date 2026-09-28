@@ -38,7 +38,156 @@ def dispatch_facts(index_source: str = "D0w|A0") -> dict[int, InstructionFact]:
     return {item.physical_offset: item for item in items}
 
 
+def word_dispatch_image():
+    data = bytearray(cartridge(size=0x800))
+    targets = (0x340, 0x350, 0x280, 0x360)
+    data[0x300:0x308] = b"".join(((target - 0x340) & 0xFFFF).to_bytes(2, "big") for target in targets)
+    data[0x308:0x30A] = bytes.fromhex("FF FF")
+    for target in targets:
+        data[target:target + 2] = bytes.fromhex("4E75")
+    items = (
+        replace(fact(0x200, "MOVEA.W", "(0x300,PC,D2w*0x1)|A4"), length=4),
+        replace(fact(0x204, "ADDA.L", "#0x340|A4"), length=6),
+        replace(fact(0x20A, "JMP", "(A4)"), flow_type="COMPUTED_JUMP"),
+    )
+    return parse_megadrive(bytes(data)), {item.physical_offset: item for item in items}, targets
+
+
 class MegaDrivePointerTests(unittest.TestCase):
+    def test_pc_dispatch_accepts_address_register_word_indices(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420)
+        data = bytearray(image.data)
+        for target in (0x400, 0x410, 0x420):
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        facts = dispatch_facts()
+        del facts[0x200]
+        facts[0x202] = replace(facts[0x202], operands="(0x300,PC,A1w*0x1)|A4")
+        facts[0x206] = replace(facts[0x206], operands="(A4)")
+        self.assertEqual((0x400, 0x410, 0x420), tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+        image, facts, targets = word_dispatch_image()
+        facts[0x200] = replace(facts[0x200], operands="(0x300,PC,A2w*0x1)|A4")
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+
+    def test_relative_dispatch_stops_at_first_forward_handler_before_it_decodes(self) -> None:
+        data = bytearray(cartridge(size=0x800))
+        data[0x300:0x306] = bytes.fromhex("00 04 00 0A 00 08")
+        data[0x30C:0x30E] = bytes.fromhex("4E 75")
+        facts = {
+            0x200: replace(fact(0x200, "LEA", "(0x300,PC,D2w*0x1)|A4"), length=4),
+            0x204: fact(0x204, "ADDA.W", "(A4)|A4"),
+            0x206: replace(fact(0x206, "JMP", "(A4)"), flow_type="COMPUTED_JUMP"),
+        }
+        # The first handler's $0008 opcode also looks like an offset to $30C.
+        # It must never become a third table entry, even before backend decode.
+        seeds = discover_dispatch_table_seeds(parse_megadrive(bytes(data)), facts)
+        self.assertEqual((0x304, 0x30C), tuple(seed.address for seed in seeds))
+
+    def test_entry_relative_dispatch_uses_each_signed_word_address_as_base(self) -> None:
+        image, _, targets = word_dispatch_image()
+        data = bytearray(image.data)
+        data[0x300:0x308] = b"".join(((target - 0x300 - i * 2) & 0xFFFF).to_bytes(2, "big")
+                                     for i, target in enumerate(targets))
+        facts = {
+            0x200: replace(fact(0x200, "LEA", "(0x300,PC,D2w*0x1)|A4"), length=4),
+            0x204: fact(0x204, "ADDA.W", "(A4)|A4"),
+            0x206: replace(fact(0x206, "JMP", "(A4)"), flow_type="COMPUTED_JUMP"),
+        }
+        image = parse_megadrive(bytes(data))
+        self.assertEqual(targets, tuple(seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+        for target in targets:
+            facts[target] = replace(fact(target, "RTS", ""), flow_type="TERMINATOR")
+        table = next(item for item in detect_pointer_candidates(image, facts)
+                     if item.candidate_id.startswith("Ptr_s16be-dispatch_entry"))
+        self.assertEqual("accepted", table.status)
+        self.assertEqual(targets, tuple(entry.target for entry in table.entries))
+        self.assertEqual((0x300, 0x302, 0x304, 0x306), tuple(entry.base_address for entry in table.entries))
+        self.assertEqual("megadrive.s16be.target-entry_address", table.schema_id)
+        for mnemonic, operands in (("ADDA.L", "(A4)|A4"), ("ADDA.W", "(A3)|A4"),
+                                  ("ADDA.W", "(A4)+|A4"), ("ADDA.W", "(A4)|A3")):
+            with self.subTest(mnemonic=mnemonic, operands=operands):
+                changed = dict(facts)
+                changed[0x204] = replace(changed[0x204], mnemonic=mnemonic, operands=operands)
+                self.assertEqual((), discover_dispatch_table_seeds(image, changed))
+
+    def test_pc_indexed_long_dispatch_recovers_handlers_without_address_index_setup(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420)
+        facts = dispatch_facts()
+        del facts[0x200]
+        facts[0x202] = replace(facts[0x202], operands="(0x300,PC,D1w*0x1)|A4")
+        facts[0x206] = replace(facts[0x206], operands="(A4)")
+        self.assertEqual((0x400, 0x410, 0x420), tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+        for target in (0x400, 0x410, 0x420):
+            facts[target] = replace(fact(target, "RTS", ""), flow_type="TERMINATOR")
+        table = next(item for item in detect_pointer_candidates(image, facts)
+                     if item.candidate_id.startswith("Ptr_u32be-dispatch"))
+        self.assertEqual("accepted", table.status)
+        self.assertIn("pc_relative_data_register_word_index", table.evidence)
+
+    def test_pc_indexed_long_dispatch_requires_supported_index_and_matching_jump(self) -> None:
+        for operands, call in (
+            ("(0x300,PC,D1l*0x1)|A4", "(A4)"),
+            ("(0x300).l|A4", "(A4)"),
+            ("(0x300,PC,D1w*0x1)|A4", "(A3)"),
+        ):
+            with self.subTest(operands=operands, call=call):
+                facts = dispatch_facts()
+                del facts[0x200]
+                facts[0x202] = replace(facts[0x202], operands=operands)
+                facts[0x206] = replace(facts[0x206], operands=call)
+                self.assertEqual((), discover_dispatch_table_seeds(
+                    dispatch_image(0x400, 0x410, 0x420), facts))
+
+    def test_signed_word_dispatch_seeds_forward_and_backward_handlers(self) -> None:
+        image, facts, targets = word_dispatch_image()
+        self.assertEqual(targets, tuple(seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+        candidate = next(item for item in detect_pointer_candidates(image, facts)
+                         if item.schema_id == "megadrive.s16be.target-code_base")
+        self.assertEqual("candidate", candidate.status)
+        self.assertEqual((0x300, 0x308), (candidate.physical_start, candidate.physical_end))
+        self.assertEqual(0x340, candidate.entries[2].base_address)
+        self.assertEqual(0xFF40, candidate.entries[2].raw_value)
+        for target in targets:
+            facts[target] = replace(fact(target, "RTS", ""), flow_type="TERMINATOR")
+        candidate = next(item for item in detect_pointer_candidates(image, facts)
+                         if item.schema_id == "megadrive.s16be.target-code_base")
+        self.assertEqual("accepted", candidate.status)
+
+    def test_relative_dispatch_requires_consistent_registers_and_index(self) -> None:
+        for address, mnemonic, operands in (
+            (0x200, "MOVEA.W", "(0x300).l|A4"),
+            (0x204, "ADDA.L", "#0x340|A3"),
+            (0x204, "ADDA.L", "D0|A4"),
+            (0x20A, "JMP", "(A3)"),
+        ):
+            with self.subTest(operands=operands):
+                image, facts, _ = word_dispatch_image()
+                facts[address] = replace(facts[address], mnemonic=mnemonic, operands=operands)
+                self.assertEqual((), discover_dispatch_table_seeds(image, facts))
+
+    def test_relative_dispatch_does_not_swallow_forward_code_base(self) -> None:
+        image, facts, _ = word_dispatch_image()
+        data = bytearray(image.data)
+        data[0x300:0x340] = bytes.fromhex("00 00") * 32
+        seeds = discover_dispatch_table_seeds(parse_megadrive(bytes(data)), facts)
+        self.assertEqual(32, len(seeds))
+        self.assertEqual({0x340}, {seed.address for seed in seeds})
+
+    def test_relative_dispatch_stops_at_invalid_or_instruction_interior_target(self) -> None:
+        # Odd address, unmapped address, own table, interior of a decoded instruction.
+        for raw in (0xFFFF, 0xFC00, 0xFFC4, 0xFF42):
+            with self.subTest(raw=raw):
+                image, facts, _ = word_dispatch_image()
+                data = bytearray(image.data)
+                data[0x304:0x306] = raw.to_bytes(2, "big")
+                facts[0x280] = replace(fact(0x280, "NOP", ""), length=4)
+                seeds = discover_dispatch_table_seeds(parse_megadrive(bytes(data)), facts)
+                self.assertEqual((0x340, 0x350), tuple(seed.address for seed in seeds))
+
     def test_indexed_movea_dispatch_table_seeds_handler_targets(self) -> None:
         image = dispatch_image(0x400, 0x410, 0x420)
 
@@ -125,6 +274,46 @@ class MegaDrivePointerTests(unittest.TestCase):
 
         self.assertEqual((), seeds)
 
+    def test_scalar_immediates_do_not_truncate_absolute_dispatch(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420, 0x430)
+        for mnemonic, operands in (
+            ("MOVE.W", "#0x308|(A0)+"),
+            ("MOVE.L", "#0x308|(0xe,A5)"),
+            ("ANDI.W", "#0x308|D1w"),
+        ):
+            with self.subTest(operands=operands):
+                facts = dispatch_facts()
+                facts[0x210] = fact(
+                    0x210, mnemonic, operands,
+                    references=(InstructionReference(0x308, "DATA", 0),),
+                )
+                self.assertEqual((0x400, 0x410, 0x420, 0x430), tuple(
+                    seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+
+        # The memory destination, unlike the literal source, names an object.
+        facts[0x210] = fact(
+            0x210, "MOVE.W", "#0x308|(0x308).l",
+            references=(InstructionReference(0x308, "DATA", 0),
+                        InstructionReference(0x308, "DATA", 1)),
+        )
+        self.assertEqual((0x400, 0x410), tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+
+    def test_scalar_immediate_does_not_truncate_relative_dispatch(self) -> None:
+        image, facts, targets = word_dispatch_image()
+        facts[0x220] = fact(
+            0x220, "MOVE.W", "#0x304|(A1)+",
+            references=(InstructionReference(0x304, "DATA", 0),),
+        )
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+        facts[0x220] = fact(
+            0x220, "LEA", "(0x304).l|A1",
+            references=(InstructionReference(0x304, "DATA", 0),),
+        )
+        self.assertEqual(targets[:2], tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)))
+
     def test_dispatch_table_stops_at_odd_or_out_of_rom_target(self) -> None:
         for bad_target in (0x411, 0x100, 0x10000):
             with self.subTest(target=bad_target):
@@ -165,6 +354,14 @@ class MegaDrivePointerTests(unittest.TestCase):
             seed.address
             for seed in discover_dispatch_table_seeds(image, facts)
         ))
+
+        # A scalar inferred in the destination register is not a ROM boundary.
+        facts[0x214] = fact(
+            0x214, "MOVE.W", "(0x56,A0)|D0w",
+            references=(InstructionReference(0x308, "DATA", 1),),
+        )
+        self.assertEqual((0x400, 0x400, 0x410, 0x420), tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)))
 
         # An absolute reference still bounds the table.
         facts[0x214] = fact(

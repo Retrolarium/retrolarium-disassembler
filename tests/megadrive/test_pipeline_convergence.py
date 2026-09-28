@@ -29,6 +29,7 @@ from retrolarium_kit.m68k_abstract import (
     OrphanCandidate,
 )
 from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_kit.m68k_unused import UnusedCodeCandidate
 from retrolarium_kit.megadrive_z80 import CrossCpuCopy
 from retrolarium_kit.z80_dispatch import Z80DispatchTable
 
@@ -133,7 +134,7 @@ class _M68kHarness:
         return self.passes[min(index, len(self.passes) - 1)]
 
     def run_megadrive_analysis(
-        self, analysis_input, program_root, ghidra_home, scripts, *, seed_plan
+        self, analysis_input, program_root, ghidra_home, scripts, *, seed_plan, probe_orphans=False
     ):
         # Snapshot what the decoder would read at invocation time.
         self.plans_seen.append(seed_plan.read_text(encoding="ascii"))
@@ -180,6 +181,7 @@ class _M68kHarness:
 
     def patches(self) -> dict[str, object]:
         return {
+            "_discover_unused_code": lambda *args: (tuple(self._current().get("unused", ())), ()),
             "load_megadrive": lambda rom: _image(),
             "toolchain_status": lambda home: None,
             "discover_initial_decoder_seeds": lambda image: self.initial_seeds,
@@ -215,12 +217,16 @@ class M68kConvergenceTests(unittest.TestCase):
             self._analyze(harness)
 
         self.assertEqual(len(harness.plans_seen), pipeline.MAX_ABSTRACT_PASSES)
-        self.assertEqual(pipeline.MAX_ABSTRACT_PASSES, 12)
+        self.assertEqual(pipeline.MAX_ABSTRACT_PASSES, 32)
         # Filtering ran once per pass, never the post-convergence filter.
         self.assertEqual(harness.retain_calls, pipeline.MAX_ABSTRACT_PASSES)
         self.assertFalse(
             (self.root / "out" / "m68k" / "abstract-analysis.json").exists()
         )
+        progress = json.loads((self.root / "out" / "m68k" / "decoder-passes.json").read_text())
+        self.assertFalse(progress["converged"])
+        self.assertEqual(pipeline.MAX_ABSTRACT_PASSES, len(progress["passes"]))
+        self.assertTrue(progress["passes"][-1]["new_seed_addresses"])
 
     def test_discovered_seed_is_planned_before_next_decoder_pass(self) -> None:
         initial = DecoderSeed(0x200, "reset", "proven", "reset vector")
@@ -264,6 +270,21 @@ class M68kConvergenceTests(unittest.TestCase):
             _plan_addresses(harness.plans_seen[1]), [0x200, 0x1400]
         )
         self.assertEqual(harness.retain_calls, 3)
+
+    def test_validated_unused_function_becomes_a_root_on_next_pass(self):
+        candidate = UnusedCodeCandidate(
+            address=0x240, end=0x250, preceding_address=0x23E,
+            instruction_count=4, instruction_addresses=(0x240, 0x246, 0x24A, 0x24E),
+            signatures=("call_known_code", "rts"), evidence="validated complete CFG",
+        )
+        harness = _M68kHarness([{"unused": (candidate,)}, {}])
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+        self.assertEqual([0x240], _plan_addresses(harness.plans_seen[1]))
+        progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertEqual([0x240], progress["passes"][0]["new_seed_addresses"])
+        self.assertEqual(["validated complete CFG"],
+                         progress["passes"][0]["new_seed_evidence"][0]["evidence"])
 
     def test_low_confidence_candidates_are_not_planned(self) -> None:
         harness = _M68kHarness([
