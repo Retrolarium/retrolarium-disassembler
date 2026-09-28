@@ -207,6 +207,11 @@ def read_listing(
     for address, payload in found.items():
         if len(payload) != listed_bytes:
             continue
+        # A 68000 JMP/JSR has at most a four-byte effective address. An
+        # absolute-long jump already occupies all six displayed bytes; the
+        # next data statement may be several bytes away after a ROM gap.
+        if listed_bytes == 6 and int.from_bytes(payload[:2], "big") & 0xFFC0 in {0x4E80, 0x4EC0}:
+            continue
         index = bisect_right(ordered, address)
         following = ordered[index] if index < len(ordered) else None
         length = None if following is None else following - address

@@ -1,14 +1,17 @@
-"""Generate a standalone Flicky source comparison aligned by ROM address."""
+"""Generate a standalone Mega Drive source comparison aligned by ROM address."""
 
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass, field
 from html import escape
 import json
 from pathlib import Path
 import re
+
+from source_benchmark import read_listing
 
 
 LISTING_LINE = re.compile(r"^(?:\(\d+\))?\s*\d+/\s*([0-9A-Fa-f]+)\s+: (.*)$")
@@ -60,7 +63,9 @@ def binary_includes(generated: Path) -> tuple[BinaryInclude, ...]:
     return tuple(sorted(includes, key=lambda item: item.start))
 
 
-def listing_source(path: Path) -> dict[int, SourceAtAddress]:
+def listing_source(
+    path: Path, *, max_address: int | None = None
+) -> dict[int, SourceAtAddress]:
     if not path.is_file():
         raise ValueError(f"missing assembler listing: {path}")
     result: dict[int, SourceAtAddress] = {}
@@ -69,7 +74,7 @@ def listing_source(path: Path) -> dict[int, SourceAtAddress]:
         if match is None:
             continue
         address = int(match.group(1), 16)
-        if not 0x200 <= address <= 0x1FFFF:
+        if address < 0 or (max_address is not None and address > max_address):
             continue
         payload = match.group(2)
         if len(payload) < 20:
@@ -78,10 +83,18 @@ def listing_source(path: Path) -> dict[int, SourceAtAddress]:
         code = source.strip()
         if not code or code.startswith(";") or code.lower().startswith("include "):
             continue
+        label = LABEL.match(code.split(";", 1)[0])
+        operation = _operation([source])
+        # Assembler conditionals and equates have an address but emit no ROM
+        # bytes. They must not replace the instruction at the same address.
+        encoded = payload[:20].strip()
+        has_bytes = bool(encoded and re.fullmatch(r"[0-9A-Fa-f ]+", encoded))
+        if not has_bytes and operation not in {"binclude", "org"}:
+            if label is None or operation:
+                continue
         record = result.setdefault(address, SourceAtAddress())
         record.lines.append(source)
-        encoded = payload[:20].strip()
-        if encoded and re.fullmatch(r"[0-9A-Fa-f ]+", encoded):
+        if has_bytes:
             record.encoded.append(encoded)
     return result
 
@@ -146,12 +159,6 @@ def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
         return "generated-only"
     if not generated.lines:
         return "reference-only"
-    normalized = lambda lines: tuple(re.sub(r"\s+", "", item.split(";", 1)[0]).lower()
-                                     for item in lines)
-    if normalized(reference.lines) == normalized(generated.lines):
-        return "same-source"
-    if _same_instruction(reference, generated):
-        return "same-instruction"
     original = _operation(reference.lines)
     produced = _operation(generated.lines)
     if original.split(".", 1)[0] not in DIRECTIVES and produced in {"dc.b", "db"}:
@@ -164,6 +171,18 @@ def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
         and original_directive != produced_directive
     ):
         return "data-structure"
+    original_bytes = _encoded_bytes(reference)
+    produced_bytes = _encoded_bytes(generated)
+    if original_bytes and produced_bytes and original_bytes != produced_bytes:
+        return "data-structure" if original_directive else "different-encoding"
+    normalized = lambda lines: tuple(re.sub(r"\s+", "", item.split(";", 1)[0]).lower()
+                                     for item in lines)
+    if normalized(reference.lines) == normalized(generated.lines):
+        return "same-source"
+    if _same_instruction(reference, generated):
+        return "same-instruction"
+    if original_directive is None and produced_directive is None and original != produced:
+        return "different-instruction"
     return "same-bytes"
 
 
@@ -185,29 +204,43 @@ def write_html(
     output: Path,
     *,
     differences_only: bool = False,
+    rom: Path | None = None,
+    reference_listing: Path | None = None,
+    generated_listing: Path | None = None,
+    title: str = "Flicky",
 ) -> Counter[str]:
-    reference_rom = (reference / ROM_NAME).read_bytes()
+    reference_rom = (rom or reference / ROM_NAME).read_bytes()
     generated_rom = (generated / "rebuilt.bin").read_bytes()
     if reference_rom != generated_rom:
         raise ValueError("reference and generated ROMs differ; build and verify first")
-    original = listing_source(reference / "build" / "main.lst")
-    produced = listing_source(generated / "build" / "retrolarium-main.lst")
+    reference_listing = reference_listing or reference / "build" / "main.lst"
+    generated_listing = generated_listing or generated / "build" / "retrolarium-main.lst"
+    original = listing_source(reference_listing, max_address=len(reference_rom) - 1)
+    produced = listing_source(generated_listing, max_address=len(reference_rom) - 1)
+    # Replace six-byte listing prefixes with recovered complete instructions.
+    for records, listing in ((original, reference_listing), (produced, generated_listing)):
+        instructions, _ = read_listing(listing, reference_rom)
+        for address, raw in instructions.items():
+            if address in records:
+                records[address].encoded = [raw.hex(" ").upper()]
     includes = binary_includes(generated)
+    include_starts = [item.start for item in includes]
     addresses = sorted(original.keys() | produced.keys())
     if not addresses:
         raise ValueError("no ROM source lines found in assembler listings")
     counts: Counter[str] = Counter()
     rows: list[str] = []
     visible_addresses: list[int] = []
+    visible_statuses: list[str] = []
     for address in addresses:
         ref = original.get(address, SourceAtAddress())
         gen = produced.get(address, SourceAtAddress())
-        include = next(
-            (item for item in includes if item.start <= address < item.end),
-            None,
-        )
-        if include is not None and ref.lines and _data_or_label(ref):
-            status = "same-include"
+        include_index = bisect_right(include_starts, address) - 1
+        include = includes[include_index] if include_index >= 0 else None
+        if include is not None and address >= include.end:
+            include = None
+        if include is not None and ref.lines:
+            status = "same-include" if _data_or_label(ref) else "code-in-include"
             if not gen.lines:
                 relative = address - include.start
                 gen = SourceAtAddress(
@@ -221,6 +254,7 @@ def write_html(
             continue
         counts[status] += 1
         visible_addresses.append(address)
+        visible_statuses.append(status)
         rows.append(
             f'<tr id="a{address:06X}" class="{status}">'
             f'<th scope="row"><a href="#a{address:06X}">${address:06X}</a></th>'
@@ -234,13 +268,16 @@ def write_html(
         ("same-bytes", "same bytes, different text"),
         ("data-structure", "different data structure"),
         ("raw-fallback", "instruction left as dc.b"),
+        ("code-in-include", "code hidden in a binclude"),
+        ("different-encoding", "different length or bytes"),
+        ("different-instruction", "different instruction"),
         ("reference-only", "reference only"),
         ("generated-only", "kit only"),
     ))
     report_title = (
-        "Flicky — source differences only"
+        f"{title} — source differences only"
         if differences_only
-        else "Flicky — source comparison"
+        else f"{title} — source comparison"
     )
     report_note = (
         "Only addresses with a different data structure, "
@@ -251,14 +288,45 @@ def write_html(
     navigation = "".join(
         f'<a href="#a{target:06X}">{label}</a>'
         for start, end, label in (
-            (0x200, 0x10000, "$000200–$00FFFF"),
-            (0x10000, 0x20000, "$010000–$01FFFF"),
+            (start, min(start + 0x10000, len(reference_rom)),
+             f"${start:06X}–${min(start + 0x10000, len(reference_rom)) - 1:06X}")
+            for start in range(0, len(reference_rom), 0x10000)
         )
         if (target := next(
             (address for address in visible_addresses if start <= address < end),
             None,
         )) is not None
     )
+    row_data = json.dumps(
+        list(zip(visible_addresses, visible_statuses, rows)), ensure_ascii=False
+    ).replace("<", "\\u003c")
+    script = r"""
+const records=JSON.parse(document.getElementById('row-data').textContent);
+const filter=document.getElementById('filter'),visible=document.getElementById('visible');
+const tbody=document.querySelector('tbody'),previous=document.getElementById('previous'),next=document.getElementById('next');
+const pageSize=500;let active=records,page=0;
+function showPage(){const start=page*pageSize;tbody.innerHTML=active.slice(start,start+pageSize).map(r=>r[2]).join('');
+  previous.disabled=page===0;next.disabled=start+pageSize>=active.length;
+  visible.textContent=`Lines: ${active.length}; showing ${active.length?start+1:0}–${Math.min(start+pageSize,active.length)}`}
+function applyFilter(){active=records.filter(r=>filter.value==='all'||
+  (filter.value==='changes'&&!r[1].startsWith('same-'))||
+  (filter.value==='raw'&&['raw-fallback','code-in-include'].includes(r[1]))||
+  (filter.value==='missing'&&['reference-only','generated-only'].includes(r[1])));page=0;showPage()}
+filter.addEventListener('change',applyFilter);
+previous.addEventListener('click',()=>{if(page>0){page--;showPage();document.querySelector('main').scrollIntoView()}});
+next.addEventListener('click',()=>{if((page+1)*pageSize<active.length){page++;showPage();document.querySelector('main').scrollIntoView()}});
+function goAddress(value){const address=parseInt(value.replace(/^\$/,''),16);if(!Number.isFinite(address)||!records.length)return;
+  filter.value='all';active=records;let low=0,high=records.length;
+  while(low<high){const mid=(low+high)>>1;if(records[mid][0]<address)low=mid+1;else high=mid}
+  const index=Math.min(low,records.length-1);page=Math.floor(index/pageSize);showPage();
+  const id='a'+records[index][0].toString(16).toUpperCase().padStart(6,'0'),row=document.getElementById(id);
+  if(row){history.replaceState(null,'','#'+id);row.scrollIntoView({block:'center'})}}
+document.getElementById('jump').addEventListener('click',()=>goAddress(document.getElementById('address').value));
+document.getElementById('address').addEventListener('keydown',e=>{if(e.key==='Enter')goAddress(e.target.value)});
+document.querySelector('nav').addEventListener('click',e=>{const link=e.target.closest('a');if(link){e.preventDefault();goAddress(link.hash.slice(2))}});
+new ResizeObserver(entries=>document.documentElement.style.setProperty('--header-height',entries[0].target.offsetHeight+'px')).observe(document.querySelector('header'));
+showPage();if(location.hash.startsWith('#a'))goAddress(location.hash.slice(2));
+"""
     page = f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(report_title)}</title>
@@ -268,10 +336,10 @@ header{{position:sticky;top:0;z-index:2;background:white;padding:12px 18px;borde
 h1{{font-size:20px;margin:0 0 6px}}p{{margin:5px 0}}nav,.controls{{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:8px}}
 input,select,button{{font:inherit;padding:4px 7px}}main{{padding:12px 18px}}
 table{{border-collapse:collapse;width:100%;table-layout:fixed;background:white}}
-thead th{{position:sticky;top:142px;z-index:1;background:#e8eef5;text-align:left}}
+thead th{{position:sticky;top:var(--header-height,142px);z-index:1;background:#e8eef5;text-align:left}}
 th,td{{border:1px solid #d9e0e8;vertical-align:top;padding:5px 8px}}th:first-child{{width:90px}}
 td{{width:calc((100% - 90px)/2);overflow-wrap:anywhere}}tbody tr:nth-child(even){{background:#fafbfd}}
-tr.raw-fallback{{background:#fff0e4}}tr.reference-only{{background:#fcecec}}
+tr.raw-fallback,tr.code-in-include{{background:#fff0e4}}tr.reference-only,tr.different-encoding,tr.different-instruction{{background:#fcecec}}
 tr.generated-only{{background:#e9f4ff}}
 tr.same-source,tr.same-instruction,tr.same-include,tr.same-data,tr.same-bytes{{background:#eff9ed}}tr.data-structure{{background:#fff0d6}}tr:target{{outline:3px solid #2368bb;outline-offset:-3px}}
 pre{{margin:0;font:12px/1.45 Consolas,'Courier New',monospace;white-space:pre-wrap;tab-size:4}}
@@ -279,37 +347,29 @@ pre{{margin:0;font:12px/1.45 Consolas,'Courier New',monospace;white-space:pre-wr
 .empty{{color:#8793a1}}.legend{{font-size:12px;color:#546273}}
 </style></head><body>
 <header><h1>{escape(report_title)}</h1>
-<p class="legend">Reference: flicky_src · Kit: the generated project · both ROMs verified byte for byte. Aligned by the assembler listings; comments omitted. {escape(report_note)}</p>
+<p class="legend">Reference: {escape(reference.name)} · Kit: the generated project · both ROMs verified byte for byte. Aligned by the assembler listings. {escape(report_note)}</p>
 <p class="legend">{escape(summary)}</p>
 <nav>{navigation}</nav>
-<div class="controls"><label>Show <select id="filter"><option value="all">everything</option><option value="changes">differences</option><option value="raw">dc.b instead of an instruction</option><option value="missing">a line on one side only</option></select></label>
-<label>Address <input id="address" placeholder="010084" size="8" maxlength="6"></label><button id="jump">Go</button><span id="visible"></span></div></header>
-<main><table><thead><tr><th>Address</th><th>Reference flicky_src</th><th>Retrolarium Kit</th></tr></thead><tbody>{chr(10).join(rows)}</tbody></table></main>
-<script>
-const rows=[...document.querySelectorAll('tbody tr')],filter=document.getElementById('filter'),visible=document.getElementById('visible');
-function applyFilter(){{let count=0;for(const row of rows){{const show=filter.value==='all'||
-  (filter.value==='changes'&&!row.classList.contains('same-source')&&!row.classList.contains('same-instruction')&&!row.classList.contains('same-include')&&!row.classList.contains('same-data')&&!row.classList.contains('same-bytes'))||
-  (filter.value==='raw'&&row.classList.contains('raw-fallback'))||
-  (filter.value==='missing'&&(row.classList.contains('reference-only')||row.classList.contains('generated-only')));
-  row.hidden=!show;if(show)count++}}visible.textContent=`Lines: ${{count}}`}}
-filter.addEventListener('change',applyFilter);
-function jump(){{const address=document.getElementById('address').value.replace(/^\\$/,'').toUpperCase().padStart(6,'0');
-  const row=document.getElementById('a'+address);if(row){{filter.value='all';applyFilter();row.scrollIntoView({{block:'center'}});location.hash=row.id}}}}
-document.getElementById('jump').addEventListener('click',jump);
-document.getElementById('address').addEventListener('keydown',e=>{{if(e.key==='Enter')jump()}});
-applyFilter();
-</script></body></html>
+<div class="controls"><label>Show <select id="filter"><option value="all">everything</option><option value="changes">differences</option><option value="raw">undecoded code</option><option value="missing">a line on one side only</option></select></label>
+<label>Address <input id="address" placeholder="01AA32" size="8" maxlength="6"></label><button id="jump">Go</button><button id="previous">← Back</button><button id="next">Next →</button><span id="visible"></span></div></header>
+<main><table><thead><tr><th>Address</th><th>Reference {escape(reference.name)}</th><th>Retrolarium Kit</th></tr></thead><tbody>{chr(10).join(rows[:500])}</tbody></table></main>
+<script type="application/json" id="row-data">{row_data}</script>
+<script>{script}</script></body></html>
 """
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(page, encoding="utf-8", newline="\n")
     return counts
 
 
-def main() -> None:
+def main(default_title: str = "Flicky") -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--generated", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--rom", type=Path, help="reference ROM (must match rebuilt.bin)")
+    parser.add_argument("--reference-listing", type=Path)
+    parser.add_argument("--generated-listing", type=Path)
+    parser.add_argument("--title", default=default_title)
     parser.add_argument(
         "--differences-only",
         action="store_true",
@@ -321,6 +381,10 @@ def main() -> None:
         args.generated,
         args.output,
         differences_only=args.differences_only,
+        rom=args.rom,
+        reference_listing=args.reference_listing,
+        generated_listing=args.generated_listing,
+        title=args.title,
     )
     print(f"{args.output}: {sum(counts.values())} ROM addresses")
 

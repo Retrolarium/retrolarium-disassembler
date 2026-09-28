@@ -14,6 +14,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from retrolarium_kit import megadrive_pipeline as pipeline
+from retrolarium_kit.megadrive import parse_megadrive
 from test_megadrive_pointers import dispatch_facts, dispatch_image
 from test_megadrive_z80 import fact
 
@@ -23,6 +24,39 @@ class _StopAfterAbstractAnalysis(Exception):
 
 
 class MegaDrivePipelineSeedTests(unittest.TestCase):
+    def test_decoded_but_untrusted_packed_function_gets_a_planned_root(self) -> None:
+        payload = bytearray(dispatch_image().data)
+        payload[0x202:0x220] = bytes.fromhex("70 01 4E 75") + bytes(26)
+        image = parse_megadrive(bytes(payload))
+        facts = {
+            item.physical_offset: item for item in (
+                replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR"),
+                fact(0x202, "MOVEQ", "0x1|D0"),
+                replace(fact(0x204, "RTS", ""), flow_type="TERMINATOR"),
+                replace(fact(0x220, "RTS", ""), flow_type="TERMINATOR"),
+            )
+        }
+        seed = SimpleNamespace(address=0x220, evidence="known entry", kind="test", confidence="high", source_address=None)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with ExitStack() as stack:
+                for name, replacement in (
+                    ("load_megadrive", {"return_value": image}),
+                    ("toolchain_status", {}),
+                    ("run_megadrive_analysis", {"return_value": SimpleNamespace(facts=root / "facts.tsv")}),
+                    ("load_megadrive_ghidra_facts", {"return_value": facts}),
+                    ("discover_initial_decoder_seeds", {"return_value": (seed,)}),
+                    ("discover_ram_handler_candidates", {"return_value": ()}),
+                    ("detect_pointer_candidates", {"side_effect": _StopAfterAbstractAnalysis}),
+                ):
+                    stack.enter_context(patch.object(pipeline, name, **replacement))
+                with self.assertRaises(_StopAfterAbstractAnalysis):
+                    pipeline.analyze_megadrive(root / "rom.bin", root / "out", root / "ghidra")
+            analysis = json.loads((root / "out/m68k/abstract-analysis.json").read_text())
+        self.assertEqual([0x202], analysis["passes"][0]["new_seed_addresses"])
+        self.assertIn(0x202, analysis["decoder_seed_addresses"])
+        self.assertNotIn(0x202, analysis["discarded_backend_instruction_addresses"])
+
     def test_untrusted_but_structural_dispatch_bootstraps_handlers(self) -> None:
         targets = tuple(range(0x400, 0x480, 0x10))
         image = dispatch_image(*targets)

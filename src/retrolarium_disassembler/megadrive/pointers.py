@@ -20,6 +20,7 @@ from .m68k_seeds import (
 MIN_ENTRIES = 3
 MIN_ACCEPTED_ENTRIES = 4
 MAX_ENTRIES = 64
+MAX_DISPATCH_ENTRIES = 1024
 MIN_DISPATCH_ENTRIES = 2
 DISPATCH_INDEX_WINDOW = 8
 
@@ -687,9 +688,7 @@ class _DispatchTable:
     call_mnemonic: str
 
 
-_REGISTER_DISPLACEMENT = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),[Aa][0-7](?:,[^)]*)?\)", re.I
-)
+_ADDRESS_REGISTER = re.compile(r"\b(?:A[0-7]|SP)\b", re.I)
 
 
 def _absolute_referenced_addresses(
@@ -697,25 +696,32 @@ def _absolute_referenced_addresses(
 ) -> set[int]:
     """Return data references that name an absolute address.
 
-    Ghidra attaches DATA references to the raw displacement of
-    ``(d16,An)`` operands; those are struct offsets from a runtime base,
-    not table starts, so they must not bound a ROM table.
+    Struct displacements and backend-inferred effective addresses of
+    ``(An)`` accesses depend on runtime state. They do not mark an explicit
+    ROM table boundary. Inspect the referenced operand, so an absolute
+    destination still qualifies when the source is register-indirect.
     """
     addresses: set[int] = set()
     for fact in facts.values():
-        displacements = {
-            int(value, 0) & 0xFFFFFFFF
-            for value in _REGISTER_DISPLACEMENT.findall(fact.operands)
-        }
-        addresses.update(
-            reference.address
-            for reference in fact.references
-            if (
+        operands = fact.operands.split("|")
+        for reference in fact.references:
+            if not (
                 "DATA" in reference.reference_type
                 or "READ" in reference.reference_type
+            ):
+                continue
+            operand = (
+                operands[reference.operand_index]
+                if 0 <= reference.operand_index < len(operands)
+                else fact.operands
             )
-            and reference.address not in displacements
-        )
+            if (
+                "(" in operand
+                and _ADDRESS_REGISTER.search(operand)
+                and "PC" not in operand.upper()
+            ):
+                continue
+            addresses.add(reference.address)
     return addresses
 
 
@@ -803,7 +809,7 @@ def _dispatch_tables(
             continue
         entries: list[PointerEntry] = []
         offset = physical_start
-        while offset + 4 <= len(data) and len(entries) < MAX_ENTRIES:
+        while offset + 4 <= len(data) and len(entries) < MAX_DISPATCH_ENTRIES:
             if any(byte in occupied for byte in range(offset, offset + 4)):
                 break
             logical_offset = rom_start + offset

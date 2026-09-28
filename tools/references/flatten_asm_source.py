@@ -60,8 +60,23 @@ def main() -> None:
     parser.add_argument("--reference", required=True, type=Path)
     parser.add_argument("--entry", default="src/main.s")
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--define", action="append", default=[], metavar="NAME=VALUE",
+        help="define an assembler profile in the flattened file itself",
+    )
     args = parser.parse_args()
     flattened, origins = flatten_source(args.reference, args.entry)
+    definitions = []
+    for assignment in args.define:
+        match = re.fullmatch(r"([A-Za-z_][\w]*)=([^\r\n;]+)", assignment)
+        if match is None:
+            parser.error(f"invalid --define assignment: {assignment!r}")
+        definitions.append(f"{match.group(1)} equ {match.group(2)}")
+    if definitions:
+        flattened = "\n".join(definitions) + "\n" + flattened
+        for origin in origins:
+            origin["start_line"] += len(definitions)
+            origin["end_line"] += len(definitions)
     output = args.output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(flattened, encoding="utf-8", newline="\n")

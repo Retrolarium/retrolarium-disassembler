@@ -79,6 +79,43 @@ class MegaDrivePointerTests(unittest.TestCase):
             entry.target for entry in table.entries
         ))
 
+    def test_dispatch_table_recovers_handlers_beyond_64_entries(self) -> None:
+        data = bytearray(cartridge(size=0x1000))
+        targets = tuple(0x800 + 2 * index for index in range(100))
+        data[0x300:0x490] = b"".join(target.to_bytes(4, "big") for target in targets)
+        data[0x490:0x494] = bytes.fromhex("4E75 4E75")
+        for target in targets:
+            data[target:target + 2] = bytes.fromhex("4E75")
+        image = parse_megadrive(bytes(data))
+        facts = dispatch_facts()
+        seeds = discover_dispatch_table_seeds(image, facts)
+        self.assertEqual(targets, tuple(seed.address for seed in seeds))
+        facts.update({target: replace(fact(target, "RTS", ""), flow_type="TERMINATOR")
+                      for target in targets})
+        table = next(item for item in detect_pointer_candidates(image, facts)
+                     if item.candidate_id.startswith("Ptr_u32be-dispatch"))
+        self.assertEqual("accepted", table.status)
+        self.assertEqual(0x490, table.physical_end)
+
+    def test_inferred_indirect_reference_does_not_split_dispatch_table(self) -> None:
+        image = dispatch_image(0x400, 0x410, 0x420)
+        facts = dispatch_facts()
+        facts[0x210] = fact(
+            0x210, "MOVE.W", "(A0)+|(A1)+",
+            references=(InstructionReference(0x308, "READ", 0),),
+        )
+        self.assertEqual((0x400, 0x410, 0x420), tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+        # The destination operand explicitly addresses a separate table.
+        facts[0x212] = fact(
+            0x212, "MOVE.W", "(A0)|(0x308).l",
+            references=(InstructionReference(0x308, "DATA", 1),),
+        )
+        self.assertEqual((0x400, 0x410), tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+
     def test_dispatch_table_requires_data_register_index(self) -> None:
         image = dispatch_image(0x400, 0x410, 0x420)
 

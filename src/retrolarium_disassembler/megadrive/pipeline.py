@@ -232,6 +232,15 @@ def analyze_megadrive(
                 if edge.confidence == "proven"
             },
         )
+        # A backend-decoded island is still an orphan until it has a root.
+        # Discover packed gaps in the trusted CFG as well as undecoded gaps.
+        orphan_candidates = tuple({
+            candidate.address: candidate
+            for candidate in (
+                *orphan_candidates,
+                *discover_packed_orphan_candidates(image, trusted_facts),
+            )
+        }.values())
         dispatch_seeds = list(discover_dispatch_table_seeds(image, trusted_facts))
         # A structurally proven dispatcher can itself be an unreachable code
         # island. Bootstrap only strong tables from backend facts, then make
@@ -285,7 +294,7 @@ def analyze_megadrive(
             candidate.address
             for candidate in orphan_candidates
             if candidate.confidence == "high"
-            and candidate.address not in facts
+            and candidate.address not in trusted_facts
             and candidate.address not in planned_seeds
         }
         discovered = sorted(

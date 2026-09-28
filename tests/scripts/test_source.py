@@ -75,6 +75,18 @@ class SourceBenchmarkTests(unittest.TestCase):
         self.assertTrue(same_instruction(known[0], rom, expected_open=True))
         self.assertFalse(same_instruction(known[0], rom))
 
+    def test_absolute_jump_does_not_absorb_gap_before_data(self) -> None:
+        rom = bytes.fromhex("4EF9 0001 865E 000E 8D92 0001")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "main.lst"
+            path.write_text("\n".join([
+                listing_line(0, "4EF9 0001 865E", "jmp Target", 21),
+                listing_line(10, "0001", "dc.w 1", 21),
+            ]) + "\n", encoding="utf-8")
+            known, open_ended = read_listing(path, rom)
+        self.assertEqual(rom[:6], known[0])
+        self.assertEqual(frozenset(), open_ended)
+
     def test_short_listing_requires_exact_length(self) -> None:
         self.assertTrue(same_instruction(b"\x4e\x75", b"\x4e\x75"))
         self.assertFalse(same_instruction(b"\x4e\x75", b"\x4e\x75\x00\x00"))

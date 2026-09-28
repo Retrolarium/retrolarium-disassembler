@@ -270,6 +270,23 @@ class M68kAbstractTests(unittest.TestCase):
         self.assertEqual(0x206, result.indirect_edges[0].source_address)
         self.assertEqual(0x300, result.indirect_edges[0].target_address)
 
+    def test_packed_gap_without_return_requires_branch_to_known_code(self) -> None:
+        payload = bytearray(cartridge(size=0x500))
+        payload[0x202:0x220] = bytes.fromhex("70 01") * 15
+        preceding = replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR")
+        following = replace(fact(0x220, "RTS", ""), flow_type="TERMINATOR")
+        facts = {item.physical_offset: item for item in (preceding, following)}
+        self.assertEqual((), discover_packed_orphan_candidates(
+            parse_megadrive(bytes(payload)), facts
+        ))
+        payload[0x21C:0x21E] = bytes.fromhex("60 02")  # BRA.s $220
+        candidates = discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)
+        self.assertEqual((0x202,), tuple(item.address for item in candidates))
+        payload[0x21C:0x21E] = bytes.fromhex("60 04")  # Unknown $222 is insufficient.
+        self.assertEqual((), discover_packed_orphan_candidates(
+            parse_megadrive(bytes(payload)), facts
+        ))
+
     def test_interpreter_resolves_pc_indexed_call_from_masked_register(self) -> None:
         payload = bytearray(cartridge(size=0x500))
         for target in (0x220, 0x224, 0x228, 0x22C):

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sys
+import json
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -13,6 +15,8 @@ from flicky_html_diff import (
     _is_difference,
     _operation,
     _status,
+    listing_source,
+    write_html,
 )
 
 
@@ -65,7 +69,56 @@ class FlickyHtmlDiffTests(unittest.TestCase):
             encoded=["60 00 1F 2C"],
         )
 
-        self.assertEqual("same-bytes", _status(reference, generated))
+        self.assertEqual("different-encoding", _status(reference, generated))
+
+    def test_full_rom_report_recognizes_code_hidden_in_binary_include(self) -> None:
+        def line(number: int, address: int, encoded: str, source: str) -> str:
+            return f"{number}/ {address:X} : {encoded:<21}{source}\n"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reference = root / "manual"
+            generated = root / "project/generated"
+            reference.mkdir()
+            (generated / "build").mkdir(parents=True)
+            rom = bytearray(0x23000)
+            rom[0x21000:0x21004] = bytes.fromhex("60 00 00 02")
+            rom[0x22000:0x22002] = bytes.fromhex("4E 75")
+            rom_path = reference / "game.bin"
+            rom_path.write_bytes(rom)
+            (generated / "rebuilt.bin").write_bytes(rom)
+            ref_listing = reference / "eu.lst"
+            gen_listing = generated / "build/main.lst"
+            ref_listing.write_text(
+                line(1, 0x21000, "6000 0002", "bra.w ManualTarget")
+                + line(2, 0x21000, "[4]", "endif")
+                + line(3, 0x22000, "4E75", "rts"), encoding="utf-8",
+            )
+            gen_listing.write_text(
+                line(1, 0x21000, "6000 0002", "bra.w loc_M68K_021004")
+                + line(2, 0x22000, "", 'binclude "data/opaque.bin"'), encoding="utf-8",
+            )
+            (generated.parent / "retrolarium-project.json").write_text(
+                json.dumps({"assets": {"items": [{
+                    "emit": "binclude", "rom_file_offset": 0x22000,
+                    "size": 0x10, "path": "generated/data/opaque.bin",
+                }]}}), encoding="utf-8",
+            )
+            output = root / "diff.html"
+            kwargs = dict(
+                rom=rom_path, reference_listing=ref_listing,
+                generated_listing=gen_listing, title="Alien Soldier EU",
+            )
+            counts = write_html(reference, generated, output, **kwargs)
+            self.assertEqual(1, counts["same-instruction"])
+            self.assertEqual(1, counts["code-in-include"])
+            self.assertNotIn("endif", listing_source(ref_listing)[0x21000].lines)
+            counts = write_html(reference, generated, output, differences_only=True, **kwargs)
+            html = output.read_text(encoding="utf-8")
+            self.assertEqual(1, sum(counts.values()))
+            self.assertIn('id="a022000"', html)
+            self.assertNotIn('id="a021000"', html)
+            self.assertIn("Alien Soldier EU", html)
 
     def test_raw_fallback_is_not_semantically_equal(self) -> None:
         reference = SourceAtAddress(

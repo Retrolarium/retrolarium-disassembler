@@ -69,6 +69,39 @@ class Z80DispatchTests(unittest.TestCase):
             (), discover_z80_dispatch_tables(bytes(self.payload), self.facts)
         )
 
+    def test_inferred_jump_to_table_does_not_make_its_words_code(self) -> None:
+        self.facts[0x65] = replace(
+            self.facts[0x65], flow_type="COMPUTED_JUMP", flows=(0x80,)
+        )
+        for address in range(0x80, 0x88):
+            self.facts[address] = instruction(address, self.payload[address:address + 1])
+        tables = discover_z80_dispatch_tables(bytes(self.payload), self.facts)
+        self.assertEqual(1, len(tables))
+        self.assertEqual(self.targets, tables[0].targets)
+
+    def test_recovered_target_preserves_following_code_boundary(self) -> None:
+        self.facts[0x65] = replace(
+            self.facts[0x65], flow_type="COMPUTED_JUMP", flows=(0x80,)
+        )
+        self.facts[0x80] = instruction(0x80, bytes.fromhex("A0 00"))
+        # A handler jumps to decoded code just after the four table words.
+        self.facts[0xAC] = replace(
+            instruction(0xAC, bytes.fromhex("C3 88 00")),
+            flow_type="UNCONDITIONAL_JUMP", flows=(0x88,),
+        )
+        self.facts[0x88] = instruction(0x88, bytes.fromhex("3E 01"))
+        tables = discover_z80_dispatch_tables(self._overrun_payload(), self.facts)
+        self.assertEqual(1, len(tables))
+        self.assertEqual((0x80, 0x88), (tables[0].logical_start, tables[0].logical_end))
+        self.assertEqual(self.targets, tables[0].targets)
+
+    def test_explicit_jump_to_table_still_rejects_table(self) -> None:
+        self.facts[0x65] = replace(
+            self.facts[0x65], flow_type="UNCONDITIONAL_JUMP", flows=(0x80,)
+        )
+        self.facts[0x80] = instruction(0x80, b"\x00")
+        self.assertEqual((), discover_z80_dispatch_tables(bytes(self.payload), self.facts))
+
     def test_rejects_unbounded_pointer_values(self) -> None:
         self.payload[0x86:0x88] = bytes.fromhex("FF FF")
         self.assertEqual(

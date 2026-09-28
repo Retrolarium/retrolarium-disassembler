@@ -431,8 +431,8 @@ def discover_packed_orphan_candidates(
 
     This deliberately avoids scanning arbitrary ROM. A candidate needs known
     code on both sides, an exact boundary after a terminating flow, a
-    non-table-like first word, and either a short gap or a return opcode before
-    the next known instruction. Ghidra still has to decode the candidate.
+    non-table-like first word, and either a short gap, a return opcode or a
+    relative branch back into known code. Ghidra still decodes the candidate.
     """
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     addresses = sorted(by_address)
@@ -473,7 +473,24 @@ def discover_packed_orphan_candidates(
             for offset in range(0, len(payload) - 1, 2)
         }
         has_return = bool(words & return_opcodes)
-        if gap_size > 24 and not has_return:
+        known_branch = False
+        for offset in range(0, len(payload) - 1, 2):
+            opcode = int.from_bytes(payload[offset:offset + 2], "big")
+            if opcode & 0xF000 != 0x6000:
+                continue
+            displacement = opcode & 0xFF
+            if displacement == 0:
+                if offset + 4 > len(payload):
+                    continue
+                displacement = int.from_bytes(
+                    payload[offset + 2:offset + 4], "big", signed=True
+                )
+            elif displacement & 0x80:
+                displacement -= 0x100
+            if start + offset + 2 + displacement in by_address:
+                known_branch = True
+                break
+        if gap_size > 24 and not has_return and not known_branch:
             continue
         candidates.append(
             OrphanCandidate(
@@ -485,6 +502,8 @@ def discover_packed_orphan_candidates(
                 evidence=(
                     "packed gap after terminal flow with return opcode"
                     if has_return
+                    else "packed gap after terminal flow with branch to known code"
+                    if known_branch
                     else "short packed gap after terminal flow"
                 ),
             )
