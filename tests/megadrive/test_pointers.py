@@ -54,6 +54,153 @@ def word_dispatch_image():
 
 
 class MegaDrivePointerTests(unittest.TestCase):
+    def test_pc_pointer_dispatch_may_store_callback_before_jump(self) -> None:
+        data = bytearray(cartridge(size=0x800))
+        targets = (0x400, 0x410, 0x420)
+        for index, target in enumerate(targets):
+            data[0x300 + 4 * index:0x304 + 4 * index] = target.to_bytes(4, "big")
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        items = (
+            replace(fact(0x200, "MOVEA.L", "(0x300,PC,D0w*0x1)|A1"), length=4),
+            fact(0x204, "MOVE.L", "A1|(A0)"),
+            replace(fact(0x206, "JMP", "(A1)"), flow_type="COMPUTED_JUMP"),
+        )
+        facts = {item.physical_offset: item for item in items}
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+
+    def test_indexed_object_callback_table_opens_backward_handlers(self) -> None:
+        data = bytearray(cartridge(size=0x800))
+        targets = tuple(0x280 + index * 4 for index in range(8))
+        for index, target in enumerate(targets):
+            data[0x300 + index * 4:0x304 + index * 4] = target.to_bytes(4, "big")
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        items = (
+            replace(fact(0x200, "LEA", "(0x300).l|A4"), length=6),
+            fact(0x206, "MOVE.B", "(A0)+|D2b"),
+            fact(0x208, "ADD.W", "D2w|D2w"),
+            fact(0x20A, "ADD.W", "D2w|D2w"),
+            replace(fact(0x20C, "MOVE.L", "(0x0,A4,D2w*0x1)|(A1)"), length=4),
+        )
+        facts = {item.physical_offset: item for item in items}
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+        without_scale = dict(facts)
+        without_scale.pop(0x20A)
+        self.assertEqual((), discover_dispatch_table_seeds(image, without_scale))
+
+    def test_object_callback_table_base_may_be_loaded_through_ram(self) -> None:
+        data = bytearray(cartridge(size=0x800))
+        targets = tuple(0x400 + index * 4 for index in range(8))
+        for index, target in enumerate(targets):
+            data[0x300 + index * 4:0x304 + index * 4] = target.to_bytes(4, "big")
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        items = (
+            replace(fact(0x200, "MOVE.L", "#0x300|D0"), length=6),
+            replace(fact(0x206, "CMPI.B", "#0x2|D1b"), length=4),
+            replace(fact(0x20A, "MOVE.L", "D0|(0xffffef5a).w"), length=4),
+            replace(fact(0x20E, "MOVEA.L", "(0xffffef5a).w|A4"), length=4),
+            fact(0x212, "MOVE.B", "(A0)+|D2b"),
+            fact(0x214, "ADD.W", "D2w|D2w"),
+            fact(0x216, "ADD.W", "D2w|D2w"),
+            replace(fact(0x218, "MOVE.L", "(0x0,A4,D2w*0x1)|(A1)"), length=4),
+        )
+        facts = {item.physical_offset: item for item in items}
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+
+    def test_pc_word_load_followed_by_indexed_branch_opens_offset_table(self) -> None:
+        data = bytearray(cartridge(size=0x800))
+        targets = (0x308, 0x310, 0x328)
+        for index, target in enumerate(targets):
+            data[0x300 + 2 * index:0x302 + 2 * index] = (target - 0x300).to_bytes(2, "big")
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        load = replace(fact(0x200, "MOVE.W", "(0x300,PC,D0w*0x1)|D1w"), length=4)
+        call = replace(fact(0x204, "JMP", "(0x300,PC,D1w*0x1)"), length=4,
+                       flow_type="COMPUTED_JUMP")
+        facts = {0x200: load, 0x204: call}
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+        for changed in (
+            replace(call, operands="(0x302,PC,D1w*0x1)"),
+            replace(call, operands="(0x300,PC,D2w*0x1)"),
+        ):
+            with self.subTest(operands=changed.operands):
+                self.assertEqual((), discover_dispatch_table_seeds(
+                    image, {0x200: load, 0x204: changed}
+                ))
+        pushed = replace(fact(0x204, "MOVE.W", "(0x10,A0)|-(SP)"), length=4)
+        delayed = replace(call, physical_offset=0x208, cpu_address=0x208)
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(
+                image, {0x200: load, 0x204: pushed, 0x208: delayed}
+            )
+        ))
+        clobber = fact(0x204, "MOVEQ", "0x0|D1")
+        too_late = replace(call, physical_offset=0x206, cpu_address=0x206)
+        self.assertEqual((), discover_dispatch_table_seeds(
+            image, {0x200: load, 0x204: clobber, 0x206: too_late}
+        ))
+
+    def test_pc_dispatch_skips_guarded_zero_slot_before_pointer_table(self) -> None:
+        data = bytearray(cartridge(size=0x800))
+        data[0x300:0x304] = bytes.fromhex("FF EA 4E 75")
+        targets = (0x400, 0x410, 0x420)
+        for index, target in enumerate(targets):
+            data[0x304 + index * 4:0x308 + index * 4] = target.to_bytes(4, "big")
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        items = (
+            fact(0x200, "MOVEQ", "0x0|D0"),
+            fact(0x202, "MOVE.B", "(A0)|D0b"),
+            replace(fact(0x204, "BEQ.B", "0x214"), flow_type="CONDITIONAL_JUMP", flows=(0x214,)),
+            fact(0x206, "ADD.W", "D0w|D0w"),
+            fact(0x208, "ADD.W", "D0w|D0w"),
+            replace(fact(0x20A, "MOVEA.L", "(0x300,PC,D0w*0x1)|A1"), length=4),
+            replace(fact(0x20E, "JSR", "(A1)"), flow_type="COMPUTED_CALL"),
+            replace(fact(0x214, "RTS", ""), flow_type="TERMINATOR"),
+        )
+        facts = {item.physical_offset: item for item in items}
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+        ))
+        shifted = dict(facts)
+        shifted.pop(0x208)
+        shifted[0x206] = fact(0x206, "LSL.W", "#0x2|D0w")
+        shifted[0x208] = replace(shifted.pop(0x20A), physical_offset=0x208,
+                                cpu_address=0x208)
+        shifted[0x20C] = replace(shifted.pop(0x20E), physical_offset=0x20C,
+                                cpu_address=0x20C)
+        shifted[0x204] = replace(shifted[0x204], operands="0x20e", flows=(0x20E,))
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, shifted)
+        ))
+        extended = dict(facts)
+        extended[0x1EE] = fact(0x1EE, "MOVEQ", "0x0|D0")
+        for address in range(0x1F0, 0x202, 2):
+            extended[address] = fact(address, "NOP", "")
+        extended[0x1F4] = replace(fact(0x1F4, "BNE.B", "0x202"),
+                                  flow_type="CONDITIONAL_JUMP", flows=(0x202,))
+        self.assertEqual(targets, tuple(
+            seed.address for seed in discover_dispatch_table_seeds(image, extended)
+        ))
+        for address, operands in ((0x200, "0x1|D0"), (0x204, "0x20A")):
+            changed = dict(facts)
+            changed[address] = (
+                replace(changed[address], operands=operands, flows=(0x20A,))
+                if address == 0x204 else replace(changed[address], operands=operands)
+            )
+            with self.subTest(address=address):
+                self.assertEqual((), discover_dispatch_table_seeds(image, changed))
+
     def test_pc_dispatch_accepts_address_register_word_indices(self) -> None:
         image = dispatch_image(0x400, 0x410, 0x420)
         data = bytearray(image.data)

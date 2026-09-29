@@ -157,6 +157,11 @@ class _M68kHarness:
             return []
         return list(self._current().get("handlers", ()))
 
+    def object_handlers(self, image, facts):
+        if facts is not self._last_facts:
+            return []
+        return list(self._current().get("raw_callbacks", ()))
+
     def orphans(self, image, facts):
         if facts is not self._last_facts:
             return []
@@ -189,6 +194,7 @@ class _M68kHarness:
             "load_megadrive_ghidra_facts": self.load_facts,
             "interpret_known_cfg": self.interpret_known_cfg,
             "discover_ram_handler_candidates": self.handlers,
+            "discover_object_field_handler_candidates": self.object_handlers,
             "discover_packed_orphan_candidates": self.orphans,
             "retain_trusted_instruction_facts": self.retain,
             "discover_dispatch_table_seeds": self.dispatch_seeds,
@@ -284,6 +290,19 @@ class M68kConvergenceTests(unittest.TestCase):
         progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
         self.assertEqual([0x240], progress["passes"][0]["new_seed_addresses"])
         self.assertEqual(["validated complete CFG"],
+                         progress["passes"][0]["new_seed_evidence"][0]["evidence"])
+
+    def test_structural_callback_from_raw_is_planned_for_next_pass(self):
+        callback = _handler(0x350)
+        harness = _M68kHarness([
+            {"raw_callbacks": (callback,)},
+            {"raw_callbacks": (callback,)},
+        ])
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+        self.assertEqual([0x350], _plan_addresses(harness.plans_seen[1]))
+        progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertEqual(["handler 000350"],
                          progress["passes"][0]["new_seed_evidence"][0]["evidence"])
 
     def test_low_confidence_candidates_are_not_planned(self) -> None:

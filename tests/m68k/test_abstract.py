@@ -14,6 +14,7 @@ from retrolarium_kit.m68k_abstract import (
     TruthValue,
     ValueKind,
     discover_packed_orphan_candidates,
+    discover_object_field_handler_candidates,
     discover_ram_handler_candidates,
     interpret_known_cfg,
     retain_trusted_instruction_facts,
@@ -26,6 +27,66 @@ from test_megadrive_z80 import fact
 
 
 class M68kAbstractTests(unittest.TestCase):
+    def test_object_base_callback_requires_executed_ram_loop(self) -> None:
+        payload = bytearray(cartridge(size=0x800))
+        payload[0x400:0x404] = bytes.fromhex("4E 75 08 E8")
+        image = parse_megadrive(bytes(payload))
+        loop = (
+            replace(fact(0x200, "LEA", "(0xffffb000).w|A0"), length=4),
+            fact(0x204, "MOVEQ", "0x3|D7"),
+            fact(0x206, "MOVE.L", "(A0)|D0"),
+            replace(fact(0x208, "BEQ.B", "0x20e"), flow_type="CONDITIONAL_JUMP", flows=(0x20E,)),
+            fact(0x20A, "MOVEA.L", "D0|A1"),
+            replace(fact(0x20C, "JSR", "(A1)"), flow_type="COMPUTED_CALL"),
+            replace(fact(0x20E, "LEA", "(0x4a,A0)|A0"), length=4),
+            replace(fact(0x212, "DBF", "D7w|0x00000206"), length=4),
+        )
+        store = replace(fact(0x230, "MOVE.L", "#0x402|(A0)"), length=6)
+        terminal = replace(fact(0x400, "RTS", ""), flow_type="TERMINATOR")
+        facts = {item.physical_offset: item for item in (*loop, store, terminal)}
+        self.assertEqual((0x402,), tuple(item.address for item in
+                         discover_object_field_handler_candidates(image, facts)))
+        child_store = replace(store, operands="#0x402|(A1)")
+        child_facts = {item.physical_offset: item for item in (*loop, child_store, terminal)}
+        self.assertEqual((0x402,), tuple(item.address for item in
+                         discover_object_field_handler_candidates(image, child_facts)))
+        self.assertEqual((), discover_object_field_handler_candidates(
+            image, {store.physical_offset: store, terminal.physical_offset: terminal}
+        ))
+
+    def test_object_field_callback_requires_reader_and_terminal_boundary(self) -> None:
+        payload = bytearray(cartridge(size=0x800))
+        payload[0x400:0x404] = bytes.fromhex("4E 75 08 E8")
+        image = parse_megadrive(bytes(payload))
+        load = replace(fact(0x220, "MOVEA.L", "(0x34,A0)|A1"), length=4)
+        call = replace(fact(0x224, "JMP", "(A1)"), flow_type="COMPUTED_JUMP")
+        store = replace(fact(0x230, "MOVE.L", "#0x402|(0x34,A0)"), length=8)
+        terminal = replace(fact(0x400, "RTS", ""), flow_type="TERMINATOR")
+        facts = {item.physical_offset: item for item in (load, call, store, terminal)}
+        candidates = discover_object_field_handler_candidates(image, facts)
+        self.assertEqual((0x402,), tuple(item.address for item in candidates))
+        self.assertEqual("proven", candidates[0].confidence)
+        for omitted in (load, call, terminal):
+            with self.subTest(omitted=omitted.mnemonic):
+                self.assertEqual((), discover_object_field_handler_candidates(
+                    image, {address: item for address, item in facts.items()
+                            if address != omitted.physical_offset}
+                ))
+
+    def test_trusted_filter_does_not_follow_bulk_speculative_computed_flows(self) -> None:
+        image = parse_megadrive(cartridge(size=0x800))
+        targets = tuple(range(0x300, 0x342, 2))
+        jump = replace(
+            fact(0x200, "JMP", "(0x202,PC,D0w*0x1)"),
+            flow_type="COMPUTED_JUMP", flows=targets,
+        )
+        island = replace(fact(0x300, "RTS", ""), flow_type="TERMINATOR")
+        facts = {item.physical_offset: item for item in (jump, island)}
+        self.assertEqual({0x200}, set(retain_trusted_instruction_facts(image, facts)))
+        self.assertEqual({0x200, 0x300}, set(retain_trusted_instruction_facts(
+            image, facts, additional_entrypoints={0x300},
+        )))
+
     def test_trusted_fact_filter_rejects_unrooted_data_disassembly(self) -> None:
         image = parse_megadrive(cartridge(size=0x500))
         entry = replace(
@@ -159,6 +220,36 @@ class M68kAbstractTests(unittest.TestCase):
         self.assertEqual(0x10E88, candidates[0].address)
         self.assertEqual(0xFFFA7E, candidates[0].storage_address)
         self.assertEqual("proven", candidates[0].confidence)
+
+    def test_grouped_ram_callback_assignments_prove_sibling_entry(self) -> None:
+        payload = bytearray(cartridge(size=0x800))
+        payload[0x400:0x402] = bytes.fromhex("4E 75")
+        payload[0x500:0x502] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(payload))
+        setup = (
+            replace(fact(0x200, "LEA", "(0xffffb000).w|A0"), length=4),
+            fact(0x204, "MOVEQ", "0x3|D7"),
+            fact(0x206, "MOVE.L", "(A0)|D0"),
+            replace(fact(0x208, "BEQ.B", "0x20e"), flow_type="CONDITIONAL_JUMP", flows=(0x20E,)),
+            fact(0x20A, "MOVEA.L", "D0|A1"),
+            replace(fact(0x20C, "JSR", "(A1)"), flow_type="COMPUTED_CALL"),
+            replace(fact(0x20E, "LEA", "(0x4a,A0)|A0"), length=4),
+            replace(fact(0x212, "DBF", "D7w|0x00000206"), length=4),
+        )
+        first = replace(fact(0x220, "MOVE.L", "#0x400|(0xffffb04a).w"), length=8)
+        second = replace(fact(0x228, "MOVE.L", "#0x500|(0xffffb04a).w"), length=8)
+        known = replace(fact(0x400, "RTS", ""), flow_type="TERMINATOR")
+        candidates = discover_ram_handler_candidates(image, {
+            item.physical_offset: item for item in (*setup, first, second, known)
+        })
+        self.assertEqual((0x400, 0x500), tuple(item.address for item in candidates))
+        self.assertEqual("proven", candidates[1].confidence)
+        self.assertEqual("candidate", discover_ram_handler_candidates(image, {
+            item.physical_offset: item for item in (*setup, second)
+        })[0].confidence)
+        self.assertEqual("candidate", discover_ram_handler_candidates(image, {
+            item.physical_offset: item for item in (first, second, known)
+        })[1].confidence)
 
     def test_small_bitmask_preserves_exact_selector_values(self) -> None:
         masked = AbstractValue.unknown().bitwise_and(0xC)

@@ -17,6 +17,7 @@ from .ghidra import GhidraArtifacts, run_megadrive_analysis, run_z80_analysis
 from .megadrive import MegaDriveImage, image_manifest, load_megadrive
 from .m68k_abstract import (
     discover_packed_orphan_candidates,
+    discover_object_field_handler_candidates,
     discover_ram_handler_candidates,
     interpret_known_cfg,
     retain_trusted_instruction_facts,
@@ -246,7 +247,6 @@ def analyze_megadrive(
         abstract_result = interpret_known_cfg(
             image, facts, additional_entrypoints=planned_seeds
         )
-        abstract_candidates = discover_ram_handler_candidates(image, facts)
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
         # Dispatch sites must themselves be trusted code, never an island.
         trusted_facts = retain_trusted_instruction_facts(
@@ -257,6 +257,10 @@ def analyze_megadrive(
                 for edge in abstract_result.indirect_edges
                 if edge.confidence == "proven"
             },
+        )
+        abstract_candidates = (
+            *discover_ram_handler_candidates(image, trusted_facts),
+            *discover_object_field_handler_candidates(image, trusted_facts),
         )
         # A backend-decoded island is still an orphan until it has a root.
         # Discover packed gaps in the trusted CFG as well as undecoded gaps.
@@ -302,6 +306,18 @@ def analyze_megadrive(
                 evidence=table_seeds[0].evidence,
                 source_address=site,
             ))
+        # A callback writer may sit in a backend-decoded island before its
+        # caller has been reached. The terminal immediately before its ROM
+        # target and the executed object slot prove a useful entrypoint; hand
+        # it to the next decoder pass so its own outgoing edges are explored.
+        raw_callback_candidates = tuple(
+            candidate for candidate in discover_object_field_handler_candidates(image, facts)
+            if candidate.confidence == "proven"
+        )
+        raw_callback_targets = {
+            candidate.address for candidate in raw_callback_candidates
+            if candidate.address not in planned_seeds
+        }
         dispatch_targets = {
             seed.address
             for seed in dispatch_seeds
@@ -334,8 +350,14 @@ def analyze_megadrive(
         }
         discovered = sorted(
             indirect_targets | handler_targets | orphan_targets
-            | dispatch_targets | unused_targets
+            | dispatch_targets | unused_targets | raw_callback_targets
         )
+        for candidate in raw_callback_candidates:
+            if candidate.address in discovered:
+                seed_evidence.setdefault(candidate.address, set()).add(candidate.evidence)
+                seed_kinds.setdefault(candidate.address, set()).add("structural_object_callback")
+                seed_confidence.setdefault(candidate.address, set()).add(candidate.confidence)
+                seed_sources.setdefault(candidate.address, set()).add(candidate.source_address)
         for candidate in validated_unused:
             if candidate.address in discovered:
                 seed_evidence.setdefault(candidate.address, set()).add(candidate.evidence)
@@ -439,10 +461,16 @@ def analyze_megadrive(
         if edge.confidence == "proven"
     }
     unfiltered_facts = facts
+    structural_callback_roots = {
+        candidate.address
+        for candidate in discover_object_field_handler_candidates(image, unfiltered_facts)
+        if candidate.confidence == "proven"
+    }
     facts = retain_trusted_instruction_facts(
         image,
         facts,
-        additional_entrypoints=planned_seeds | proven_indirect_targets,
+        additional_entrypoints=(planned_seeds | proven_indirect_targets
+                                | structural_callback_roots),
     )
     discarded_backend_addresses = sorted(
         fact.cpu_address
@@ -452,7 +480,10 @@ def analyze_megadrive(
     abstract_result = interpret_known_cfg(
         image, facts, additional_entrypoints=planned_seeds
     )
-    abstract_candidates = discover_ram_handler_candidates(image, facts)
+    abstract_candidates = (
+        *discover_ram_handler_candidates(image, facts),
+        *discover_object_field_handler_candidates(image, facts),
+    )
     orphan_candidates = discover_packed_orphan_candidates(image, facts)
     abstract_path = program_root / "abstract-analysis.json"
     unused_path = program_root / "unused-code.json"
@@ -483,6 +514,7 @@ def analyze_megadrive(
                 "converged": converged,
                 "passes": abstract_passes,
                 "decoder_seed_addresses": sorted(planned_seeds),
+                "structural_callback_roots": sorted(structural_callback_roots),
                 "discarded_backend_instruction_addresses": (
                     discarded_backend_addresses
                 ),
@@ -954,12 +986,18 @@ def emit_analyzed_megadrive(
         for edge in abstract_analysis["control_flow"]["indirect_edges"]
         if edge["confidence"] == "proven"
     }
+    structural_callback_roots = {
+        candidate.address
+        for candidate in discover_object_field_handler_candidates(image, m68k_facts)
+        if candidate.confidence == "proven"
+    }
     m68k_facts = retain_trusted_instruction_facts(
         image,
         m68k_facts,
         additional_entrypoints=(
             set(abstract_analysis["decoder_seed_addresses"])
             | proven_indirect_targets
+            | structural_callback_roots
         ),
     )
     pointers = detect_pointer_candidates(image, m68k_facts)

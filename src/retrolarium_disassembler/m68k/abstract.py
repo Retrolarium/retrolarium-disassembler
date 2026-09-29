@@ -14,6 +14,7 @@ from .megadrive_symbols import pc_indexed_target
 
 
 MAX_SMALL_SET = 32
+MAX_BACKEND_COMPUTED_FLOW_TARGETS = 32
 REGISTER_NAMES = tuple(
     [f"d{index}" for index in range(8)]
     + [f"a{index}" for index in range(8)]
@@ -369,6 +370,75 @@ _IMMEDIATE_TO_ABSOLUTE = re.compile(
     r"#(-?0x[0-9a-f]+|-?\d+)\|\((-?0x[0-9a-f]+|-?\d+)\)\.[wl]$",
     re.I,
 )
+_RAM_SLOT_BASE = re.compile(r"\((-?0x[0-9a-f]+|-?\d+)\)\.w\|A([0-7])$", re.I)
+_RAM_SLOT_STEP = re.compile(r"\((-?0x[0-9a-f]+|-?\d+),A([0-7])\)\|A\2$", re.I)
+_IMMEDIATE_TO_FIELD = re.compile(
+    r"#(-?0x[0-9a-f]+|-?\d+)\|\((-?0x[0-9a-f]+|-?\d+),(A[0-7])\)$", re.I
+)
+_IMMEDIATE_TO_OBJECT_BASE = re.compile(
+    r"#(-?0x[0-9a-f]+|-?\d+)\|\(A([01])\)$", re.I
+)
+_FIELD_TO_ADDRESS = re.compile(
+    r"\((-?0x[0-9a-f]+|-?\d+),(A[0-7])\)\|(A[0-7])$", re.I
+)
+
+
+def _executed_ram_callback_slots(facts: dict[int, InstructionFact]) -> set[int]:
+    """Prove object-RAM slots read and called by a counted strided loop."""
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+    slots: set[int] = set()
+    for read in facts.values():
+        if read.mnemonic.upper() != "MOVE.L":
+            continue
+        match = re.fullmatch(r"\(A([0-7])\)\|(D[0-7])", read.operands, re.I)
+        if match is None:
+            continue
+        address_register, value_register = match.group(1), match.group(2).upper()
+        branch = by_address.get(read.cpu_address + read.length)
+        if branch is None or branch.mnemonic.upper() not in {"BEQ.B", "BEQ.W"}:
+            continue
+        load = by_address.get(branch.cpu_address + branch.length)
+        if (load is None or load.mnemonic.upper() != "MOVEA.L"
+                or not re.fullmatch(rf"{value_register}\|A[0-7]", load.operands, re.I)):
+            continue
+        destination = load.operands.rsplit("|", 1)[1].upper()
+        call = by_address.get(load.cpu_address + load.length)
+        if (call is None or call.mnemonic.upper() not in {"JSR", "JMP"}
+                or call.operands.upper() != f"({destination})"):
+            continue
+        step = by_address.get(call.cpu_address + call.length)
+        stride = _RAM_SLOT_STEP.fullmatch(step.operands) if step is not None else None
+        if (step is None or step.mnemonic.upper() != "LEA" or stride is None
+                or stride.group(2) != address_register):
+            continue
+        skip = branch.flows[0] if branch.flows else None
+        if skip != step.cpu_address:
+            continue
+        loop = by_address.get(step.cpu_address + step.length)
+        if (loop is None or loop.mnemonic.upper() != "DBF"
+                or "|" not in loop.operands
+                or int(loop.operands.rsplit("|", 1)[1], 0) != read.cpu_address):
+            continue
+        loop_register = loop.operands.split("|", 1)[0].upper()
+        setup = [fact for fact in facts.values()
+                 if read.cpu_address - 0x40 <= fact.cpu_address < read.cpu_address]
+        starts = [fact for fact in setup if fact.mnemonic.upper() == "LEA"
+                  and (base := _RAM_SLOT_BASE.fullmatch(fact.operands)) is not None
+                  and base.group(2) == address_register]
+        counts = [fact for fact in setup if fact.mnemonic.upper() == "MOVEQ"
+                  and fact.operands.upper().endswith(f"|{loop_register[0:2]}")]
+        if not starts or not counts:
+            continue
+        start = max(starts, key=lambda fact: fact.cpu_address)
+        base_match = _RAM_SLOT_BASE.fullmatch(start.operands)
+        assert base_match is not None
+        base = int(base_match.group(1), 0) & 0xFFFFFF
+        increment = int(stride.group(1), 0)
+        count = int(max(counts, key=lambda fact: fact.cpu_address).operands.split("|", 1)[0], 0)
+        if not 0 < increment <= 256 or not 0 <= count <= 255:
+            continue
+        slots.update((base + index * increment) & 0xFFFFFF for index in range(count + 1))
+    return slots
 
 
 def _plausible_orphan_start(first_word: int) -> bool:
@@ -389,6 +459,9 @@ def discover_ram_handler_candidates(
 ) -> tuple[EntryPointCandidate, ...]:
     """Find ROM addresses installed into work-RAM callback or vector slots."""
     candidates: dict[int, EntryPointCandidate] = {}
+    by_storage: dict[int, list[EntryPointCandidate]] = {}
+    decoded_starts = {fact.cpu_address for fact in facts.values()}
+    executed_slots = _executed_ram_callback_slots(facts)
     ram_vector_starts = {
         vector.address
         for vector in image.vector_table[1:]
@@ -407,7 +480,7 @@ def discover_ram_handler_candidates(
         if target < 0x200 or target >= len(image.data) or target & 1:
             continue
         interrupt_trampoline = (storage - 2) & 0xFFFFFF in ram_vector_starts
-        candidates[target] = EntryPointCandidate(
+        candidate = EntryPointCandidate(
             address=target,
             source_address=fact.cpu_address,
             storage_address=storage,
@@ -417,6 +490,90 @@ def discover_ram_handler_candidates(
                 if interrupt_trampoline
                 else "immediate ROM address stored in work RAM"
             ),
+        )
+        candidates[target] = candidate
+        by_storage.setdefault(storage, []).append(candidate)
+    for storage, assignments in by_storage.items():
+        targets = {candidate.address for candidate in assignments}
+        if storage not in executed_slots or len(targets) < 2:
+            continue
+        # The counted loop reads and invokes this RAM slot. Two independent
+        # ROM assignments prove a callback field even when neither handler
+        # has yet been decoded.
+        for candidate in assignments:
+            if candidate.address in decoded_starts:
+                continue
+            first_word = int.from_bytes(image.data[candidate.address:candidate.address + 2], "big")
+            if not _plausible_orphan_start(first_word):
+                continue
+            candidates[candidate.address] = EntryPointCandidate(
+                address=candidate.address,
+                source_address=candidate.source_address,
+                storage_address=storage,
+                confidence="proven",
+                evidence=(f"RAM slot {storage:06X} is called by a counted loop "
+                          f"and has {len(targets)} ROM handler assignments"),
+            )
+    return tuple(candidates[address] for address in sorted(candidates))
+
+
+def discover_object_field_handler_candidates(
+    image: MegaDriveImage, facts: dict[int, InstructionFact]
+) -> tuple[EntryPointCandidate, ...]:
+    """Find callbacks stored in a struct field and invoked through that field.
+
+    Require the target to begin exactly after known terminating code. This
+    separates callbacks from asset pointers stored in overloaded fields.
+    """
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+    ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
+    executed_object_slots = _executed_ram_callback_slots(facts)
+    readers: dict[tuple[int, str], int] = {}
+    for load in facts.values():
+        if load.mnemonic.upper() != "MOVEA.L":
+            continue
+        match = _FIELD_TO_ADDRESS.fullmatch(load.operands)
+        if match is None:
+            continue
+        call = by_address.get(load.cpu_address + load.length)
+        if (call is None or call.mnemonic.upper() not in {"JSR", "JMP"}
+                or call.operands.upper() != f"({match.group(3).upper()})"):
+            continue
+        readers[(int(match.group(1), 0), match.group(2).upper())] = call.cpu_address
+    candidates = {}
+    for store in facts.values():
+        if store.mnemonic.upper() != "MOVE.L":
+            continue
+        match = _IMMEDIATE_TO_FIELD.fullmatch(store.operands)
+        if match is not None:
+            field = (int(match.group(2), 0), match.group(3).upper())
+            reader = readers.get(field)
+            if reader is None:
+                continue
+            proof = f"called at {reader:06X}"
+        else:
+            match = _IMMEDIATE_TO_OBJECT_BASE.fullmatch(store.operands)
+            if match is None or not executed_object_slots:
+                continue
+            field = (0, f"A{match.group(2)}")
+            proof = "first object longword is invoked by a counted RAM callback loop"
+        target = int(match.group(1), 0) & 0xFFFFFF
+        if not 0x200 <= target < len(image.data) - 1 or target & 1:
+            continue
+        preceding = ends.get(target)
+        if (preceding is None or preceding.flow_type.upper() not in {
+                "TERMINATOR", "UNCONDITIONAL_JUMP", "CALL_TERMINATOR"}):
+            continue
+        first_word = int.from_bytes(image.data[target:target + 2], "big")
+        if first_word in {0, 0xFFFF}:
+            continue
+        candidates[target] = EntryPointCandidate(
+            address=target,
+            source_address=store.cpu_address,
+            storage_address=field[0],
+            confidence="proven",
+            evidence=(f"ROM callback stored in {field[0]:X}({field[1]}); {proof}; "
+                      f"begins after terminal at {preceding.cpu_address:06X}"),
         )
     return tuple(candidates[address] for address in sorted(candidates))
 
@@ -1294,7 +1451,14 @@ def retain_trusted_instruction_facts(
             continue
         reached.add(address)
         flow = fact.flow_type.upper()
-        pending.extend(fact.flows)
+        # Ghidra may attach hundreds of speculative targets to a computed
+        # jump through a word-offset table. Following them as proven control
+        # flow can turn the neighboring pointer table into trusted code.
+        # The abstract interpreter and structural table readers supply
+        # independently proven targets through additional_entrypoints.
+        if (flow not in {"COMPUTED_JUMP", "COMPUTED_CALL"}
+                or len(fact.flows) <= MAX_BACKEND_COMPUTED_FLOW_TARGETS):
+            pending.extend(fact.flows)
         if flow in {
             "FALL_THROUGH",
             "CONDITIONAL_JUMP",
