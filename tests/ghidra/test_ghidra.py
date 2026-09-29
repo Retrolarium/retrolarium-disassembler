@@ -23,6 +23,15 @@ from retrolarium_kit.ghidra import (
 
 
 class GhidraBackendTests(unittest.TestCase):
+    def test_nonzero_z80_base_survives_hex_loader_parsing(self) -> None:
+        def interpret_loader_address(*args, import_arguments, **kwargs):
+            index = import_arguments.index("-loader-baseAddr")
+            return int(import_arguments[index + 1], 16)
+
+        with patch("retrolarium_kit.ghidra._run_analysis", side_effect=interpret_loader_address):
+            decoded_base = run_z80_analysis(Path("payload.bin"), Path("output"), Path("ghidra"), Path("scripts"), base_address=0x1C00)
+        self.assertEqual(0x1C00, decoded_base)
+
     @staticmethod
     def fake_layout(root: Path) -> tuple[Path, Path, Path]:
         image = root / "probe.bin"

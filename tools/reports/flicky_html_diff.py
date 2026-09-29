@@ -15,7 +15,7 @@ from source_benchmark import read_listing
 
 
 LISTING_LINE = re.compile(r"^(?:\(\d+\))?\s*\d+/\s*([0-9A-Fa-f]+)\s+: (.*)$")
-LABEL = re.compile(r"^[A-Za-z_][\w.]*:\s*(.*)$")
+LABEL = re.compile(r"^[A-Za-z_.$][\w.$]*:\s*(.*)$")
 DIRECTIVES = {"binclude", "dc", "ds", "equ", "org", "cpu", "page",
               "supmode", "padding", "align", "cnop", "set", "if", "else",
               "endif", "rept", "endr", "macro", "endm", "even", "db", "dw"}
@@ -161,7 +161,8 @@ def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
         return "reference-only"
     original = _operation(reference.lines)
     produced = _operation(generated.lines)
-    if original.split(".", 1)[0] not in DIRECTIVES and produced in {"dc.b", "db"}:
+    if (original and original.split(".", 1)[0] not in DIRECTIVES
+            and produced in {"dc.b", "dc.w", "dc.l", "db", "dw", "dl"}):
         return "raw-fallback"
     original_directive = _directive_kind(original)
     produced_directive = _directive_kind(produced)
@@ -256,6 +257,12 @@ def write_html(
                 )
         else:
             status = _status(ref, gen)
+        if (opcodes_only and address in instruction_addresses[0]
+                and address in instruction_addresses[1]
+                and _encoded_bytes(ref) == _encoded_bytes(gen)):
+            # BHS/BCC, DBRA/DBF and size aliases encode the same instruction.
+            # Opcode reports compare complete bytes, independent of spelling.
+            status = "same-instruction"
         if (opcodes_only and address in instruction_addresses[1]
                 and address not in instruction_addresses[0]):
             # Same bytes do not make a mnemonic equivalent to reference data.

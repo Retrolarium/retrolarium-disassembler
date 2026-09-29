@@ -23,6 +23,27 @@ def listing_line(address: int, encoded: str, source: str, column: int) -> str:
 
 
 class SourceBenchmarkTests(unittest.TestCase):
+    def test_odd_byte_data_and_binary_include_delimit_full_instruction(self):
+        rom = bytes.fromhex("3168 0010 002E 317C00 3168 0010 002E 00000000")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "main.lst"
+            path.write_text("\n".join([
+                listing_line(0, "3168 0010 002E", "move.w 16(a0),46(a0)", 21),
+                listing_line(6, "317C 00", "dc.b $31,$7C,0", 21),
+                listing_line(9, "3168 0010 002E", "move.w 16(a0),46(a0)", 21),
+                listing_line(15, "", 'binclude "payload.bin"', 21),
+            ]), encoding="utf-8")
+            found, opened = read_listing(path, rom)
+        self.assertEqual({0: rom[:6], 9: rom[9:15]}, found)
+        self.assertFalse(opened)
+
+    def test_instruction_with_dot_local_label_is_counted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "main.lst"
+            path.write_text(listing_line(0, "4E75", ".done: rts", 21), encoding="utf-8")
+            found, _ = read_listing(path, bytes.fromhex("4E75"))
+        self.assertEqual({0: bytes.fromhex("4E75")}, found)
+
     def test_instruction_quality_reports_recall_precision_and_f1(self) -> None:
         self.assertEqual(
             {

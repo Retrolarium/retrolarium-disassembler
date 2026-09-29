@@ -128,7 +128,7 @@ class FlickyHtmlDiffTests(unittest.TestCase):
             root = Path(directory)
             generated = root / "generated"
             generated.mkdir()
-            rom = bytes.fromhex("4E75 0039 4E71")
+            rom = bytes.fromhex("4E75 0039 4E71 6402")
             rom_path = root / "rom.bin"
             rom_path.write_bytes(rom)
             (generated / "rebuilt.bin").write_bytes(rom)
@@ -136,10 +136,12 @@ class FlickyHtmlDiffTests(unittest.TestCase):
             gen = root / "gen.lst"
             ref.write_text(line(1, 0, "4E75", "rts")
                            + line(2, 2, "0039", "dc.w $39")
-                           + line(3, 4, "4E71", "dc.w $4E71"), encoding="utf-8")
+                           + line(3, 4, "4E71", "dc.w $4E71")
+                           + line(4, 6, "6402", "bhs.s Target"), encoding="utf-8")
             gen.write_text(line(1, 0, "4E75", "dc.b $4E,$75")
                            + line(2, 2, "0039", "dc.b $00,$39")
-                           + line(3, 4, "4E71", "nop"), encoding="utf-8")
+                           + line(3, 4, "4E71", "nop")
+                           + line(4, 6, "6402", "bcc.s OtherLabel"), encoding="utf-8")
             output = root / "diff.html"
             counts = write_html(root, generated, output, rom=rom_path,
                                 reference_listing=ref, generated_listing=gen,
@@ -149,6 +151,7 @@ class FlickyHtmlDiffTests(unittest.TestCase):
             self.assertIn('id="a000000"', html)
             self.assertNotIn('id="a000002"', html)
             self.assertIn('id="a000004"', html)
+            self.assertNotIn('id="a000006"', html)
 
     def test_raw_fallback_is_not_semantically_equal(self) -> None:
         reference = SourceAtAddress(
@@ -161,6 +164,9 @@ class FlickyHtmlDiffTests(unittest.TestCase):
         )
 
         self.assertEqual("raw-fallback", _status(reference, generated))
+        for source in ("dc.w $6000,$1F2A", "dc.l $60001F2A"):
+            generated.lines = [source]
+            self.assertEqual("raw-fallback", _status(reference, generated))
 
     def test_different_data_width_is_a_structural_difference(self) -> None:
         reference = SourceAtAddress(

@@ -111,7 +111,7 @@ def run_z80_analysis(
             "-loader-blockName",
             "Z80_RAM",
             "-loader-baseAddr",
-            str(base_address),
+            f"0x{base_address:04X}",
             "-processor",
             "z80:LE:16:default",
         ),

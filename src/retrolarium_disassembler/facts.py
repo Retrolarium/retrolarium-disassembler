@@ -123,6 +123,9 @@ def load_z80_ghidra_facts(
         bank=0,
         address_label="Z80",
         expected_block="Z80_RAM",
+        # A copy away from address zero has no implicit reset entry. It can
+        # contain only data; keep the verified payload without inventing code.
+        allow_empty=base_address != 0,
     )
 
 
@@ -186,6 +189,7 @@ def _load_ghidra_facts(
     bank: int,
     address_label: str,
     expected_block: str | None = None,
+    allow_empty: bool = False,
 ) -> dict[int, InstructionFact]:
     facts: dict[int, InstructionFact] = {}
     occupied: set[int] = set()
@@ -240,6 +244,6 @@ def _load_ghidra_facts(
                 backend_function=row["function"],
                 references=parse_references(row.get("references", "") or ""),
             )
-    if not facts:
+    if not facts and not allow_empty:
         raise FactError("backend exported no instructions")
     return facts

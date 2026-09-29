@@ -403,6 +403,15 @@ In the current Flicky benchmark, the 68000 instruction analysis matches
 (99.76% recall, 99.29% precision). The generated Z80 source emits 1646/1683
 reference instructions as mnemonics (97.8%). The assembled ROM is byte exact.
 
+For additional independent games, see the [Sonic Retro reference corpus](docs/sonic-reference-corpus.md).
+`tools/prepare_sonic_references.py` exports unified assembly units, preserves
+build profiles, and verifies them against upstream builds and original ROMs.
+The references are evaluation inputs only; they never seed the ROM analyzer.
+
+The [Sonic disassembly benchmark](docs/sonic-disassembly-baseline.md) runs
+ROM-only analysis against those verified references, measures opcode recall
+and precision, verifies exact rebuilds, and produces differences-only HTML.
+
 For side-by-side editing, export the two ROM-aligned reference files after
 disassembly:
 

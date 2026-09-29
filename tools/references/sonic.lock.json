@@ -1,0 +1,1140 @@
+{
+  "schema": "retrolarium.sonic-reference-corpus",
+  "schema_version": 1,
+  "purpose": "evaluation only; never seed ROM analysis with these references",
+  "repositories": {
+    "s1disasm": {
+      "url": "https://github.com/sonicretro/s1disasm",
+      "commit": "f74712a26c7568544457f5e28d33f7933b2e3660"
+    },
+    "s2disasm": {
+      "url": "https://github.com/sonicretro/s2disasm",
+      "commit": "380f37a731bfc720bb0371a35a593184a7ec5e43"
+    },
+    "skdisasm": {
+      "url": "https://github.com/sonicretro/skdisasm",
+      "commit": "044fa46725c71187399e13f5ddb70e11d32dc024"
+    },
+    "chaotix": {
+      "url": "https://github.com/sonicretro/chaotix",
+      "commit": "46300f42849ba83f440d4d7e06e70e5c88bb0674"
+    },
+    "scddisasm": {
+      "url": "https://github.com/sonicretro/scddisasm",
+      "commit": "f8cf3f0af7bf419d18182ba98554f09307ad3cc6"
+    }
+  },
+  "units": [
+    {
+      "name": "sonic1-rev01",
+      "repository": "s1disasm",
+      "entry": "sonic.asm",
+      "defines": {},
+      "cpu": "m68000+z80",
+      "address_space": "cartridge",
+      "lines": 73915,
+      "source_sha256": "d6adc9361fde0881de580beee52c344d4e4386649a54347bd55d47b4ce0044f9",
+      "binary_bytes": 524288,
+      "binary_sha256": "1b7f6635bd713f37f3c2f44f302b872c2e3c5f56e63637918dad4637146900fd",
+      "upstream_binary_sha256": "1b7f6635bd713f37f3c2f44f302b872c2e3c5f56e63637918dad4637146900fd",
+      "matches_upstream": true,
+      "source": "sonic1-rev01/main.s",
+      "matching_original_roms": [
+        "Sonic The Hedgehog (W) (REV01) [!].gen"
+      ]
+    },
+    {
+      "name": "sonic2-rev01",
+      "repository": "s2disasm",
+      "entry": "s2.asm",
+      "defines": {},
+      "cpu": "m68000+z80",
+      "address_space": "cartridge",
+      "lines": 122300,
+      "source_sha256": "7b93a483910bc790980cb285a8a541e8740ff5d5748b3100a15f7a2075e32d65",
+      "binary_bytes": 1048576,
+      "binary_sha256": "193bc4064ce0daf27ea9e908ed246d87ec576cc294833badebb590b6ad8e8f6b",
+      "upstream_binary_sha256": "193bc4064ce0daf27ea9e908ed246d87ec576cc294833badebb590b6ad8e8f6b",
+      "matches_upstream": true,
+      "source": "sonic2-rev01/main.s",
+      "matching_original_roms": [
+        "Sonic The Hedgehog 2 (W) (REV01) [!].gen"
+      ]
+    },
+    {
+      "name": "sonic3-usa",
+      "repository": "skdisasm",
+      "entry": "s3.asm",
+      "defines": {},
+      "cpu": "m68000+z80",
+      "address_space": "cartridge",
+      "lines": 178900,
+      "source_sha256": "2ab54293f74fcf91a0d0d6b173564d07263bef7791aeadd2f1cd47821555edf0",
+      "binary_bytes": 2097152,
+      "binary_sha256": "d6404843c5ba32486f4c8c744acb7e1932069376960d886b1de37969787d3f9c",
+      "upstream_binary_sha256": "d6404843c5ba32486f4c8c744acb7e1932069376960d886b1de37969787d3f9c",
+      "matches_upstream": true,
+      "source": "sonic3-usa/main.s",
+      "matching_original_roms": [
+        "Sonic The Hedgehog 3 (U) [!].gen"
+      ]
+    },
+    {
+      "name": "sonic-knuckles",
+      "repository": "skdisasm",
+      "entry": "sonic3k.asm",
+      "defines": {
+        "Sonic3_Complete": "0"
+      },
+      "cpu": "m68000+z80",
+      "address_space": "cartridge",
+      "lines": 280934,
+      "source_sha256": "eeb386ab1a0004d82066c029cd6b1c8dd7545d2caefd09d699611c80612b4f86",
+      "binary_bytes": 2097152,
+      "binary_sha256": "6e12e6b33c26ebfcd0be433251d21cf6284eafe9f71b027bda3767ae59affec1",
+      "upstream_binary_sha256": "6e12e6b33c26ebfcd0be433251d21cf6284eafe9f71b027bda3767ae59affec1",
+      "matches_upstream": true,
+      "source": "sonic-knuckles/main.s",
+      "matching_original_roms": [
+        "Sonic and Knuckles (W) [!].gen"
+      ]
+    },
+    {
+      "name": "chaotix-pwm",
+      "repository": "chaotix",
+      "entry": "mars/pwm_driver.asm",
+      "defines": {},
+      "cpu": "sh2",
+      "address_space": "sh2",
+      "lines": 501,
+      "source_sha256": "de90ce686fca5c9a2d0d08a489d148cfb181c401c7f3e9a16c1f2c2e9e93e5b5",
+      "binary_bytes": 1024,
+      "binary_sha256": "f6b1a39842b3b242657735be03ce60b44ccbff19671ad9b618ef1caf0cf9cf00",
+      "upstream_binary_sha256": "f6b1a39842b3b242657735be03ce60b44ccbff19671ad9b618ef1caf0cf9cf00",
+      "matches_upstream": true,
+      "source": "chaotix/pwm/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "chaotix-z80",
+      "repository": "chaotix",
+      "entry": "sound/z80/driver.asm",
+      "defines": {},
+      "cpu": "z80",
+      "address_space": "z80",
+      "lines": 3791,
+      "source_sha256": "95d0a0f9a41b0e3c81ea783941291cbd547708275b719038c5172bb089d6d33c",
+      "binary_bytes": 3907,
+      "binary_sha256": "93dfdb781a6723e2d515e9603926e2ca7112c76ff4cbcaf25b5f63589bfe3c0b",
+      "upstream_binary_sha256": "93dfdb781a6723e2d515e9603926e2ca7112c76ff4cbcaf25b5f63589bfe3c0b",
+      "matches_upstream": true,
+      "source": "chaotix/z80/main.asm",
+      "matching_original_roms": []
+    },
+    {
+      "name": "chaotix-main",
+      "repository": "chaotix",
+      "entry": "main.asm",
+      "defines": {},
+      "cpu": "m68000",
+      "address_space": "32x-banked",
+      "lines": 455245,
+      "source_sha256": "afbe2332a4b9dcd75367b4b83cbbad37f8f028211e0d9d77f71d4ac1e6c8cb96",
+      "binary_bytes": 3145728,
+      "binary_sha256": "70e1a92a982f2684be3bc315267e545fb9c530d533fd62b6d38bb625541ed957",
+      "upstream_binary_sha256": "70e1a92a982f2684be3bc315267e545fb9c530d533fd62b6d38bb625541ed957",
+      "matches_upstream": true,
+      "source": "chaotix/main/main.s",
+      "matching_original_roms": [
+        "Knuckles' Chaotix (32X) (JU) [!].32x"
+      ]
+    },
+    {
+      "name": "sonic-cd-fm_driver",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/FM/_Driver.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "z80",
+      "cpu_role": "z80",
+      "address_space": "disc-file:../out/misc/fm_driver.bin",
+      "lines": 6266,
+      "source_sha256": "3bc120420b4e782f262688cddb9cb15d4e096c46994a249911c8c7d78ec309bd",
+      "binary_bytes": 6870,
+      "binary_sha256": "23f3df846b228c8de5b55cb6503318f05df1a49c5bdfe282ceecf2502ce5bc99",
+      "upstream_binary_sha256": "23f3df846b228c8de5b55cb6503318f05df1a49c5bdfe282ceecf2502ce5bc99",
+      "matches_upstream": true,
+      "source": "sonic-cd/00-fm_driver/main.asm",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-planet_d",
+      "repository": "scddisasm",
+      "entry": "DA Garden/Track Titles.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/PLANET_D.BIN",
+      "lines": 732,
+      "source_sha256": "3e05fa3308f6052892f3e811a4d1d63d2fe12c38d08c1c4490b04185644c1a4b",
+      "binary_bytes": 7900,
+      "binary_sha256": "f026a5b13f42fdc62fb60a7b1c7ac03e67321fb2073b563e0cef3843dc67dbd2",
+      "upstream_binary_sha256": "f026a5b13f42fdc62fb60a7b1c7ac03e67321fb2073b563e0cef3843dc67dbd2",
+      "matches_upstream": true,
+      "source": "sonic-cd/01-planet_d/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-planet_m",
+      "repository": "scddisasm",
+      "entry": "DA Garden/Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/PLANET_M.MMD",
+      "lines": 6935,
+      "source_sha256": "66f1a19b8697ce467cccb3b0ec450f64602197ebab2e86ce9b6ad92ec619eaf7",
+      "binary_bytes": 22368,
+      "binary_sha256": "40e617f159b0590886eb11b6644ca32d0dbd35097da5179aa3fad10ac2c45450",
+      "upstream_binary_sha256": "40e617f159b0590886eb11b6644ca32d0dbd35097da5179aa3fad10ac2c45450",
+      "matches_upstream": true,
+      "source": "sonic-cd/02-planet_m/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-planet_s",
+      "repository": "scddisasm",
+      "entry": "DA Garden/Sub.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/PLANET_S.BIN",
+      "lines": 2163,
+      "source_sha256": "a5718e7cc40a82810dc04c7c93ec2e7ddc689f58220f11eaa0b216c415af4487",
+      "binary_bytes": 39728,
+      "binary_sha256": "6869b3cfbfa0d81c6d12d63fc3f7470c9ef0e9e519b3181dec56f93b18a993d0",
+      "upstream_binary_sha256": "6869b3cfbfa0d81c6d12d63fc3f7470c9ef0e9e519b3181dec56f93b18a993d0",
+      "matches_upstream": true,
+      "source": "sonic-cd/03-planet_s/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-ip",
+      "repository": "scddisasm",
+      "entry": "CD Initial Program/IP.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/misc/ip.bin",
+      "lines": 1287,
+      "source_sha256": "da5aa284a046c5be12cb7f5d5b041ab0a7997fb26ac8a2f462ac06b33affbaca",
+      "binary_bytes": 542,
+      "binary_sha256": "aeafa862898911a5a9864812e06bd97841bd3322bfff38b67b86ed4bb2d8d2a7",
+      "upstream_binary_sha256": "aeafa862898911a5a9864812e06bd97841bd3322bfff38b67b86ed4bb2d8d2a7",
+      "matches_upstream": true,
+      "source": "sonic-cd/04-ip/main.s",
+      "matching_original_roms": [],
+      "matching_bundled_originals": [
+        "original/ip_japan.bin"
+      ]
+    },
+    {
+      "name": "sonic-cd-ipx___",
+      "repository": "scddisasm",
+      "entry": "CD Initial Program/IPX.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/IPX___.MMD",
+      "lines": 3267,
+      "source_sha256": "90d112a1b0e7c5874a61ecf1f5a1326535fcdd55d481ff02f1ae716e45c48b80",
+      "binary_bytes": 4096,
+      "binary_sha256": "6e19dbef1bd9ad2d36771dbbce575ba7b37dce6d84cbb37bbeb6a98062674447",
+      "upstream_binary_sha256": "6e19dbef1bd9ad2d36771dbbce575ba7b37dce6d84cbb37bbeb6a98062674447",
+      "matches_upstream": true,
+      "source": "sonic-cd/05-ipx___/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sp",
+      "repository": "scddisasm",
+      "entry": "CD System Program/SP.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/misc/sp.bin",
+      "lines": 2370,
+      "source_sha256": "fb8a5081ce0739d72fdfb5b5ce64122779d298cb39332ca522a710a51e786b4a",
+      "binary_bytes": 8662,
+      "binary_sha256": "1535dde98526a9813449c97d8a801e87523837a07a0a55e76c71b3d0e040165e",
+      "upstream_binary_sha256": "1535dde98526a9813449c97d8a801e87523837a07a0a55e76c71b3d0e040165e",
+      "matches_upstream": true,
+      "source": "sonic-cd/06-sp/main.s",
+      "matching_original_roms": [],
+      "matching_bundled_originals": [
+        "original/sp.bin"
+      ]
+    },
+    {
+      "name": "sonic-cd-spx___",
+      "repository": "scddisasm",
+      "entry": "CD System Program/SPX.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SPX___.BIN",
+      "lines": 3985,
+      "source_sha256": "75b30a1960ce02e5620b826c66d755e41ffc6984261c0a2ff3c55549aa0ff7c7",
+      "binary_bytes": 17408,
+      "binary_sha256": "3462f212a5b5b949930778569ceaad0d9cc9d37167a370c5b25b5d9e3cbc4f36",
+      "upstream_binary_sha256": "3462f212a5b5b949930778569ceaad0d9cc9d37167a370c5b25b5d9e3cbc4f36",
+      "matches_upstream": true,
+      "source": "sonic-cd/07-spx___/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-braminit",
+      "repository": "scddisasm",
+      "entry": "Backup RAM/Initialization/Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/BRAMINIT.MMD",
+      "lines": 3654,
+      "source_sha256": "379675096e8e806ec4223157bdea2be26905a2237552b2e12d0ac74985e2c8be",
+      "binary_bytes": 10250,
+      "binary_sha256": "7f47c0f3f194ff2150c3e80e5f011f50d844680fec9d45d7f3c3e61e20a73b62",
+      "upstream_binary_sha256": "7f47c0f3f194ff2150c3e80e5f011f50d844680fec9d45d7f3c3e61e20a73b62",
+      "matches_upstream": true,
+      "source": "sonic-cd/08-braminit/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-bramsub",
+      "repository": "scddisasm",
+      "entry": "Backup RAM/Sub.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/BRAMSUB.BIN",
+      "lines": 1543,
+      "source_sha256": "16366490dfb06c9613ab39b325a4a941f3aa4dac5ebd426a715b84b6397d190f",
+      "binary_bytes": 2592,
+      "binary_sha256": "a1585624a99082c7a41a4107848763e73f3a0e86a6fd74749c8868dcac114ab9",
+      "upstream_binary_sha256": "a1585624a99082c7a41a4107848763e73f3a0e86a6fd74749c8868dcac114ab9",
+      "matches_upstream": true,
+      "source": "sonic-cd/09-bramsub/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-mdinit",
+      "repository": "scddisasm",
+      "entry": "Mega Drive Init/Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/MDINIT.MMD",
+      "lines": 1072,
+      "source_sha256": "45400fbb6083dd416deb8c85a05f6641f4ce1809fab7795d0314ffc2359f6a6c",
+      "binary_bytes": 7514,
+      "binary_sha256": "abd4735cb55aac797402d611b6d732276f02f1394ef39e7e1af6cd9dbd6fdf7e",
+      "upstream_binary_sha256": "abd4735cb55aac797402d611b6d732276f02f1394ef39e7e1af6cd9dbd6fdf7e",
+      "matches_upstream": true,
+      "source": "sonic-cd/10-mdinit/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-warp__",
+      "repository": "scddisasm",
+      "entry": "Time Warp Cutscene/Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/WARP__.MMD",
+      "lines": 2906,
+      "source_sha256": "37bd87be3f61382a3f3b12c3305a5085003a46701c470fac0cc540ce4bf39664",
+      "binary_bytes": 7242,
+      "binary_sha256": "a417c910f61e0d95b33f292b3e84206e1f71018c4478c83da86737b10d0ffe06",
+      "upstream_binary_sha256": "a417c910f61e0d95b33f292b3e84206e1f71018c4478c83da86737b10d0ffe06",
+      "matches_upstream": true,
+      "source": "sonic-cd/11-warp__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnk1b",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Palmtree Panic.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNK1B.BIN",
+      "lines": 3415,
+      "source_sha256": "285dae12a9110f9f41238a5e73423ab830235ba397b6d18a557c4f76ce05ed73",
+      "binary_bytes": 217866,
+      "binary_sha256": "fd7ab10c908bd26545afc5bf5da0765e7178fe8fe2929b15957acf9bd7d6e558",
+      "upstream_binary_sha256": "fd7ab10c908bd26545afc5bf5da0765e7178fe8fe2929b15957acf9bd7d6e558",
+      "matches_upstream": true,
+      "source": "sonic-cd/12-sncbnk1b/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnk3b",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Collision Chaos.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNK3B.BIN",
+      "lines": 3729,
+      "source_sha256": "058cb2509cdb7a1092d1afe65c1e4f66f47938fa7b81071a892f9409d3f05180",
+      "binary_bytes": 242597,
+      "binary_sha256": "82b9ac37eddbf379155ab76407efc1596e61c7707c592eb47e41cfc468012340",
+      "upstream_binary_sha256": "82b9ac37eddbf379155ab76407efc1596e61c7707c592eb47e41cfc468012340",
+      "matches_upstream": true,
+      "source": "sonic-cd/13-sncbnk3b/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnk4b",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Tidal Tempest.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNK4B.BIN",
+      "lines": 3568,
+      "source_sha256": "e9e0dba83f186e70e7679b6df23223f1ba5fecac20623f1ae0da240c97d56db5",
+      "binary_bytes": 201562,
+      "binary_sha256": "7746a04d60551aeeae724a2c6d77b48d7ff52bb050707495010b514e10b41296",
+      "upstream_binary_sha256": "7746a04d60551aeeae724a2c6d77b48d7ff52bb050707495010b514e10b41296",
+      "matches_upstream": true,
+      "source": "sonic-cd/14-sncbnk4b/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnk5b",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Quartz Quadrant.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNK5B.BIN",
+      "lines": 3738,
+      "source_sha256": "85011930388b97c108e50fb40307fa680cf70ff56c24a8bfee2a974d79461614",
+      "binary_bytes": 199035,
+      "binary_sha256": "0d90d47a80bfe88383045589a84f40232b746e68b70a97fcf577a2d42b3affc5",
+      "upstream_binary_sha256": "0d90d47a80bfe88383045589a84f40232b746e68b70a97fcf577a2d42b3affc5",
+      "matches_upstream": true,
+      "source": "sonic-cd/15-sncbnk5b/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnk6b",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Wacky Workbench.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNK6B.BIN",
+      "lines": 3626,
+      "source_sha256": "9103f6027ecdd7862b7c7b8449f86082d1c44b04f5775b33ef4065026bf3e5f2",
+      "binary_bytes": 217454,
+      "binary_sha256": "a7091e8e91b4dab34164adf81c7b0f0d321da6aa8fd6f7acb8b3af51cca71142",
+      "upstream_binary_sha256": "a7091e8e91b4dab34164adf81c7b0f0d321da6aa8fd6f7acb8b3af51cca71142",
+      "matches_upstream": true,
+      "source": "sonic-cd/16-sncbnk6b/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnk7b",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Stardust Speedway.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNK7B.BIN",
+      "lines": 3601,
+      "source_sha256": "022096dee97a5f712cc398ed31a22921564667c737df12db94d16fa8a1656773",
+      "binary_bytes": 212897,
+      "binary_sha256": "1369ef44871143ce34431e17c8da9f0994764abe9ab35340e086609dbf8ddfab",
+      "upstream_binary_sha256": "1369ef44871143ce34431e17c8da9f0994764abe9ab35340e086609dbf8ddfab",
+      "matches_upstream": true,
+      "source": "sonic-cd/17-sncbnk7b/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnk8b",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Metallic Madness.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNK8B.BIN",
+      "lines": 3610,
+      "source_sha256": "029dd0847f3ec799ecb8ec6e022dead716add559cea87c72eebe0dbab8e23ac5",
+      "binary_bytes": 219249,
+      "binary_sha256": "afa64973a0d01c286049bafbcb71008a43c86f9a0688e34b2680874c3a93d8f7",
+      "upstream_binary_sha256": "afa64973a0d01c286049bafbcb71008a43c86f9a0688e34b2680874c3a93d8f7",
+      "matches_upstream": true,
+      "source": "sonic-cd/18-sncbnk8b/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnkb1",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Boss.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNKB1.BIN",
+      "lines": 2979,
+      "source_sha256": "f2c4ecfb1e97e90654b0fc5e7a38259882e331cf87f7fe0f4107a18b3760b0cd",
+      "binary_bytes": 181787,
+      "binary_sha256": "e74dfe9f8faaa434d6c2ac6dfafc5fb1fb3abc2aa4af474d1b1d6829f7f6aa2f",
+      "upstream_binary_sha256": "e74dfe9f8faaa434d6c2ac6dfafc5fb1fb3abc2aa4af474d1b1d6829f7f6aa2f",
+      "matches_upstream": true,
+      "source": "sonic-cd/19-sncbnkb1/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sncbnkb2",
+      "repository": "scddisasm",
+      "entry": "Sound Drivers/PCM/Final Boss.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SNCBNKB2.BIN",
+      "lines": 2982,
+      "source_sha256": "81410d3fe6f51bfa1484427cefe3649a900f80d341481511b9fac63f510d927a",
+      "binary_bytes": 198665,
+      "binary_sha256": "10f877fdf1e9fb8a7b060e844c7e6237a40b4b6274fad706e70904d63944056f",
+      "upstream_binary_sha256": "10f877fdf1e9fb8a7b060e844c7e6237a40b4b6274fad706e70904d63944056f",
+      "matches_upstream": true,
+      "source": "sonic-cd/20-sncbnkb2/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-titlem",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/TITLEM.MMD",
+      "lines": 4420,
+      "source_sha256": "d12aff06415ead180de6ff4476dff59859d3ddd1f9db087b065ed2584d37c12f",
+      "binary_bytes": 27266,
+      "binary_sha256": "1b8fa531344709e633648ec19af373cb260d9c526c83df6e43af02d4d55bfb02",
+      "upstream_binary_sha256": "1b8fa531344709e633648ec19af373cb260d9c526c83df6e43af02d4d55bfb02",
+      "matches_upstream": true,
+      "source": "sonic-cd/21-titlem/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-titles",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Sub.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/TITLES.BIN",
+      "lines": 1105,
+      "source_sha256": "a6302b2f583cf10020828972cc9789b1a395fa4a67d75c52fdc337d2b251095e",
+      "binary_bytes": 8090,
+      "binary_sha256": "4fa341a61de9038e53998b3a8cbde0c1ddb6b826ac5700b82131ccff40ce1167",
+      "upstream_binary_sha256": "4fa341a61de9038e53998b3a8cbde0c1ddb6b826ac5700b82131ccff40ce1167",
+      "matches_upstream": true,
+      "source": "sonic-cd/22-titles/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-sosel_",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Sound Test.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/SOSEL_.MMD",
+      "lines": 3814,
+      "source_sha256": "919729139718bdbf527017215d667a1e790a129302e640b1f614de0fe30f2a44",
+      "binary_bytes": 12544,
+      "binary_sha256": "27dfb7822347e8c07a1645039f76c4094209f5542ca171603ba72bda1aa35eaf",
+      "upstream_binary_sha256": "27dfb7822347e8c07a1645039f76c4094209f5542ca171603ba72bda1aa35eaf",
+      "matches_upstream": true,
+      "source": "sonic-cd/23-sosel_/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-stsel_",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Stage Select.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/STSEL_.MMD",
+      "lines": 3735,
+      "source_sha256": "7e01da544b92fc4ddd181e5179cf88fdcd868b24cd0402d026276ac059293689",
+      "binary_bytes": 12544,
+      "binary_sha256": "196df26e4c08ebeea776fdf69191040e633d445449145934cb5542e5af316532",
+      "upstream_binary_sha256": "196df26e4c08ebeea776fdf69191040e633d445449145934cb5542e5af316532",
+      "matches_upstream": true,
+      "source": "sonic-cd/24-stsel_/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-dummy4",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Best Staff Times.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "1"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/DUMMY4.MMD",
+      "lines": 3261,
+      "source_sha256": "14d975fc3b34a38a3f77c52245fdfc279e9f604971e889b1562e9b4e356def92",
+      "binary_bytes": 16640,
+      "binary_sha256": "a45d92e5d0fab7df5f5ca59d94f85ffb3ca39436207755a711adc2cce90f942b",
+      "upstream_binary_sha256": "a45d92e5d0fab7df5f5ca59d94f85ffb3ca39436207755a711adc2cce90f942b",
+      "matches_upstream": true,
+      "source": "sonic-cd/25-dummy4/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-speend",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Special Stage 8 Credits.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/SPEEND.MMD",
+      "lines": 3240,
+      "source_sha256": "fb06b9f02488c30cf610acafddacc3781523f64fad7cc203ec7ad01c069c74e4",
+      "binary_bytes": 16640,
+      "binary_sha256": "9124578d4e26002fe071ff4765cd3208165b5d95e154fe78998d22933cb6ea45",
+      "upstream_binary_sha256": "9124578d4e26002fe071ff4765cd3208165b5d95e154fe78998d22933cb6ea45",
+      "matches_upstream": true,
+      "source": "sonic-cd/26-speend/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-dummy5",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Sound Test (Prototype).asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "1",
+        "H32": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/DUMMY5.MMD",
+      "lines": 3565,
+      "source_sha256": "47db17ad01801c1baad56b36ed90bc5860468077623748fcbd7427b9bc05cbd9",
+      "binary_bytes": 16640,
+      "binary_sha256": "14de84b06cf76710d5beccad52036dff3acef46c79b99bab832def7233c392ad",
+      "upstream_binary_sha256": "14de84b06cf76710d5beccad52036dff3acef46c79b99bab832def7233c392ad",
+      "matches_upstream": true,
+      "source": "sonic-cd/27-dummy5/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-nisi",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Sound Test Image.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0",
+        "EASTEREGG": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/NISI.MMD",
+      "lines": 2190,
+      "source_sha256": "23511854d3323fa6420ac434b4c5231ed582b0b05674ccdc7c5fb537598e126f",
+      "binary_bytes": 16640,
+      "binary_sha256": "a63cf65088abc603454222818cb0e8092d07ddd11b73e0628095a0a0ee249b0e",
+      "upstream_binary_sha256": "a63cf65088abc603454222818cb0e8092d07ddd11b73e0628095a0a0ee249b0e",
+      "matches_upstream": true,
+      "source": "sonic-cd/28-nisi/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-dummy0",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Sound Test Image.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0",
+        "EASTEREGG": "1"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/DUMMY0.MMD",
+      "lines": 2190,
+      "source_sha256": "8236279cda99d2b6258002f638497b88df3007249b1bd8005ecd87f50f590953",
+      "binary_bytes": 16640,
+      "binary_sha256": "a7e01254c3ee2e2993e2aee3b4394d08f057d0b6256e03c3309e8a1267bcc840",
+      "upstream_binary_sha256": "a7e01254c3ee2e2993e2aee3b4394d08f057d0b6256e03c3309e8a1267bcc840",
+      "matches_upstream": true,
+      "source": "sonic-cd/29-dummy0/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-dummy1",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Sound Test Image.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0",
+        "EASTEREGG": "2"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/DUMMY1.MMD",
+      "lines": 2190,
+      "source_sha256": "7d41296790a35f0b33408bd6b4bae1b77b3f28af290cfaba7afaa51c3a670692",
+      "binary_bytes": 16640,
+      "binary_sha256": "fe3a8911dca2571600ebb7b98d3a7dfe73dc1fd264937c4fa2a6e9e91f852724",
+      "upstream_binary_sha256": "fe3a8911dca2571600ebb7b98d3a7dfe73dc1fd264937c4fa2a6e9e91f852724",
+      "matches_upstream": true,
+      "source": "sonic-cd/30-dummy1/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-dummy2",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Sound Test Image.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0",
+        "EASTEREGG": "3"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/DUMMY2.MMD",
+      "lines": 2190,
+      "source_sha256": "17a8be7d9cf57ae4655b6fe46ed0733694e9a62e54e37d2865bf577bf4ffc089",
+      "binary_bytes": 16640,
+      "binary_sha256": "9a7541bd89f52a89b43e57b10617e98e6683687b86413525d5c289c59f2f8337",
+      "upstream_binary_sha256": "9a7541bd89f52a89b43e57b10617e98e6683687b86413525d5c289c59f2f8337",
+      "matches_upstream": true,
+      "source": "sonic-cd/31-dummy2/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-dummy3",
+      "repository": "scddisasm",
+      "entry": "Title Screen/Secrets/Sound Test Image.asm",
+      "defines": {
+        "REGION": "0",
+        "PROTOTYPE": "0",
+        "H32": "0",
+        "EASTEREGG": "4"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/DUMMY3.MMD",
+      "lines": 2190,
+      "source_sha256": "d015bb14d2988df7055ce29d8d7faf16a0fd70c933be07034abf5daa409c13e2",
+      "binary_bytes": 16640,
+      "binary_sha256": "b1b8218914622cdba798df78bf7ae70fce68fd8a6c2cdebc39b0002b2b01a172",
+      "upstream_binary_sha256": "b1b8218914622cdba798df78bf7ae70fce68fd8a6c2cdebc39b0002b2b01a172",
+      "matches_upstream": true,
+      "source": "sonic-cd/32-dummy3/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-open_m",
+      "repository": "scddisasm",
+      "entry": "FMV/Main (Opening).asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/OPEN_M.MMD",
+      "lines": 1684,
+      "source_sha256": "dfdf6c2646c573565b9e06d81d9cbb368846545ad155393dd14be28342ee49be",
+      "binary_bytes": 10026,
+      "binary_sha256": "0c1f41e0020ab07db2bab64daf2364308c6d7e9d5a2ceb6c847be633596ba15e",
+      "upstream_binary_sha256": "0c1f41e0020ab07db2bab64daf2364308c6d7e9d5a2ceb6c847be633596ba15e",
+      "matches_upstream": true,
+      "source": "sonic-cd/33-open_m/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-open_s",
+      "repository": "scddisasm",
+      "entry": "FMV/Sub (Opening).asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/OPEN_S.BIN",
+      "lines": 1158,
+      "source_sha256": "e39873a638792f723d4d627c15cd1c03058748f6a2dd07cd972b2a9c246abf04",
+      "binary_bytes": 590,
+      "binary_sha256": "a20496100b68b88f6aab63b2ea6657b0782dc1485f67ec9b5ff56f322771094a",
+      "upstream_binary_sha256": "a20496100b68b88f6aab63b2ea6657b0782dc1485f67ec9b5ff56f322771094a",
+      "matches_upstream": true,
+      "source": "sonic-cd/34-open_s/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-goodend",
+      "repository": "scddisasm",
+      "entry": "FMV/Sub (Ending).asm",
+      "defines": {
+        "REGION": "0",
+        "DATAFILE": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/GOODEND.BIN",
+      "lines": 1188,
+      "source_sha256": "d9cc80110bd3e36d18b79fa6f113771187d210e0563cc719e12508ad4cccd20c",
+      "binary_bytes": 640,
+      "binary_sha256": "66d4258c6fabe508d16a5cd5eb9af28d7177e32c10199a2e105ff88b0fb01465",
+      "upstream_binary_sha256": "66d4258c6fabe508d16a5cd5eb9af28d7177e32c10199a2e105ff88b0fb01465",
+      "matches_upstream": true,
+      "source": "sonic-cd/35-goodend/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-badend",
+      "repository": "scddisasm",
+      "entry": "FMV/Sub (Ending).asm",
+      "defines": {
+        "REGION": "0",
+        "DATAFILE": "1"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/BADEND.BIN",
+      "lines": 1188,
+      "source_sha256": "0ffe66678626652cdcf203dcb2629d62feea7473de7430a0cc9352a3ac0f8f6d",
+      "binary_bytes": 640,
+      "binary_sha256": "11b52cf7e80912c2919a81cfe7111f56a4b6bfdcfa6371a1cedffaaa73b95a76",
+      "upstream_binary_sha256": "11b52cf7e80912c2919a81cfe7111f56a4b6bfdcfa6371a1cedffaaa73b95a76",
+      "matches_upstream": true,
+      "source": "sonic-cd/36-badend/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-ptest",
+      "repository": "scddisasm",
+      "entry": "FMV/Sub (Pencil Test).asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/PTEST.BIN",
+      "lines": 1015,
+      "source_sha256": "bd6ec7dd775d450a0f07b1456e46ec6e5f8c704e83b6c325cb4f3875561a42d6",
+      "binary_bytes": 286,
+      "binary_sha256": "dc76f463ada7d9281d1c8ed5806f2d2ed6884a8c87d3be15a90dac5a0f01a29c",
+      "upstream_binary_sha256": "dc76f463ada7d9281d1c8ed5806f2d2ed6884a8c87d3be15a90dac5a0f01a29c",
+      "matches_upstream": true,
+      "source": "sonic-cd/37-ptest/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-vm____",
+      "repository": "scddisasm",
+      "entry": "Visual Mode/Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/VM____.MMD",
+      "lines": 2549,
+      "source_sha256": "6e2f3bcba5d4a6fa5f9d52e10932dfc6b3073069b6742ad2e1220ef11d617e3b",
+      "binary_bytes": 15774,
+      "binary_sha256": "5e4f8320d3aedbd7c32b8001795d875931251d25745c67276693a89cb0dcf1db",
+      "upstream_binary_sha256": "5e4f8320d3aedbd7c32b8001795d875931251d25745c67276693a89cb0dcf1db",
+      "matches_upstream": true,
+      "source": "sonic-cd/38-vm____/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-r11a__",
+      "repository": "scddisasm",
+      "entry": "Level/Palmtree Panic/Act 1 Present.asm",
+      "defines": {
+        "REGION": "0",
+        "DEMO": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "data",
+      "address_space": "disc-file:../out/files/R11A__.MMD",
+      "lines": 38590,
+      "source_sha256": "599c082a10b92a94ce6c18348ed40de1df42dad8ce57bc05eb190698c31126a8",
+      "binary_bytes": 262144,
+      "binary_sha256": "241be9620fbad1229792fedd1604066ae3e7d943cb7cc27bc94a4a837452d9b6",
+      "upstream_binary_sha256": "241be9620fbad1229792fedd1604066ae3e7d943cb7cc27bc94a4a837452d9b6",
+      "matches_upstream": true,
+      "source": "sonic-cd/39-r11a__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-demo11a",
+      "repository": "scddisasm",
+      "entry": "Level/Palmtree Panic/Act 1 Present.asm",
+      "defines": {
+        "REGION": "0",
+        "DEMO": "1"
+      },
+      "cpu": "m68000",
+      "cpu_role": "data",
+      "address_space": "disc-file:../out/files/DEMO11A.MMD",
+      "lines": 38590,
+      "source_sha256": "721901345d73959c2ae9e93eae6370e3ce5e61f8ce1099f9e79db32a911394c9",
+      "binary_bytes": 262144,
+      "binary_sha256": "b1c4557d4b5a0782d65b6ab61b0d3e2ddf23b00033a15d0b51dd3c1e0bb8a89e",
+      "upstream_binary_sha256": "b1c4557d4b5a0782d65b6ab61b0d3e2ddf23b00033a15d0b51dd3c1e0bb8a89e",
+      "matches_upstream": true,
+      "source": "sonic-cd/40-demo11a/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-r11b__",
+      "repository": "scddisasm",
+      "entry": "Level/Palmtree Panic/Act 1 Past.asm",
+      "defines": {
+        "REGION": "0",
+        "DEMO": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "data",
+      "address_space": "disc-file:../out/files/R11B__.MMD",
+      "lines": 37120,
+      "source_sha256": "4494e92afbc143402cc3201820ddb6ff9148facf71e6ac3a97273984f013e08d",
+      "binary_bytes": 262144,
+      "binary_sha256": "08d1bef6beecd9852b2de21e0cf61a80d4ed2b13af282ad19a0aa2b2edb62682",
+      "upstream_binary_sha256": "08d1bef6beecd9852b2de21e0cf61a80d4ed2b13af282ad19a0aa2b2edb62682",
+      "matches_upstream": true,
+      "source": "sonic-cd/41-r11b__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-r11c__",
+      "repository": "scddisasm",
+      "entry": "Level/Palmtree Panic/Act 1 Good Future.asm",
+      "defines": {
+        "REGION": "0",
+        "DEMO": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "data",
+      "address_space": "disc-file:../out/files/R11C__.MMD",
+      "lines": 36193,
+      "source_sha256": "af5d92060ac8351741ef63d30c47e114d0cf53e3685053dcade8db66104db72a",
+      "binary_bytes": 262144,
+      "binary_sha256": "11d4b7cb055f4d6c57edc3a36036196de7771b63ff4736626bba500740ba651e",
+      "upstream_binary_sha256": "11d4b7cb055f4d6c57edc3a36036196de7771b63ff4736626bba500740ba651e",
+      "matches_upstream": true,
+      "source": "sonic-cd/42-r11c__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-r11d__",
+      "repository": "scddisasm",
+      "entry": "Level/Palmtree Panic/Act 1 Bad Future.asm",
+      "defines": {
+        "REGION": "0",
+        "DEMO": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "data",
+      "address_space": "disc-file:../out/files/R11D__.MMD",
+      "lines": 36214,
+      "source_sha256": "c3b7f97c56ba4e5f986b762cd7f25d5b281e19e7bc792b6acdb7be4b47d46661",
+      "binary_bytes": 262144,
+      "binary_sha256": "a558a88e26c2d04766caba4d23373f30b232a02b9f34e4c97e562975e10abf54",
+      "upstream_binary_sha256": "a558a88e26c2d04766caba4d23373f30b232a02b9f34e4c97e562975e10abf54",
+      "matches_upstream": true,
+      "source": "sonic-cd/43-r11d__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-r61a__",
+      "repository": "scddisasm",
+      "entry": "Level/Wacky Workbench/Act 1 Present.asm",
+      "defines": {
+        "REGION": "0",
+        "DEMO": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "data",
+      "address_space": "disc-file:../out/files/R61A__.MMD",
+      "lines": 37892,
+      "source_sha256": "3d3cd2fee2075a037333a4e474676b5d19bef10b2f573a7377057175479b3d87",
+      "binary_bytes": 262144,
+      "binary_sha256": "9614f69d12bc2bacdd6eb3ff531053703e132065b41492ac9231d3881f1b77cd",
+      "upstream_binary_sha256": "9614f69d12bc2bacdd6eb3ff531053703e132065b41492ac9231d3881f1b77cd",
+      "matches_upstream": true,
+      "source": "sonic-cd/44-r61a__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-stage data",
+      "repository": "scddisasm",
+      "entry": "Special Stage/Stage Data.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:Special Stage/Stage Data.bin",
+      "lines": 1226,
+      "source_sha256": "6d4d6c49f521fa570baaa51a0c690b98139afa608af7250cf7bf835da07e1ca0",
+      "binary_bytes": 48204,
+      "binary_sha256": "ecd5488220e0dde9a7cae3b03fedc039175c263ec75935990cdce8a64464e178",
+      "upstream_binary_sha256": "ecd5488220e0dde9a7cae3b03fedc039175c263ec75935990cdce8a64464e178",
+      "matches_upstream": true,
+      "source": "sonic-cd/45-stage data/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-spmm__",
+      "repository": "scddisasm",
+      "entry": "Special Stage/Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "main-cpu",
+      "address_space": "disc-file:../out/files/SPMM__.MMD",
+      "lines": 6048,
+      "source_sha256": "8536fecee3e71e25f64e1c415c4a7f75d0adc0f353a73a28f438e6ccf24be0c7",
+      "binary_bytes": 27904,
+      "binary_sha256": "1a4beb54627835711742e098279836db0c352de15f1dc527cc4bd6ce06edfc7c",
+      "upstream_binary_sha256": "1a4beb54627835711742e098279836db0c352de15f1dc527cc4bd6ce06edfc7c",
+      "matches_upstream": true,
+      "source": "sonic-cd/46-spmm__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-spss__",
+      "repository": "scddisasm",
+      "entry": "Special Stage/Sub.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "m68000",
+      "cpu_role": "sub-cpu",
+      "address_space": "disc-file:../out/files/SPSS__.BIN",
+      "lines": 8439,
+      "source_sha256": "6cd3b46da8b1ba80db5ff1481cc2289f7779cb06f4fb0886d5d1955b47f17c49",
+      "binary_bytes": 327680,
+      "binary_sha256": "eb3b498eed81a79da9132420fefe4622b5d7b30aa0e8b569982b7df6fa2642ca",
+      "upstream_binary_sha256": "eb3b498eed81a79da9132420fefe4622b5d7b30aa0e8b569982b7df6fa2642ca",
+      "matches_upstream": true,
+      "source": "sonic-cd/47-spss__/main.s",
+      "matching_original_roms": []
+    },
+    {
+      "name": "sonic-cd-disc-container",
+      "repository": "scddisasm",
+      "entry": "Main.asm",
+      "defines": {
+        "REGION": "0"
+      },
+      "cpu": "data",
+      "address_space": "iso",
+      "lines": 217,
+      "source_sha256": "0d92325500506cb0da568f909fa17b6ca8dc61472a08eaa19135730a2f53e59a",
+      "build_status": "requires remaining original disc files and filesystem generation",
+      "source": "sonic-cd/disc-container/main.s",
+      "matching_original_roms": []
+    }
+  ],
+  "limitations": [
+    "Sonic3_Complete=1 changes layout; compare retail S&K and Sonic 3 separately.",
+    "Chaotix contains opaque SH-2 program bytes; only its PWM driver has buildable SH-2 source.",
+    "Chaotix requires 32X bank/address mappings before instruction benchmarking.",
+    "Sonic CD uses independent main/sub CPU overlays. Addresses are scoped to a disc file and CPU.",
+    "Sonic CD original region folders lack the remaining retail disc files; no complete ISO proof.",
+    "Binary assets remain in the checkouts. A unified text source is not a standalone asset bundle."
+  ],
+  "chaotix_address_mapping": {
+    "fixed_rom": {
+      "logical_start": "0x880000",
+      "physical_start": "0x0",
+      "size": "0x80000"
+    },
+    "selected_bank": {
+      "logical_start": "0x900000",
+      "physical_start": "0x200000",
+      "size": "0x100000"
+    },
+    "other_domains": "ROM includes relocated RAM code and SH-2 addresses; these need separate mappings."
+  }
+}

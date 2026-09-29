@@ -19,6 +19,7 @@ from retrolarium_kit.megadrive_emit import (
     _asm_instruction,
     _pointer_lines,
     _z80_asm,
+    _emit_z80_source,
     emit_project,
 )
 from retrolarium_kit.megadrive_pointers import (
@@ -36,6 +37,37 @@ from test_megadrive_pointers import word_dispatch_image
 
 
 class MegaDriveEmitTests(unittest.TestCase):
+    def test_68000_rejects_movem_load_predecrement_and_tst_address_register(self):
+        movem = replace(fact(0x200, "MOVEM.W", "-(A4)|{ D0 D1 D6 D7 A0}"),
+                        raw=bytes.fromhex("4C A4 01 C3"), length=4)
+        tst = replace(fact(0x200, "TST.W", "A3w"), raw=bytes.fromhex("4A 4B"))
+        self.assertIsNone(_asm_instruction(movem))
+        self.assertIsNone(_asm_instruction(tst))
+
+    def test_move_byte_ignored_immediate_high_byte_is_preserved_raw(self):
+        instruction = replace(fact(0x200, "MOVE.B", "#0x16|(A2)+"),
+                              raw=bytes.fromhex("14 FC 05 16"), length=4)
+        self.assertIsNone(_asm_instruction(instruction))
+
+    def test_nonzero_z80_payload_rebuilds_without_ram_address_prefix(self):
+        payload = bytes.fromhex("C3 00 1C C9")
+        instruction = replace(fact(0, "JP", "0x1c00"), cpu_address=0x1C00,
+                              raw=payload[:3], length=3)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _emit_z80_source(root / "program.asm", payload, {0: instruction}, base_address=0x1C00)
+            if os.name == "nt":
+                suite = materialize_build_toolchain("megadrive", cache_root=root / "toolchains")
+                _asl_build({"source": "program.asm", "object": "build/program.p"}, root, root / "out.bin", suite)
+                self.assertEqual(payload, (root / "out.bin").read_bytes())
+
+    def test_68000_rejects_address_register_multiply_and_pc_memory_shift(self):
+        multiply = replace(fact(0x200, "MULU.W", "A2w|D5"), raw=bytes.fromhex("CA CA"))
+        shift = replace(fact(0x200, "ASL", "(0x216,PC,A6w*0x1)"),
+                        raw=bytes.fromhex("E1 FB E0 14"), length=4)
+        self.assertIsNone(_asm_instruction(multiply))
+        self.assertIsNone(_asm_instruction(shift))
+
     def test_z80_absolute_register_pair_transfers_use_canonical_encodings(self):
         for opcode, expected in (
             (0x43, "ld ($1234),bc"), (0x53, "ld ($1234),de"), (0x73, "ld ($1234),sp"),
@@ -323,6 +355,24 @@ class MegaDriveEmitTests(unittest.TestCase):
                     fact(0x200, mnemonic, operands), raw=raw, length=len(raw)
                 )
                 self.assertIsNone(_asm_instruction(instruction))
+
+    def test_preserves_bit_immediates_that_assemblers_reduce_modulo_width(self):
+        for mnemonic, operands, encoded in (
+            ("BTST.L", "#0x3a|D7", "0807 003A"),
+            ("BTST.B", "#0x9|(0x00a00000).l", "0839 0009 00A0 0000"),
+        ):
+            raw = bytes.fromhex(encoded)
+            instruction = replace(fact(0x200, mnemonic, operands), raw=raw, length=len(raw))
+            self.assertIsNone(_asm_instruction(instruction))
+
+    def test_indexed_encoding_cannot_be_rendered_as_plain_displacement(self):
+        raw = bytes.fromhex("0032 0008 3168 0038")
+        instruction = replace(fact(0x200, "ORI.B", "#0x8|(0x38,A2)"), raw=raw, length=len(raw))
+        self.assertIsNone(_asm_instruction(instruction))
+
+    def test_register_rotate_is_not_mistaken_for_indexed_memory(self):
+        instruction = replace(fact(0x200, "ROXL.W", "D0w|D0w"), raw=bytes.fromhex("E170"), length=2)
+        self.assertEqual("roxl.w d0,d0", _asm_instruction(instruction))
 
     def test_illegal_backend_operand_combinations_remain_raw_bytes(self) -> None:
         for mnemonic, operands, raw_hex in (

@@ -17,7 +17,7 @@ import subprocess
 
 
 INCLUDE = re.compile(r'^\s*include\s+"([^"]+)"', re.IGNORECASE)
-LABEL = re.compile(r"^\s*([A-Za-z_][\w.]*)\s*:\s*(.*)$")
+LABEL = re.compile(r"^\s*([A-Za-z_.$][\w.$]*)\s*:\s*(.*)$")
 MNEMONIC = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:\.[bwlcs])?$", re.IGNORECASE)
 DIRECTIVES = {
     "binclude", "dc", "ds", "equ", "include", "org", "cpu", "page",
@@ -177,20 +177,22 @@ def read_listing(
         address = int(match.group(1), 16)
         encoded = match.group(2)[:source_column]
         source = match.group(2)[source_column:]
-        words = encoded.split()
-        if not words or not all(
-            len(word) == hex_width and all(char in "0123456789abcdefABCDEF" for char in word)
-            for word in words
-        ):
-            continue
-        boundaries.add(address)
         code = source.split(";", 1)[0].strip()
         label = LABEL.match(code)
         if label:
             code = label.group(2).strip()
-        if not code:
+        operation = code.split(None, 1)[0].lower() if code else ""
+        words = encoded.split()
+        if operation in {"binclude", "incbin", "binfile"}:
+            boundaries.add(address)
+        if not words or not all(
+            len(word) in {2, 4} and all(char in "0123456789abcdefABCDEF" for char in word)
+            for word in words
+        ):
             continue
-        operation = code.split(None, 1)[0].lower()
+        boundaries.add(address)
+        if not all(len(word) == hex_width for word in words) or not operation:
+            continue
         if not MNEMONIC.fullmatch(operation) or operation.split(".", 1)[0] in DIRECTIVES:
             continue
         payload = bytes.fromhex("".join(words))

@@ -162,7 +162,7 @@ def _asm_instruction(
 ) -> str | None:
     """Render ROM-derived instruction candidates; project build proves encoding."""
     byte_immediate_mnemonics = {
-        "ORI.B", "ANDI.B", "SUBI.B", "ADDI.B", "EORI.B", "CMPI.B",
+        "MOVE.B", "ORI.B", "ANDI.B", "SUBI.B", "ADDI.B", "EORI.B", "CMPI.B",
         "BTST.B", "BTST.L", "BCHG.B", "BCHG.L", "BCLR.B", "BCLR.L",
         "BSET.B", "BSET.L",
     }
@@ -173,6 +173,13 @@ def _asm_instruction(
         # Assemblers canonicalize it to zero, so preserve unusual ROM encodings
         # as data to keep rebuilds byte exact.
         return None
+    if (fact.mnemonic.upper().startswith(("BTST.", "BCHG.", "BCLR.", "BSET."))
+            and fact.operands.lstrip().startswith("#") and len(fact.raw) >= 4):
+        bit_limit = 32 if int.from_bytes(fact.raw[:2], "big") & 0x38 == 0 else 8
+        if int.from_bytes(fact.raw[2:4], "big") >= bit_limit:
+            # AS reduces an out-of-range immediate bit number modulo the
+            # operand width. Its otherwise equivalent instruction changes bytes.
+            return None
     if (fact.mnemonic.upper().split(".", 1)[0] in AMBIGUOUS_IMMEDIATE_BASES
             and len(fact.raw) >= 2
             and (int.from_bytes(fact.raw[:2], "big") & 0x3F == 0x3C
@@ -287,6 +294,11 @@ def _asm_instruction(
         operands = fact.operands.split("|")
         if len(operands) == 2:
             set_index = 0 if operands[0].lstrip().startswith("{") else 1
+            ea_mode = int.from_bytes(fact.raw[:2], "big") & 0x38
+            if (set_index == 1 and ea_mode == 0x20
+                    or set_index == 0 and ea_mode == 0x18):
+                # MOVEM loads permit postincrement; stores permit predecrement.
+                return None
             address = _m68k_operand(
                 operands[1 - set_index], fact=fact, primary=primary
             )
@@ -327,6 +339,27 @@ def _asm_instruction(
         "BCLR.B", "BCLR.L", "BCHG.B", "BCHG.L", "JSR", "JMP",
     }
     if fact.mnemonic.upper() in allowed:
+        opcode = int.from_bytes(fact.raw[:2], "big")
+        if fact.mnemonic.upper().startswith("TST.") and opcode & 0x38 == 0x08:
+            return None  # Address-register TST is a 68020+ form.
+        if (fact.mnemonic.upper().startswith(("MULU.", "MULS.", "DIVU.", "DIVS."))
+                and opcode & 0x38 == 0x08):
+            # The 68000 data-EA forms do not accept address-register direct.
+            return None
+        if opcode & 0xF0C0 == 0xE0C0 and (
+                opcode & 0x38 in {0, 8} or opcode & 0x3F >= 0x3A):
+            # Memory shifts require an alterable memory EA, excluding PC.
+            return None
+        has_ea = opcode & 0xF000 != 0xE000 or opcode & 0xC0 == 0xC0
+        indexed_eas = int(has_ea and (opcode & 0x38 == 0x30 or opcode & 0x3F == 0x3B))
+        if fact.mnemonic.upper().startswith(("MOVE.", "MOVEA.")):
+            indexed_eas += int(opcode >> 6 & 7 == 6)
+        described_indices = len(re.findall(r",[DA][0-7][wl]\*0x[1248]\)", fact.operands, re.I))
+        if indexed_eas > described_indices:
+            # Ghidra can decode a 68020 full extension while analysing 68000
+            # data and describe it as a plain displacement. Rendering that EA
+            # would shorten the instruction and shift the rest of the ROM.
+            return None
         operands = fact.operands.split("|") if fact.operands else []
         if fact.mnemonic.upper() == "MOVE" and len(operands) != 2:
             return None
@@ -790,7 +823,12 @@ def _emit_z80_source(
             if 0 <= offset < len(payload) and offset not in interiors:
                 labels.setdefault(offset, f"Z80_Loc_{target:04X}")
 
-    lines = ["    cpu z80", "    page 0", f"    org {base_address}", "", "Z80_Entry:"]
+    lines = ["    cpu z80", "    page 0", "    org 0"]
+    if base_address:
+        # p2bin writes from physical zero. ORG base_address would insert an
+        # address-sized prefix into the fragment included in the M68K ROM.
+        lines.append(f"    phase {base_address}")
+    lines += ["", "Z80_Entry:" if base_address == 0 else f"Z80_Payload_{base_address:04X}:"]
     offset = 0
     while offset < len(payload):
         if offset in labels:
@@ -825,6 +863,8 @@ def _emit_z80_source(
             limit = min(offset + 16, next_fact, len(payload))
             lines.append(f"    db {', '.join(str(value) for value in payload[offset:limit])}")
             offset = limit
+    if base_address:
+        lines += ["", "    dephase"]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 

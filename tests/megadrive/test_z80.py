@@ -3,12 +3,13 @@ from __future__ import annotations
 import sys
 from dataclasses import replace
 from pathlib import Path
+import tempfile
 import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from retrolarium_kit.facts import InstructionFact, InstructionReference
+from retrolarium_kit.facts import FactError, InstructionFact, InstructionReference, load_z80_ghidra_facts
 from retrolarium_kit.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_z80 import (
     CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
@@ -55,6 +56,24 @@ COPY_ROUTINE = (
 
 
 class MegaDriveZ80Tests(unittest.TestCase):
+    def test_unrooted_z80_copy_may_have_no_instructions(self) -> None:
+        header = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
+        with tempfile.TemporaryDirectory() as temporary:
+            listing = Path(temporary) / "instructions.tsv"
+            listing.write_text(header, encoding="utf-8")
+            self.assertEqual({}, load_z80_ghidra_facts(listing, b"\xFF" * 16, base_address=0x1C00))
+            with self.assertRaisesRegex(FactError, "no instructions"):
+                load_z80_ghidra_facts(listing, b"\xFF" * 16)
+
+    def test_unrooted_copy_still_rejects_corrupt_instruction_bytes(self) -> None:
+        text = ("block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
+                "Z80_RAM\tram\t1C00\t1\t00\tNOP\t\t\tFALL_THROUGH\t\t\n")
+        with tempfile.TemporaryDirectory() as temporary:
+            listing = Path(temporary) / "instructions.tsv"
+            listing.write_text(text, encoding="utf-8")
+            with self.assertRaisesRegex(FactError, "bytes disagree"):
+                load_z80_ghidra_facts(listing, b"\xFF", base_address=0x1C00)
+
     def test_adjacent_fragments_form_one_logical_image(self) -> None:
         first = CrossCpuCopy(
             edge_id="first", schema_id="test", source_cpu_id="m68k",
