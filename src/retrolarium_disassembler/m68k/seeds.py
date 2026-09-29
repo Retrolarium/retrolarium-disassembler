@@ -205,12 +205,13 @@ def _branch_table_seeds(
 
 def discover_indexed_branch_table_seeds(
     image: MegaDriveImage,
+    *, scan_start: int = 0x200,
 ) -> tuple[DecoderSeed, ...]:
     """Find BRA.W tables addressed by JSR/JMP d8(PC,Dn.W)."""
     data = image.data
     seeds = []
     seen_tables: set[int] = set()
-    for offset in range(0x200, len(data) - 3, 2):
+    for offset in range(scan_start, len(data) - 3, 2):
         if _word(data, offset) not in {0x4EBB, 0x4EFB}:
             continue
         extension = _word(data, offset + 2)
@@ -248,11 +249,12 @@ def discover_indexed_branch_table_seeds(
 
 def discover_dense_branch_table_seeds(
     image: MegaDriveImage,
+    *, scan_start: int = 0x200,
 ) -> tuple[DecoderSeed, ...]:
     """Find otherwise unreferenced runs of at least four valid BRA.W stubs."""
     data = image.data
     seeds = []
-    offset = 0x200
+    offset = scan_start
     while offset + 16 <= len(data):
         entries = _branch_table(data, offset)
         if len(entries) < 4:

@@ -19,7 +19,7 @@ from .m68k_abstract import (
     discover_packed_orphan_candidates,
     discover_object_field_handler_candidates,
     discover_ram_handler_candidates,
-    interpret_known_cfg,
+    interpret_trusted_cfg,
     retain_trusted_instruction_facts,
 )
 from .m68k_seeds import DecoderSeed, discover_initial_decoder_seeds
@@ -244,20 +244,13 @@ def analyze_megadrive(
             probe_orphans=True,
         )
         facts = load_megadrive_ghidra_facts(artifacts.facts, image)
-        abstract_result = interpret_known_cfg(
-            image, facts, additional_entrypoints=planned_seeds
-        )
+        # Only rooted code is interpreted, so an indirect edge computed in an
+        # unrooted backend island never becomes a trusted root.
+        trusted = interpret_trusted_cfg(image, facts, entrypoints=planned_seeds)
+        abstract_result = trusted.interpretation
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
         # Dispatch sites must themselves be trusted code, never an island.
-        trusted_facts = retain_trusted_instruction_facts(
-            image,
-            facts,
-            additional_entrypoints=planned_seeds | {
-                edge.target_address
-                for edge in abstract_result.indirect_edges
-                if edge.confidence == "proven"
-            },
-        )
+        trusted_facts = trusted.facts
         abstract_candidates = (
             *discover_ram_handler_candidates(image, trusted_facts),
             *discover_object_field_handler_candidates(image, trusted_facts),
@@ -323,25 +316,28 @@ def analyze_megadrive(
             for seed in dispatch_seeds
             if seed.address not in planned_seeds
         }
+        # A target the backend already decoded may still sit in an untrusted
+        # island. Plan every proven target the planned roots do not reach,
+        # so it persists as a decoder seed and a trusted root.
         indirect_targets = {
             edge.target_address
             for edge in abstract_result.indirect_edges
             if edge.confidence == "proven"
-            if edge.target_address not in facts
+            and edge.target_address not in trusted.entry_reached
             and edge.target_address not in planned_seeds
         }
         handler_targets = {
             candidate.address
             for candidate in abstract_candidates
             if candidate.confidence == "proven"
-            and candidate.address not in facts
+            and candidate.address not in trusted_starts
             and candidate.address not in planned_seeds
         }
         orphan_targets = {
             candidate.address
             for candidate in orphan_candidates
             if candidate.confidence == "high"
-            and candidate.address not in trusted_facts
+            and candidate.address not in trusted_starts
             and candidate.address not in planned_seeds
         }
         unused_targets = {
@@ -455,30 +451,23 @@ def analyze_megadrive(
             "M68K abstract analysis did not converge after "
             f"{MAX_ABSTRACT_PASSES} decoder passes"
         )
-    proven_indirect_targets = {
-        edge.target_address
-        for edge in abstract_result.indirect_edges
-        if edge.confidence == "proven"
-    }
     unfiltered_facts = facts
+    # Raw structural callbacks were planned in the loop, so at convergence
+    # they are already seeds. They are reported, not added as extra roots.
     structural_callback_roots = {
         candidate.address
         for candidate in discover_object_field_handler_candidates(image, unfiltered_facts)
         if candidate.confidence == "proven"
     }
-    facts = retain_trusted_instruction_facts(
-        image,
-        facts,
-        additional_entrypoints=(planned_seeds | proven_indirect_targets
-                                | structural_callback_roots),
-    )
+    # The final pass planned nothing new, so its trusted fixpoint is final.
+    # Emit reuses exactly these persisted roots.
+    facts = trusted.facts
+    abstract_result = trusted.interpretation
+    trusted_roots = trusted.roots
     discarded_backend_addresses = sorted(
         fact.cpu_address
         for offset, fact in unfiltered_facts.items()
         if offset not in facts
-    )
-    abstract_result = interpret_known_cfg(
-        image, facts, additional_entrypoints=planned_seeds
     )
     abstract_candidates = (
         *discover_ram_handler_candidates(image, facts),
@@ -515,6 +504,7 @@ def analyze_megadrive(
                 "passes": abstract_passes,
                 "decoder_seed_addresses": sorted(planned_seeds),
                 "structural_callback_roots": sorted(structural_callback_roots),
+                "trusted_root_addresses": sorted(trusted_roots),
                 "discarded_backend_instruction_addresses": (
                     discarded_backend_addresses
                 ),
@@ -947,6 +937,35 @@ def disassemble_megadrive(
     return emit_analyzed_megadrive(rom, output, build_container=build_container)
 
 
+def _trusted_emit_facts(
+    image: MegaDriveImage,
+    raw_facts: dict[int, InstructionFact],
+    abstract_analysis: dict[str, object],
+    analysed_addresses: set[int],
+) -> dict[int, InstructionFact]:
+    """Select the M68K facts analysis trusted, from its persisted roots.
+
+    ``analysed_addresses`` are the instruction starts analysis wrote to its
+    hash-checked instructions artifact. Caches written before the root set
+    was persisted fall back to exactly those instructions.
+    """
+    roots = abstract_analysis.get("trusted_root_addresses")
+    if roots is None:
+        retained = {
+            offset: fact for offset, fact in raw_facts.items()
+            if fact.cpu_address in analysed_addresses
+        }
+    else:
+        retained = retain_trusted_instruction_facts(
+            image, raw_facts, additional_entrypoints=set(roots)
+        )
+    if {fact.cpu_address for fact in retained.values()} != analysed_addresses:
+        raise MegaDriveEmitError(
+            "cached trusted roots do not reproduce the analysed instructions"
+        )
+    return retained
+
+
 def emit_analyzed_megadrive(
     rom: Path, output: Path, *, build_container: str | None = None,
 ) -> dict[str, object]:
@@ -981,24 +1000,18 @@ def emit_analyzed_megadrive(
             encoding="utf-8"
         )
     )
-    proven_indirect_targets = {
-        edge["target_address"]
-        for edge in abstract_analysis["control_flow"]["indirect_edges"]
-        if edge["confidence"] == "proven"
-    }
-    structural_callback_roots = {
-        candidate.address
-        for candidate in discover_object_field_handler_candidates(image, m68k_facts)
-        if candidate.confidence == "proven"
-    }
-    m68k_facts = retain_trusted_instruction_facts(
+    m68k_program = next(
+        program for program in analysis["programs"]
+        if program.get("cpu_id") == "m68k"
+    )
+    analysed_instructions = json.loads(
+        (analysis_root / m68k_program["instructions"]).read_text(encoding="utf-8")
+    )
+    m68k_facts = _trusted_emit_facts(
         image,
         m68k_facts,
-        additional_entrypoints=(
-            set(abstract_analysis["decoder_seed_addresses"])
-            | proven_indirect_targets
-            | structural_callback_roots
-        ),
+        abstract_analysis,
+        {item["logical_address"] for item in analysed_instructions["instructions"]},
     )
     pointers = detect_pointer_candidates(image, m68k_facts)
     copies = detect_z80_copies(image, m68k_facts)

@@ -1,10 +1,13 @@
 from pathlib import Path
+from decimal import Decimal
 import sys
 import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from sonic_corpus_benchmark import compare, normalise_reference_listing
+from sonic_corpus_benchmark import (
+    below_source_recall_target, compare, normalise_reference_listing,
+)
 
 
 def as_line(address, encoded, source):
@@ -16,6 +19,14 @@ def sn_line(address, encoded, source):
 
 
 class SonicCorpusBenchmarkTests(unittest.TestCase):
+    def test_source_recall_gate_uses_counts_without_rounding(self):
+        case = {"source_emission": {"matching_instructions": 8999,
+                                    "reference_instructions": 10000}}
+        self.assertTrue(below_source_recall_target(case, Decimal("90")))
+        case["source_emission"]["matching_instructions"] = 9000
+        self.assertFalse(below_source_recall_target(case, Decimal("90")))
+        self.assertTrue(below_source_recall_target({}, Decimal("90")))
+
     def read(self, lines, rom, **options):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -30,6 +41,16 @@ class SonicCorpusBenchmarkTests(unittest.TestCase):
             as_line(4, "4E75", "Finish: rts"),
         ], bytes.fromhex("F30000004E75"))
         self.assertEqual({4: bytes.fromhex("4E75")}, found)
+
+    def test_sn_single_statement_macros_do_not_hide_following_code(self):
+        found, _, _ = self.read([
+            sn_line(0, "", "Finish macros"),
+            sn_line(0, "", " rts"),
+            sn_line(0, "", "Wrapper macro"),
+            sn_line(0, "", " nop"), sn_line(0, "", " endm"),
+            sn_line(0, "4E71", " nop"), sn_line(2, "4E75", " rts"),
+        ], bytes.fromhex("4E714E75"), sn=True)
+        self.assertEqual({0: bytes.fromhex("4E71"), 2: bytes.fromhex("4E75")}, found)
 
     def test_phase_maps_ram_instruction_to_physical_rom(self):
         found, _, _ = self.read([

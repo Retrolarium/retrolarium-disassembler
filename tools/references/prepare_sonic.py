@@ -46,8 +46,9 @@ def run(command: list[str] | str, cwd: Path, log: Path) -> None:
         raise RuntimeError(f"build failed ({result.returncode}): {log}")
 
 
-def export(root: Path, entry: str, output: Path, definitions: dict[str, str]) -> dict:
-    text, origins = flatten_source(root, entry, expand_include_macros=True)
+def export(root: Path, entry: str, output: Path, definitions: dict[str, str],
+           *, encoding: str = "utf-8-sig") -> dict:
+    text, origins = flatten_source(root, entry, expand_include_macros=True, encoding=encoding)
     prefix = "".join(f"{key} equ {value}\n" for key, value in definitions.items())
     for origin in origins:
         origin["start_line"] += len(definitions)

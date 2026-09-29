@@ -86,6 +86,48 @@ def run_megadrive_analysis(
     )
 
 
+def run_m68k_overlay_analysis(
+    image: Path,
+    workspace: Path,
+    ghidra_home: Path,
+    script_directory: Path,
+    *,
+    base_address: int,
+    entry_addresses: tuple[int, ...],
+    probe_orphans: bool = False,
+) -> GhidraArtifacts:
+    """Analyze a standalone 68000 overlay at its real load address."""
+    if not 0 <= base_address <= 0xFFFFFFFF:
+        raise GhidraError("overlay base is outside the 32-bit address space")
+    if not entry_addresses:
+        raise GhidraError("overlay needs at least one entry address")
+    seed_plan = workspace / "overlay-seeds.txt"
+    workspace.mkdir(parents=True, exist_ok=True)
+    seed_plan.write_text(
+        "".join(f"{address:08X}\n" for address in sorted(set(entry_addresses))),
+        encoding="ascii",
+    )
+    return _run_analysis(
+        image,
+        workspace,
+        ghidra_home,
+        script_directory,
+        project_name="retrolarium_m68k_overlay",
+        project_prefix="m68k_overlay_",
+        expected_language="68000:BE:32:default",
+        import_arguments=(
+            "-loader", "BinaryLoader",
+            "-loader-blockName", "CD_MODULE",
+            "-loader-baseAddr", f"0x{base_address:08X}",
+            "-processor", "68000:BE:32:default",
+        ),
+        seed_script="SeedM68kOverlay.java",
+        seed_arguments=(str(seed_plan.resolve()),),
+        export_block="CD_MODULE",
+        probe_m68k_orphans=probe_orphans,
+    )
+
+
 def run_z80_analysis(
     image: Path,
     workspace: Path,

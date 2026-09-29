@@ -10,6 +10,17 @@ from flatten_asm_source import flatten_source
 
 
 class FlattenSourceTests(unittest.TestCase):
+    def test_explicit_legacy_encoding_applies_to_nested_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "main.s").write_bytes(b' include "child.s"\n')
+            (root / "child.s").write_bytes(b'; f\xfc r\x81\n rts\n')
+            with self.assertRaises(UnicodeDecodeError):
+                flatten_source(root, "main.s")
+            text, origins = flatten_source(root, "main.s", encoding="latin-1")
+            self.assertIn('; f\u00fc r\u0081\n rts\n', text)
+            self.assertEqual(["child.s", "main.s"], [item["path"] for item in origins])
+
     def test_labelled_includes_keep_scope_order_and_binary_includes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

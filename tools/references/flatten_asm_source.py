@@ -18,6 +18,7 @@ INCLUDE = re.compile(
 
 def flatten_source(
     reference: Path, entry: str, *, expand_include_macros: bool = False,
+    encoding: str = "utf-8-sig",
 ) -> tuple[str, list[dict[str, object]]]:
     """Expand text includes in source order without evaluating assembler profiles."""
     root = reference.resolve()
@@ -55,7 +56,7 @@ def flatten_source(
             else:
                 output.append(line)
 
-        lines = raw.decode("utf-8-sig").splitlines()
+        lines = raw.decode(encoding).splitlines()
         index = 0
         while index < len(lines):
             line = lines[index]

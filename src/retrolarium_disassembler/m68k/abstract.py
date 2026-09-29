@@ -15,6 +15,7 @@ from .megadrive_symbols import pc_indexed_target
 
 MAX_SMALL_SET = 32
 MAX_BACKEND_COMPUTED_FLOW_TARGETS = 32
+MAX_TRUSTED_ROOT_PASSES = 64
 REGISTER_NAMES = tuple(
     [f"d{index}" for index in range(8)]
     + [f"a{index}" for index in range(8)]
@@ -441,6 +442,120 @@ def _executed_ram_callback_slots(facts: dict[int, InstructionFact]) -> set[int]:
     return slots
 
 
+def _slot_call_reads(
+    facts: dict[int, InstructionFact],
+) -> dict[int, dict[int, int]]:
+    """Map absolute longwords to reads that immediately call their value.
+
+    Accepted shapes are ``MOVEA.L (slot),An; JSR/JMP (An)`` and the
+    null-guarded ``MOVE.L (slot),Dn; BEQ; MOVEA.L Dn,An; JSR/JMP (An)``.
+    The result maps slot -> {read address: call address}.
+    """
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+
+    def call_through(fact: InstructionFact | None, register: str) -> InstructionFact | None:
+        if (fact is None or fact.mnemonic.upper() not in {"JSR", "JMP"}
+                or fact.operands.upper() != f"({register.upper()})"):
+            return None
+        return fact
+
+    reads: dict[int, dict[int, int]] = {}
+    for read in facts.values():
+        mnemonic = read.mnemonic.upper()
+        if mnemonic not in {"MOVEA.L", "MOVE.L"} or read.operands.count("|") != 1:
+            continue
+        source, destination = read.operands.split("|")
+        absolute = _ABSOLUTE.fullmatch(source.strip())
+        if absolute is None:
+            continue
+        call = None
+        following = by_address.get(read.cpu_address + read.length)
+        if mnemonic == "MOVEA.L" and re.fullmatch(r"A[0-6]", destination.strip(), re.I):
+            call = call_through(following, destination.strip())
+        elif mnemonic == "MOVE.L" and re.fullmatch(r"D[0-7]", destination.strip(), re.I):
+            if following is None or following.mnemonic.upper() not in {"BEQ.B", "BEQ.W"}:
+                continue
+            load = by_address.get(following.cpu_address + following.length)
+            if load is None or load.mnemonic.upper() != "MOVEA.L":
+                continue
+            moved = re.fullmatch(
+                rf"{destination.strip()}\|(A[0-6])", load.operands, re.I
+            )
+            if moved is not None:
+                call = call_through(
+                    by_address.get(load.cpu_address + load.length), moved.group(1)
+                )
+        if call is not None:
+            slot = int(absolute.group(1), 0) & 0xFFFFFF
+            reads.setdefault(slot, {})[read.cpu_address] = call.cpu_address
+    return reads
+
+
+def _direct_ram_callback_slots(
+    image: MegaDriveImage, facts: dict[int, InstructionFact]
+) -> dict[int, tuple[int, ...]]:
+    """Prove absolute work-RAM longwords used only as callback pointers.
+
+    A slot qualifies when known code loads it and immediately calls the
+    value, and every other known access to its four bytes is a whole-long
+    test or compare, ``CLR.L``, or a ``MOVE.L`` of a checked immediate.
+    Reading the slot as data, taking its address, a partial access, any
+    other write (including ``MOVE.L`` from a register or memory), or an
+    immediate that is neither null, a RAM address nor a code-shaped even
+    ROM address disqualifies it. Aliasing
+    through a computed pointer is not visible in static operands; that is
+    the remaining limit of this proof. Returns slot -> call addresses.
+    """
+    ram_start, ram_end = image.header.ram_start, image.header.ram_end
+    reads = {
+        slot: sites for slot, sites in _slot_call_reads(facts).items()
+        if ram_start <= slot <= ram_end - 3
+    }
+    if not reads:
+        return {}
+    rejected: set[int] = set()
+    for fact in facts.values():
+        mnemonic = fact.mnemonic.upper()
+        operands = fact.operands.split("|") if fact.operands else []
+        size = 64 if mnemonic.startswith("MOVEM") else _operation_bits(mnemonic) // 8
+        for index, operand in enumerate(operands):
+            absolute = _ABSOLUTE.fullmatch(operand.strip())
+            if absolute is None:
+                continue
+            address = int(absolute.group(1), 0) & 0xFFFFFF
+            for slot in range(address - 3, address + size):
+                if slot not in reads or slot in rejected:
+                    continue
+                if slot != address or size != 4:
+                    rejected.add(slot)
+                elif fact.cpu_address in reads[slot]:
+                    continue
+                elif mnemonic.startswith(("TST.", "CMP")):
+                    continue
+                elif index == len(operands) - 1 and mnemonic == "CLR.L":
+                    continue
+                elif index == len(operands) - 1 and mnemonic == "MOVE.L":
+                    immediate = _IMMEDIATE_TO_ABSOLUTE.fullmatch(fact.operands)
+                    if immediate is None:
+                        # A register or memory source may hold data or an
+                        # arbitrary address that later calls would reach.
+                        rejected.add(slot)
+                        continue
+                    target = int(immediate.group(1), 0) & 0xFFFFFF
+                    if target == 0 or ram_start <= target <= ram_end:
+                        continue
+                    if (target < 0x200 or target + 2 > len(image.data) or target & 1
+                            or not _plausible_orphan_start(
+                                int.from_bytes(image.data[target:target + 2], "big"))):
+                        rejected.add(slot)
+                else:
+                    rejected.add(slot)
+    return {
+        slot: tuple(sorted(set(sites.values())))
+        for slot, sites in reads.items() if slot not in rejected
+    }
+
+
 def _plausible_orphan_start(first_word: int) -> bool:
     """Reject obvious data while retaining selected legal line-0 opcodes."""
     if first_word == 0xFFFF or first_word >> 12 in {0xA, 0xF}:
@@ -462,6 +577,7 @@ def discover_ram_handler_candidates(
     by_storage: dict[int, list[EntryPointCandidate]] = {}
     decoded_starts = {fact.cpu_address for fact in facts.values()}
     executed_slots = _executed_ram_callback_slots(facts)
+    called_slots = _direct_ram_callback_slots(image, facts)
     ram_vector_starts = {
         vector.address
         for vector in image.vector_table[1:]
@@ -491,8 +607,23 @@ def discover_ram_handler_candidates(
                 else "immediate ROM address stored in work RAM"
             ),
         )
-        candidates[target] = candidate
+        # A later unproven assignment must not demote a proven one.
+        if candidates.get(target) is None or candidates[target].confidence != "proven":
+            candidates[target] = candidate
         by_storage.setdefault(storage, []).append(candidate)
+    for storage, calls in called_slots.items():
+        # Known code only ever consumes this slot by calling it and never
+        # reads it as data, so one assignment suffices. _direct_ram_callback_slots
+        # has already checked that each assigned ROM target looks like code.
+        for candidate in by_storage.get(storage, ()):
+            candidates[candidate.address] = EntryPointCandidate(
+                address=candidate.address,
+                source_address=candidate.source_address,
+                storage_address=storage,
+                confidence="proven",
+                evidence=(f"RAM slot {storage:06X} is only used as a callback "
+                          "called at " + ", ".join(f"{call:06X}" for call in calls)),
+            )
     for storage, assignments in by_storage.items():
         targets = {candidate.address for candidate in assignments}
         if storage not in executed_slots or len(targets) < 2:
@@ -1470,3 +1601,56 @@ def retain_trusted_instruction_facts(
         offset: fact for offset, fact in facts.items()
         if fact.cpu_address in reached
     }
+
+
+@dataclass(frozen=True)
+class TrustedCfg:
+    facts: dict[int, InstructionFact]
+    interpretation: InterpretationResult
+    # Entrypoints plus proven indirect targets; retaining backend facts from
+    # exactly these roots reproduces ``facts``.
+    roots: frozenset[int]
+    # Instruction starts reachable from the entrypoints alone, before any
+    # indirect target was promoted to a root.
+    entry_reached: frozenset[int]
+    iterations: int
+
+
+def interpret_trusted_cfg(
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
+    entrypoints: set[int] | frozenset[int],
+    max_iterations: int = MAX_TRUSTED_ROOT_PASSES,
+) -> TrustedCfg:
+    """Interpret only rooted code and promote its proven indirect targets.
+
+    Backend code islands are never interpreted, so an edge computed inside
+    unrooted code cannot make its target trusted. Each round retains facts
+    from the current roots, interprets them and adds newly proven indirect
+    targets. Roots only grow, so the bounded loop reaches a fixpoint.
+    """
+    entrypoints = frozenset(entrypoints)
+    roots = entrypoints
+    entry_reached: frozenset[int] | None = None
+    for iteration in range(1, max_iterations + 1):
+        trusted = retain_trusted_instruction_facts(
+            image, facts, additional_entrypoints=roots
+        )
+        if entry_reached is None:
+            entry_reached = frozenset(fact.cpu_address for fact in trusted.values())
+        result = interpret_known_cfg(
+            image, trusted, additional_entrypoints=entrypoints
+        )
+        proven = {
+            edge.target_address
+            for edge in result.indirect_edges
+            if edge.confidence == "proven"
+        }
+        if proven <= roots:
+            return TrustedCfg(trusted, result, roots, entry_reached, iteration)
+        roots = roots | proven
+    raise ValueError(
+        "trusted M68K control flow did not reach a fixpoint after "
+        f"{max_iterations} passes"
+    )

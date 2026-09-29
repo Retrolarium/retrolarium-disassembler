@@ -53,6 +53,7 @@ public class ProbeM68kUnusedCode extends GhidraScript {
     protected void run() throws Exception {
         if (getScriptArgs().length != 1) throw new IllegalArgumentException("expected output TSV");
         MemoryBlock rom = currentProgram.getMemory().getBlock("ROM");
+        if (rom == null) rom = currentProgram.getMemory().getBlock("CD_MODULE");
         if (rom == null) throw new IllegalStateException("ROM block missing");
         List<Instruction> known = new ArrayList<>();
         InstructionIterator iterator = currentProgram.getListing().getInstructions(rom.getStart(), true);

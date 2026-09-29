@@ -17,6 +17,7 @@ from retrolarium_kit.m68k_abstract import (
     discover_object_field_handler_candidates,
     discover_ram_handler_candidates,
     interpret_known_cfg,
+    interpret_trusted_cfg,
     retain_trusted_instruction_facts,
     transfer_instruction,
 )
@@ -250,6 +251,113 @@ class M68kAbstractTests(unittest.TestCase):
         self.assertEqual("candidate", discover_ram_handler_candidates(image, {
             item.physical_offset: item for item in (first, second, known)
         })[1].confidence)
+
+    def _slot_image(self):
+        payload = bytearray(cartridge(size=0x800))
+        payload[0x400:0x402] = bytes.fromhex("4E 75")
+        payload[0x500:0x502] = bytes.fromhex("70 01")
+        # Code-shaped bytes behind a data pointer: content alone proves nothing.
+        payload[0x600:0x604] = bytes.fromhex("30 29 00 04")
+        return parse_megadrive(bytes(payload))
+
+    def test_directly_called_ram_slot_proves_every_assignment(self) -> None:
+        image = self._slot_image()
+        store = replace(fact(0x220, "MOVE.L", "#0x400|(0xffffc100).w"), length=8)
+        load = replace(fact(0x240, "MOVEA.L", "(0xffffc100).w|A0"), length=4)
+        call = replace(fact(0x244, "JSR", "(A0)"), flow_type="COMPUTED_CALL")
+        facts = {item.physical_offset: item for item in (store, load, call)}
+        candidates = discover_ram_handler_candidates(image, facts)
+        self.assertEqual([(0x400, "proven")],
+                         [(item.address, item.confidence) for item in candidates])
+        self.assertIn("000244", candidates[0].evidence)
+        # The read without its call proves nothing.
+        self.assertEqual("candidate", discover_ram_handler_candidates(image, {
+            store.physical_offset: store, load.physical_offset: load,
+        })[0].confidence)
+        # A register write can install data or any address into the slot.
+        register_write = replace(fact(0x230, "MOVE.L", "D1|(0xffffc100).w"), length=4)
+        self.assertEqual([(0x400, "candidate")], [
+            (item.address, item.confidence)
+            for item in discover_ram_handler_candidates(
+                image, {**facts, register_write.physical_offset: register_write})
+        ])
+
+    def test_null_guarded_ram_callback_with_benign_accesses(self) -> None:
+        image = self._slot_image()
+        facts = {item.physical_offset: item for item in (
+            replace(fact(0x220, "MOVE.L", "#0x400|(0xffffc100).w"), length=8),
+            replace(fact(0x228, "MOVE.L", "#0x500|(0xffffc100).w"), length=8),
+            replace(fact(0x230, "CLR.L", "(0xffffc100).w"), length=4),
+            replace(fact(0x234, "CMPI.L", "#0x400|(0xffffc100).w"), length=8),
+            replace(fact(0x240, "MOVE.L", "(0xffffc100).w|D0"), length=4),
+            replace(fact(0x244, "BEQ.B", "0x24a"), flow_type="CONDITIONAL_JUMP", flows=(0x24A,)),
+            fact(0x246, "MOVEA.L", "D0|A1"),
+            replace(fact(0x248, "JMP", "(A1)"), flow_type="COMPUTED_JUMP"),
+        )}
+        self.assertEqual([(0x400, "proven"), (0x500, "proven")], [
+            (item.address, item.confidence)
+            for item in discover_ram_handler_candidates(image, facts)
+        ])
+        # Without the null guard the value is merely copied into D0.
+        unguarded = {address: item for address, item in facts.items() if address != 0x244}
+        self.assertEqual({"candidate"}, {
+            item.confidence for item in discover_ram_handler_candidates(image, unguarded)
+        })
+
+    def test_ram_data_pointer_slot_is_not_a_callback(self) -> None:
+        image = self._slot_image()
+        store = replace(fact(0x220, "MOVE.L", "#0x600|(0xffffc200).w"), length=8)
+        load = replace(fact(0x240, "MOVEA.L", "(0xffffc200).w|A1"), length=4)
+        read = fact(0x244, "MOVE.W", "(A1)|D0w")
+        call = replace(fact(0x244, "JSR", "(A1)"), flow_type="COMPUTED_CALL")
+        facts = {item.physical_offset: item for item in (store, load, read)}
+        self.assertEqual([(0x600, "candidate")], [
+            (item.address, item.confidence)
+            for item in discover_ram_handler_candidates(image, facts)
+        ])
+        # A call site does not outweigh any data use of the same slot.
+        for data_use in (
+            replace(fact(0x260, "MOVEA.L", "(0xffffc200).w|A2"), length=4),
+            replace(fact(0x260, "LEA", "(0xffffc200).w|A2"), length=4),
+            replace(fact(0x260, "MOVE.W", "(0xffffc202).w|D1w"), length=4),
+            replace(fact(0x260, "MOVE.L", "(0xffffc1fe).w|D1"), length=4),
+            replace(fact(0x260, "MOVE.L", "(0xffffc200).w|(0xffffc300).w"), length=6),
+            replace(fact(0x260, "MOVEM.L", "(0xffffc1f8).w|D0-D3"), length=6),
+            replace(fact(0x260, "MOVE.L", "#0x42|(0xffffc200).w"), length=8),
+            # Unchecked values written into the slot.
+            replace(fact(0x260, "MOVE.L", "D1|(0xffffc200).w"), length=4),
+            replace(fact(0x260, "MOVE.L", "A2|(0xffffc200).w"), length=4),
+            replace(fact(0x260, "MOVE.L", "(0xffffc300).w|(0xffffc200).w"), length=6),
+            replace(fact(0x260, "MOVE.L", "(A2)|(0xffffc200).w"), length=4),
+            replace(fact(0x260, "ADDQ.L", "0x2|(0xffffc200).w"), length=4),
+        ):
+            with self.subTest(data_use=data_use.operands):
+                called = {item.physical_offset: item for item in (store, load, call, data_use)}
+                self.assertEqual({"candidate"}, {
+                    item.confidence
+                    for item in discover_ram_handler_candidates(image, called)
+                })
+        # An assignment of a data-shaped ROM target contradicts the slot.
+        table = replace(fact(0x228, "MOVE.L", "#0x700|(0xffffc200).w"), length=8)
+        payload = bytearray(image.data)
+        payload[0x700:0x702] = bytes.fromhex("FF FF")
+        called = {item.physical_offset: item for item in (store, table, load, call)}
+        self.assertEqual({"candidate"}, {
+            item.confidence for item in discover_ram_handler_candidates(
+                parse_megadrive(bytes(payload)), called)
+        })
+
+    def test_unproven_assignment_does_not_demote_trampoline_target(self) -> None:
+        payload = bytearray(cartridge(size=0x12000))
+        payload[30 * 4:30 * 4 + 4] = (0xFFFA7C).to_bytes(4, "big")
+        image = parse_megadrive(bytes(payload))
+        trampoline = replace(fact(0x10004, "MOVE.L", "#0x10e88|(0xfffffa7e).w"), length=8)
+        other = replace(fact(0x10010, "MOVE.L", "#0x10e88|(0xffffc000).w"), length=8)
+        candidates = discover_ram_handler_candidates(image, {
+            item.physical_offset: item for item in (trampoline, other)
+        })
+        self.assertEqual([(0x10E88, "proven")],
+                         [(item.address, item.confidence) for item in candidates])
 
     def test_small_bitmask_preserves_exact_selector_values(self) -> None:
         masked = AbstractValue.unknown().bitwise_and(0xC)
@@ -613,6 +721,77 @@ class M68kAbstractTests(unittest.TestCase):
             [(edge.source_address, edge.target_address)
              for edge in with_seed.indirect_edges],
         )
+
+    def _raw_island(self):
+        # Reset returns at once. An unrooted backend island calls a helper
+        # that jumps through a constant register to 0x400.
+        return {item.physical_offset: item for item in (
+            self._flow(0x200, "RTS", "", 2, "TERMINATOR"),
+            self._flow(0x280, "BSR.W", "0x00000300", 4,
+                       "UNCONDITIONAL_CALL", (0x300,)),
+            self._flow(0x284, "RTS", "", 2, "TERMINATOR"),
+            self._flow(0x300, "LEA", "(0x400).l|A0", 6, "FALL_THROUGH"),
+            self._flow(0x306, "JMP", "(A0)", 2, "COMPUTED_JUMP"),
+            self._flow(0x400, "RTS", "", 2, "TERMINATOR"),
+        )}
+
+    def test_raw_island_indirect_edge_is_not_a_trusted_root(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        facts = self._raw_island()
+        # Interpreting raw facts treats the island's call target as an
+        # entrypoint and proves an edge from untrusted code.
+        raw = interpret_known_cfg(image, facts)
+        self.assertIn((0x306, 0x400), [
+            (edge.source_address, edge.target_address) for edge in raw.indirect_edges
+        ])
+
+        trusted = interpret_trusted_cfg(image, facts, entrypoints=set())
+
+        self.assertEqual({0x200}, {item.cpu_address for item in trusted.facts.values()})
+        self.assertEqual((), trusted.interpretation.indirect_edges)
+        self.assertNotIn(0x400, trusted.roots)
+        self.assertEqual({0x400, 0x300} & set(retain_trusted_instruction_facts(
+            image, facts, additional_entrypoints=trusted.roots)), set())
+
+    def test_seeded_island_promotes_decoded_indirect_target(self) -> None:
+        image = parse_megadrive(cartridge(size=0x500))
+        facts = self._raw_island()
+
+        trusted = interpret_trusted_cfg(image, facts, entrypoints={0x280})
+
+        # 0x400 was already decoded but only the proven edge roots it.
+        self.assertNotIn(0x400, trusted.entry_reached)
+        self.assertIn(0x400, trusted.roots)
+        self.assertIn(0x400, {item.cpu_address for item in trusted.facts.values()})
+        self.assertEqual(
+            set(trusted.facts),
+            set(retain_trusted_instruction_facts(
+                image, facts, additional_entrypoints=trusted.roots)),
+        )
+
+    def test_trusted_fixpoint_follows_chained_indirect_targets(self) -> None:
+        image = parse_megadrive(cartridge(size=0x600))
+        facts = {item.physical_offset: item for item in (
+            self._flow(0x200, "RTS", "", 2, "TERMINATOR"),
+            self._flow(0x300, "LEA", "(0x400).l|A0", 6, "FALL_THROUGH"),
+            self._flow(0x306, "JMP", "(A0)", 2, "COMPUTED_JUMP"),
+            self._flow(0x400, "LEA", "(0x480).l|A1", 6, "FALL_THROUGH"),
+            self._flow(0x406, "JMP", "(A1)", 2, "COMPUTED_JUMP"),
+            self._flow(0x480, "RTS", "", 2, "TERMINATOR"),
+        )}
+
+        trusted = interpret_trusted_cfg(image, facts, entrypoints={0x300})
+
+        self.assertEqual(frozenset({0x300, 0x400, 0x480}), trusted.roots)
+        self.assertEqual(
+            {0x200, 0x300, 0x306, 0x400, 0x406, 0x480},
+            {item.cpu_address for item in trusted.facts.values()},
+        )
+        self.assertEqual(3, trusted.iterations)
+        with self.assertRaisesRegex(ValueError, "fixpoint"):
+            interpret_trusted_cfg(
+                image, facts, entrypoints={0x300}, max_iterations=2
+            )
 
     def test_memory_facts_do_not_survive_subroutine_call(self) -> None:
         image = parse_megadrive(cartridge(size=0x500))

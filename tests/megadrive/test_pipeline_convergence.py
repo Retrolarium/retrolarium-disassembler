@@ -27,11 +27,16 @@ from retrolarium_kit.m68k_abstract import (
     IndirectEdge,
     InterpretationResult,
     OrphanCandidate,
+    TrustedCfg,
 )
 from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_kit.megadrive_emit import MegaDriveEmitError
 from retrolarium_kit.m68k_unused import UnusedCodeCandidate
 from retrolarium_kit.megadrive_z80 import CrossCpuCopy
 from retrolarium_kit.z80_dispatch import Z80DispatchTable
+from test_megadrive import cartridge
+from test_megadrive_z80 import fact
 
 
 class _StopAfterLoop(Exception):
@@ -121,9 +126,9 @@ class _M68kHarness:
         self.initial_seeds = tuple(initial_seeds)
         self.stop_after_loop = stop_after_loop
         self.plans_seen: list[str] = []
-        # Entrypoints handed to the interpreter on each decoder pass.
+        # Entrypoints handed to the trusted interpreter on each decoder pass.
         self.interpreter_entrypoints: list[set[int]] = []
-        self.retain_calls = 0
+        self.trusted_calls = 0
         self._last_facts = None
         self._trusted_facts = None
 
@@ -140,22 +145,51 @@ class _M68kHarness:
         self.plans_seen.append(seed_plan.read_text(encoding="ascii"))
         return _artifacts(program_root)
 
-    def interpret_known_cfg(self, image, facts, *, additional_entrypoints):
-        # Only the in-loop call sees the raw decoder facts; the post-loop
-        # call receives the filtered facts and reports nothing new.
-        if facts is not self._last_facts:
-            return _interpretation()
-        self.interpreter_entrypoints.append(set(additional_entrypoints))
-        return _interpretation(*self._current().get("edges", ()))
+    def interpret_trusted_cfg(self, image, facts, *, entrypoints):
+        # Runs once per decoder pass on the raw facts; the converged result
+        # of the final pass is reused after the loop.
+        assert facts is self._last_facts
+        self.trusted_calls += 1
+        self.interpreter_entrypoints.append(set(entrypoints))
+        current = self._current()
+        edges = tuple(current.get("edges", ()))
+        self._trusted_facts = {
+            address: SimpleNamespace(cpu_address=address)
+            for address in current.get("trusted", ())
+        }
+        return TrustedCfg(
+            facts=self._trusted_facts,
+            interpretation=_interpretation(*edges),
+            roots=frozenset(entrypoints) | {
+                edge.target_address for edge in edges
+                if edge.confidence == "proven"
+            },
+            # "reached" marks starts reached from the seeds without adding
+            # fake facts, which the post-loop writer cannot serialize.
+            entry_reached=frozenset(
+                (*current.get("trusted", ()), *current.get("reached", ()))
+            ),
+            iterations=1,
+        )
 
     def load_facts(self, path, image):
-        self._last_facts = {}
+        self._last_facts = {
+            address: SimpleNamespace(cpu_address=address)
+            for address in self._current().get("raw", ())
+        }
         return self._last_facts
 
     def handlers(self, image, facts):
-        if facts is not self._last_facts:
+        # Entry-point handlers are only ever read from trusted facts.
+        if facts is not self._trusted_facts:
             return []
         return list(self._current().get("handlers", ()))
+
+    def pointers(self, image, facts):
+        # First analyzer after abstract-analysis.json and instructions.json.
+        if self.stop_after_loop:
+            raise _StopAfterLoop
+        return []
 
     def object_handlers(self, image, facts):
         if facts is not self._last_facts:
@@ -166,17 +200,6 @@ class _M68kHarness:
         if facts is not self._last_facts:
             return []
         return list(self._current().get("orphans", ()))
-
-    def retain(self, image, facts, *, additional_entrypoints):
-        self.retain_calls += 1
-        if self.retain_calls <= len(self.plans_seen):
-            # In-loop filtering ahead of dispatch-table discovery.
-            self._trusted_facts = {}
-            return self._trusted_facts
-        # First call beyond the decoder passes is the post-loop filter.
-        if self.stop_after_loop:
-            raise _StopAfterLoop
-        return {}
 
     def dispatch_seeds(self, image, facts):
         # Dispatch discovery must only ever see this pass's trusted facts.
@@ -192,12 +215,13 @@ class _M68kHarness:
             "discover_initial_decoder_seeds": lambda image: self.initial_seeds,
             "run_megadrive_analysis": self.run_megadrive_analysis,
             "load_megadrive_ghidra_facts": self.load_facts,
-            "interpret_known_cfg": self.interpret_known_cfg,
+            "interpret_trusted_cfg": self.interpret_trusted_cfg,
             "discover_ram_handler_candidates": self.handlers,
             "discover_object_field_handler_candidates": self.object_handlers,
             "discover_packed_orphan_candidates": self.orphans,
-            "retain_trusted_instruction_facts": self.retain,
             "discover_dispatch_table_seeds": self.dispatch_seeds,
+            "discover_descriptor_ram_code_seeds": lambda image, facts: (),
+            "detect_pointer_candidates": self.pointers,
         }
 
 
@@ -224,8 +248,8 @@ class M68kConvergenceTests(unittest.TestCase):
 
         self.assertEqual(len(harness.plans_seen), pipeline.MAX_ABSTRACT_PASSES)
         self.assertEqual(pipeline.MAX_ABSTRACT_PASSES, 32)
-        # Filtering ran once per pass, never the post-convergence filter.
-        self.assertEqual(harness.retain_calls, pipeline.MAX_ABSTRACT_PASSES)
+        # Trusted interpretation ran once per pass and never after the loop.
+        self.assertEqual(harness.trusted_calls, pipeline.MAX_ABSTRACT_PASSES)
         self.assertFalse(
             (self.root / "out" / "m68k" / "abstract-analysis.json").exists()
         )
@@ -275,7 +299,8 @@ class M68kConvergenceTests(unittest.TestCase):
         self.assertEqual(
             _plan_addresses(harness.plans_seen[1]), [0x200, 0x1400]
         )
-        self.assertEqual(harness.retain_calls, 3)
+        # The converged pass is reused after the loop, not recomputed.
+        self.assertEqual(harness.trusted_calls, 2)
 
     def test_validated_unused_function_becomes_a_root_on_next_pass(self):
         candidate = UnusedCodeCandidate(
@@ -345,6 +370,115 @@ class M68kConvergenceTests(unittest.TestCase):
         self.assertEqual(
             _plan_addresses(harness.plans_seen[1]), [0x200, 0x300]
         )
+
+    def test_decoded_but_untrusted_proven_targets_are_planned(self) -> None:
+        # 0x300 and 0x340 were decoded inside a backend island; 0x320 is
+        # already reached from the planned roots and needs no seed.
+        harness = _M68kHarness([
+            {
+                "raw": (0x300, 0x320, 0x340),
+                "trusted": (0x320,),
+                "edges": (_edge(0x300), _edge(0x320)),
+                "handlers": (_handler(0x340), _handler(0x320)),
+            },
+            {},
+        ])
+
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+
+        self.assertEqual([0x300, 0x340], _plan_addresses(harness.plans_seen[1]))
+        self.assertEqual([set(), {0x300, 0x340}], harness.interpreter_entrypoints)
+
+    def test_proven_handler_absent_from_raw_facts_is_planned(self) -> None:
+        # The backend never decoded 0x380; only the slot proof names it.
+        harness = _M68kHarness([
+            {"raw": (0x200,), "trusted": (0x200,),
+             "handlers": (_handler(0x380), _handler(0x3C0, confidence="candidate"))},
+            {"raw": (0x200, 0x380), "reached": (0x200, 0x380),
+             "handlers": (_handler(0x380), _handler(0x3C0, confidence="candidate"))},
+        ])
+
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+
+        self.assertEqual(2, len(harness.plans_seen))
+        self.assertEqual([0x380], _plan_addresses(harness.plans_seen[1]))
+        self.assertEqual([set(), {0x380}], harness.interpreter_entrypoints)
+        document = json.loads(
+            (self.root / "out/m68k/abstract-analysis.json").read_text()
+        )
+        evidence = {item["address"]: item for item in document["decoder_seed_evidence"]}
+        self.assertEqual(["ram_handler"], evidence[0x380]["kinds"])
+        self.assertNotIn(0x3C0, document["decoder_seed_addresses"])
+
+    def test_analysis_persists_the_converged_trusted_root_set(self) -> None:
+        harness = _M68kHarness([
+            {"edges": (_edge(0x1000),)},
+            {"edges": (_edge(0x1000), _edge(0x1040)), "reached": (0x1040,)},
+        ])
+
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+
+        # 0x1040 is proven but already reached, so it is a root not a seed.
+        document = json.loads(
+            (self.root / "out/m68k/abstract-analysis.json").read_text()
+        )
+        self.assertEqual([0x1000], document["decoder_seed_addresses"])
+        self.assertEqual(
+            [0x1000, 0x1040], document["trusted_root_addresses"]
+        )
+
+
+def _flow(address, mnemonic, operands, length, flow_type, flows=()):
+    return replace(
+        fact(address, mnemonic, operands, flows=flows),
+        raw=bytes(length), length=length, flow_type=flow_type,
+    )
+
+
+class TrustedEmitFactsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.image = parse_megadrive(cartridge(size=0x500))
+        entry = _flow(0x200, "RTS", "", 2, "TERMINATOR")
+        island = _flow(0x300, "RTS", "", 2, "TERMINATOR")
+        self.facts = {item.physical_offset: item for item in (entry, island)}
+
+    def _addresses(self, facts) -> set[int]:
+        return {item.cpu_address for item in facts.values()}
+
+    def test_persisted_roots_select_the_analysed_instructions(self) -> None:
+        retained = pipeline._trusted_emit_facts(
+            self.image, self.facts,
+            {"trusted_root_addresses": [0x300]}, {0x200, 0x300},
+        )
+        self.assertEqual({0x200, 0x300}, self._addresses(retained))
+
+    def test_emit_ignores_raw_structural_roots_absent_from_persisted_set(self) -> None:
+        # Old emit recomputed extra roots from raw facts; the island must not
+        # be revived when analysis did not trust it.
+        retained = pipeline._trusted_emit_facts(
+            self.image, self.facts, {"trusted_root_addresses": []}, {0x200},
+        )
+        self.assertEqual({0x200}, self._addresses(retained))
+
+    def test_inconsistent_persisted_roots_are_rejected(self) -> None:
+        with self.assertRaises(MegaDriveEmitError):
+            pipeline._trusted_emit_facts(
+                self.image, self.facts,
+                {"trusted_root_addresses": []}, {0x200, 0x300},
+            )
+
+    def test_legacy_cache_reuses_the_analysed_instruction_set(self) -> None:
+        retained = pipeline._trusted_emit_facts(
+            self.image, self.facts, {"decoder_seed_addresses": []}, {0x200, 0x300},
+        )
+        self.assertEqual({0x200, 0x300}, self._addresses(retained))
+        with self.assertRaises(MegaDriveEmitError):
+            pipeline._trusted_emit_facts(
+                self.image, self.facts, {}, {0x200, 0x400},
+            )
 
 
 class Z80DispatchConvergenceTests(unittest.TestCase):

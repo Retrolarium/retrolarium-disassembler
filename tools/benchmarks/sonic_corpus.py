@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from bisect import bisect_right
 from collections import Counter
+from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
@@ -79,6 +80,11 @@ def normalise_reference_listing(
         encoded, source = (match[2], match[3]) if sn else (match[2][:20], match[2][20:])
         code = source.split(";", 1)[0].strip()
         op = operation(source)
+        # SN MACROS defines a single-statement macro and has no ENDM.
+        # Its definition has no encoded bytes; counting it as a block would
+        # swallow every subsequent real instruction in the listing.
+        if sn and re.match(r"^\S+\s+macros\b", code, re.I):
+            continue
         if re.match(r"^\S+\s+macros?\b", code, re.I):
             macro_depth += 1
         if macro_depth:
@@ -257,7 +263,18 @@ def annotate_groups(groups: list[dict], listing: Path) -> None:
             group["reference_context"] = f"{labels[base]}+${group['start'] - base:X}"
 
 
-def benchmark(corpus: Path, projects: Path, output: Path) -> dict:
+def below_source_recall_target(case: dict, minimum: Decimal) -> bool:
+    source = case.get("source_emission")
+    if source is None:
+        return True
+    return (Decimal(100) * source["matching_instructions"]
+            < minimum * source["reference_instructions"])
+
+
+def benchmark(
+    corpus: Path, projects: Path, output: Path, *, cartridge_only: bool = False,
+    only: frozenset[str] = frozenset(),
+) -> dict:
     manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
     from retrolarium_kit.project import build_project, verify_project
@@ -265,7 +282,11 @@ def benchmark(corpus: Path, projects: Path, output: Path) -> dict:
     for unit in manifest["units"]:
         if not unit.get("matching_original_roms"):
             continue
+        if cartridge_only and unit.get("address_space") != "cartridge":
+            continue
         name = "chaotix" if unit["name"] == "chaotix-main" else unit["name"]
+        if only and name not in only:
+            continue
         print(f"Comparing {name}...", flush=True)
         project, dest = projects / name, output / name
         dest.mkdir(parents=True, exist_ok=True)
@@ -345,7 +366,8 @@ def benchmark(corpus: Path, projects: Path, output: Path) -> dict:
         (dest / "comparison.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     report = {"schema": "retrolarium.sonic-corpus-benchmark", "schema_version": 1,
               "reference_repositories": manifest["repositories"], "cases": reports,
-              "scope": "M68K opcodes. Sonic CD has no original disc input; Z80 recall needs separate decompressed-driver oracles."}
+              "scope": ("Cartridge-only M68K opcodes. " if cartridge_only else "M68K opcodes. ")
+              + "Sonic CD is measured separately by sonic_cd_benchmark.py; Z80 recall needs separate decompressed-driver oracles."}
     (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     rows = ["# Sonic: automatic ROM disassembly", "",
             "A match is a 68000 instruction with the same address, length and bytes.", "",
@@ -360,8 +382,10 @@ def benchmark(corpus: Path, projects: Path, output: Path) -> dict:
                         f"[HTML]({case['name']}/opcode-differences.html) |")
         else:
             rows.append(f"| {case['name']} | — | — | — | — | {case.get('rebuild_status', '—')} | {case.get('error')} |")
-    rows += ["", "Chaotix: the current Mega Drive model does not support 32X banks and the SH-2; the result covers a partial M68K disassembly.",
-             "Sonic CD: the original disc is missing, so it was not run. Z80 is not counted in the M68K percentages.", ""]
+    rows.append("")
+    if not cartridge_only:
+        rows.append("Chaotix: the current Mega Drive model does not support 32X banks and the SH-2; the result covers a partial M68K disassembly.")
+    rows += ["Sonic CD: the disc's MMD programs are compared by sonic_cd_benchmark.py. Z80 is not included in the M68K percentages.", ""]
     (output / "summary.md").write_text("\n".join(rows), encoding="utf-8")
     return report
 
@@ -371,13 +395,29 @@ def main() -> None:
     parser.add_argument("--corpus", type=Path, default=Path("build/sonic-references"))
     parser.add_argument("--projects", type=Path, default=Path("build/sonic-disassembly"))
     parser.add_argument("--output", type=Path, default=Path("build/sonic-comparison"))
+    parser.add_argument("--cartridge-only", action="store_true",
+                        help="compare ordinary Mega Drive cartridges; exclude 32X")
+    parser.add_argument("--only", action="append", default=[],
+                        help="compare only the named case; repeat for multiple cases")
+    parser.add_argument("--minimum-source-recall", type=Decimal, metavar="PERCENT",
+                        help="fail unless every selected project's emitted ASM reaches this recall")
     args = parser.parse_args()
+    if args.minimum_source_recall is not None and not 0 <= args.minimum_source_recall <= 100:
+        parser.error("--minimum-source-recall must be between 0 and 100")
     args.output.mkdir(parents=True, exist_ok=True)
-    report = benchmark(args.corpus.resolve(), args.projects.resolve(), args.output.resolve())
+    report = benchmark(args.corpus.resolve(), args.projects.resolve(), args.output.resolve(),
+                       cartridge_only=args.cartridge_only, only=frozenset(args.only))
     print(json.dumps([{key: value for key, value in case.items() if key in {"name", "error", "rebuild_status"}}
                       for case in report["cases"]], indent=2))
     if any("error" in case for case in report["cases"]):
         raise SystemExit(1)
+    if args.minimum_source_recall is not None:
+        below = [case["name"] for case in report["cases"]
+                 if below_source_recall_target(case, args.minimum_source_recall)]
+        if below:
+            print(f"Below {args.minimum_source_recall}% source recall: {', '.join(below)}",
+                  file=sys.stderr)
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":

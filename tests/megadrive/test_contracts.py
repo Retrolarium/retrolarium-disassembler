@@ -305,6 +305,9 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
+        (analysis / "m68k" / "instructions.json").write_text(
+            json.dumps({"instructions": []}), encoding="utf-8",
+        )
         (analysis / "z80" / "program00" / "dispatch-tables.json").write_text(
             json.dumps({
                 "schema": "retrolarium.z80.dispatch-tables",
@@ -324,7 +327,10 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
         (analysis / "analysis.json").write_text(json.dumps({
             "schema": "retrolarium.megadrive.analysis",
             "input": {"sha256": digest(data), "size": len(data)},
-            "programs": [],
+            "programs": [{
+                "cpu_id": "m68k",
+                "instructions": "m68k/instructions.json",
+            }],
         }), encoding="utf-8")
         image = SimpleNamespace(
             data=data,
