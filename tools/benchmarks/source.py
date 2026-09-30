@@ -18,7 +18,7 @@ import subprocess
 
 INCLUDE = re.compile(r'^\s*include\s+"([^"]+)"', re.IGNORECASE)
 LABEL = re.compile(r"^\s*([A-Za-z_.$][\w.$]*)\s*:\s*(.*)$")
-MNEMONIC = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:\.[bwlcs])?$", re.IGNORECASE)
+MNEMONIC = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:\.[bwlcs]?)?$", re.IGNORECASE)
 DIRECTIVES = {
     "binclude", "dc", "ds", "equ", "include", "org", "cpu", "page",
     "supmode", "padding", "end", "align", "cnop", "org0", "set",

@@ -23,6 +23,18 @@ def listing_line(address: int, encoded: str, source: str, column: int) -> str:
 
 
 class SourceBenchmarkTests(unittest.TestCase):
+    def test_as_macro_empty_size_suffix_keeps_instruction(self):
+        rom = bytes.fromhex("0880 0001 4E75")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "main.lst"
+            path.write_text("\n".join([
+                listing_line(0, "0880 0001", "bclr. #1,d0", 21),
+                listing_line(4, "4E75", "rts", 21),
+            ]), encoding="utf-8")
+            found, opened = read_listing(path, rom)
+        self.assertEqual({0: rom[:4], 4: rom[4:]}, found)
+        self.assertFalse(opened)
+
     def test_odd_byte_data_and_binary_include_delimit_full_instruction(self):
         rom = bytes.fromhex("3168 0010 002E 317C00 3168 0010 002E 00000000")
         with tempfile.TemporaryDirectory() as directory:

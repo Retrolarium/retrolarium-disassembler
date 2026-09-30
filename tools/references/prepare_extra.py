@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 
+from extra_reference_profiles import PROFILES as SECOND_BATCH, confirm_existing, prepare_profile, scan_roms
 from prepare_sonic_references import export, run, sha256
 from sonic_corpus_benchmark import normalise_reference_listing
 
@@ -42,7 +43,7 @@ def assemble_sn(root: Path, source: Path, output: Path, assembler: Path,
         raise ValueError(f"assembler failed: {log}")
 
 
-def prepare(name: str, refs: Path, dest: Path, rom_root: Path) -> dict:
+def prepare(name: str, refs: Path, dest: Path, rom_root: Path, pool=()) -> dict:
     repo, subdir, entry, rom_dir = PROFILES[name]
     checkout = refs / repo
     root = checkout / subdir
@@ -111,6 +112,9 @@ def prepare(name: str, refs: Path, dest: Path, rom_root: Path) -> dict:
             raise ValueError("flattened and upstream builds differ")
         candidates = [p for p in (rom_root / rom_dir).glob("*") if p.is_file() and p.suffix.lower() in {".gen", ".bin", ".md"}]
         matches = [str(p) for p in candidates if sha256(p) == digest]
+        # Additional ROM roots are matched by content only, independent of folder names.
+        matches += [item.path for item in pool if item.sha256 == digest
+                    and all(Path(item.path) != Path(path).resolve() for path in matches)]
         record.update(binary=str(binary), binary_sha256=digest, binary_bytes=binary.stat().st_size,
                       matches_upstream=True, matching_original_roms=matches,
                       status="verified-original" if matches else "upstream-only")
@@ -134,22 +138,65 @@ def prepare(name: str, refs: Path, dest: Path, rom_root: Path) -> dict:
     return record
 
 
+FAILING = {"blocked", "original-mismatch"}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--references", type=Path, default=Path("references"))
-    parser.add_argument("--roms", type=Path, default=Path("D:/Games/My Genesis Games"))
+    parser.add_argument("--roms", type=Path, default=Path("D:/Games/My Genesis Games"),
+                        help="first-batch collection with one folder per game (unchanged behaviour)")
+    parser.add_argument("--rom-root", type=Path, action="append",
+                        help="read-only folder searched recursively for originals, matched by content; "
+                             "repeatable (default: build/extra-roms)")
+    parser.add_argument("--rom-inventory", type=Path,
+                        help="JSON list of {path, sha256}; entries whose hash changed are excluded")
     parser.add_argument("--output", type=Path, default=Path("build/extra-references"))
-    parser.add_argument("--only", choices=PROFILES, action="append")
+    parser.add_argument("--batch", choices=("first", "second", "all"), default="first",
+                        help="profile set when --only is absent (default: the original six)")
+    parser.add_argument("--only", choices=[*PROFILES, *SECOND_BATCH], action="append")
+    parser.add_argument("--confirm-existing", choices=[*PROFILES, *SECOND_BATCH], action="append", default=[],
+                        help="re-check an already prepared profile against the ROM roots without rebuilding")
+    parser.add_argument("--vasm", type=Path, help="vasmm68k_mot executable for Aerobiz Supersonic")
+    parser.add_argument("--quackshot-as", type=Path,
+                        help="AS directory (asw.exe, p2bin.exe, *.msg) for QuackShot; default SITDDISASM/tools/asw")
+    parser.add_argument("--sega-cd-image", type=Path, help="optional Shining Force CD image to identify")
+    parser.add_argument("--timeout", type=int, default=1800, help="seconds per external build step")
     args = parser.parse_args()
+    refs = args.references.resolve()
+    roots = [path.resolve() for path in (args.rom_root or [Path("build/extra-roms")])]
+    pool, problems = scan_roms(roots, args.rom_inventory)
+    for problem in problems:
+        print("ROM inventory:", json.dumps(problem), flush=True)
+    settings = {"vasm": args.vasm and args.vasm.resolve(), "timeout": args.timeout,
+                "quackshot_as": args.quackshot_as and args.quackshot_as.resolve(),
+                "sega_cd_image": args.sega_cd_image and args.sega_cd_image.resolve()}
+    selected = args.only or ([] if args.confirm_existing else
+                             [*PROFILES] if args.batch == "first" else
+                             [*SECOND_BATCH] if args.batch == "second" else [*PROFILES, *SECOND_BATCH])
     records = []
-    for name in args.only or PROFILES:
-        result = prepare(name, args.references.resolve(), (args.output / name).resolve(), args.roms.resolve())
+    for name in selected:
+        dest = (args.output / name).resolve()
+        if name in PROFILES:
+            result = prepare(name, refs, dest, args.roms.resolve(), pool)
+        else:
+            result = prepare_profile(name, refs, dest, pool, settings)
         records.append(result)
         print(name, result["status"], result.get("error", ""), flush=True)
+    for name in args.confirm_existing:
+        try:
+            result = confirm_existing((args.output / name).resolve(), pool, [str(root) for root in roots])
+        except (ValueError, OSError) as exc:
+            result = {"name": name, "status": "blocked", "error": str(exc)}
+        records.append(result)
+        print(name, "confirm-existing", result["status"],
+              result.get("independent_confirmation", {}).get("matching_roms", result.get("error", "")), flush=True)
     all_records = [json.loads(p.read_text(encoding="utf-8"))
                    for p in sorted(args.output.glob("*/result.json"))]
-    (args.output / "manifest.json").write_text(json.dumps({"units": all_records}, indent=2) + "\n", encoding="utf-8")
-    return int(any(r["status"] == "blocked" for r in records))
+    (args.output / "manifest.json").write_text(json.dumps(
+        {"units": all_records, "rom_roots": [str(root) for root in roots], "rom_inventory_problems": problems},
+        indent=2) + "\n", encoding="utf-8")
+    return int(any(r["status"] in FAILING for r in records))
 
 
 if __name__ == "__main__":
