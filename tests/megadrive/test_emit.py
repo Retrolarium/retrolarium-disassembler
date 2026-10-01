@@ -384,6 +384,17 @@ class MegaDriveEmitTests(unittest.TestCase):
         )
         self.assertEqual("bset #7,2(a0)", _asm_instruction(instruction))
 
+    def test_link_word_frame_uses_proven_signed_immediate(self):
+        instruction = replace(fact(0x300, "LINK.W", "A6|-0x20"),
+                              raw=bytes.fromhex("4e56ffe0"), length=4)
+        self.assertEqual("link a6,#-32", _asm_instruction(instruction))
+        self.assertEqual("link a6,#-32", _asm_instruction(replace(
+            instruction, mnemonic="LINK", operands="A6|#-0x20")))
+        for invalid in (replace(instruction, operands="A5|-0x20"),
+                        replace(instruction, operands="A6|-0x10"),
+                        replace(instruction, raw=bytes.fromhex("4806ffffffe0"), length=6)):
+            self.assertIsNone(_asm_instruction(invalid))
+
     def test_rejects_noncanonical_byte_immediate_extension_words(self) -> None:
         cases = (
             ("ORI.B", "#-0x56|D4b", "00 04 C6 AA"),

@@ -14,6 +14,7 @@ from typing import Callable
 from .facts import InstructionFact
 from .m68k_abstract import OrphanCandidate, discover_packed_orphan_candidates
 from .megadrive import MegaDriveImage
+from .m68k_ram_dispatch import discover_inline_trap_calls
 
 
 def _call_continuations(known: dict[int, InstructionFact], image: MegaDriveImage):
@@ -84,6 +85,7 @@ def _complete_cfg(
     protected_ranges: tuple[tuple[int, int], ...],
     render: Callable[[InstructionFact], str | None],
     data: tuple[int, ...],
+    inline_traps: dict | None = None,
 ) -> dict[int, InstructionFact]:
     start, end = candidate.address, candidate.following_address
     pending = deque([start])
@@ -120,7 +122,19 @@ def _complete_cfg(
         following = address + fact.length
         targets = {target & 0xFFFFFF for target in fact.flows}
         edges = set()
-        if fact.mnemonic.upper() in {"RTS", "RTE", "RTR"}:
+        inline = (inline_traps or {}).get(address)
+        if inline is not None and fact.mnemonic.upper() == "TRAP":
+            # The already rooted vector handler proves how many argument
+            # bytes this instruction consumes. They remain data, even in a
+            # speculative CFG; a branch into them invalidates the hypothesis.
+            if inline.data_address != following or inline.continuation > end:
+                return {}
+            argument_bytes = set(range(following, inline.continuation))
+            if argument_bytes & occupied:
+                return {}
+            occupied.update(argument_bytes)
+            edges.add(inline.continuation)
+        elif fact.mnemonic.upper() in {"RTS", "RTE", "RTR"}:
             exits.add(address)
         elif flow in {"UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP"}:
             if not targets:
@@ -170,6 +184,11 @@ def discover_packed_orphan_closure(
 ) -> tuple[OrphanCandidate, ...]:
     virtual = {fact.cpu_address: fact for fact in known.values()}
     decoded = {fact.cpu_address: fact for fact in decoded.values()}
+    # Only candidate TRAP sites are speculative. Handler instructions come
+    # from rooted code; a pseudo-decoded handler never proves an exception ABI.
+    trap_sites = {a: f for a, f in decoded.items() if f.mnemonic.upper() == "TRAP"}
+    inline_traps = {call.call_address: call for call in discover_inline_trap_calls(
+        image, {**trap_sites, **virtual}) if call.handler in virtual}
     candidates = {}
     attempted = set()
     # Every successful round consumes bytes in a gap capped at 2048; this
@@ -178,16 +197,27 @@ def discover_packed_orphan_closure(
     for _ in range(128):
         additions = {}
         byte_owners = {}
+        inline_protected = tuple(
+            (inline_traps[a].data_address, inline_traps[a].continuation)
+            for a in virtual.keys() & inline_traps.keys())
+        round_protected = protected_ranges + inline_protected
 
         def accept_body(body):
             # Independently valid hypotheses must agree on instruction
             # boundaries before they share a batch of backend roots.
+            owners = {}
             for address, fact in body.items():
                 for byte in range(address, address + fact.length):
-                    if byte in byte_owners and byte_owners[byte] != address:
+                    owners[byte] = address
+            for address in body.keys() & inline_traps.keys():
+                inline = inline_traps[address]
+                for byte in range(inline.data_address, inline.continuation):
+                    if byte in owners:
                         return False
-            for address, fact in body.items():
-                byte_owners.update((byte, address) for byte in range(address, address + fact.length))
+                    owners[byte] = ("inline_data", address)
+            if any(byte in byte_owners and byte_owners[byte] != owner for byte, owner in owners.items()):
+                return False
+            byte_owners.update(owners)
             additions.update(body)
             return True
 
@@ -198,7 +228,7 @@ def discover_packed_orphan_closure(
             if candidate.address in attempted:
                 continue
             body = _complete_cfg(image, candidate, virtual, decoded,
-                                 protected_ranges, render_instruction, data)
+                                 round_protected, render_instruction, data, inline_traps)
             joins_known = any(f.cpu_address + f.length in virtual
                               and f.flow_type.upper() in {"FALL_THROUGH", "UNCONDITIONAL_CALL", "COMPUTED_CALL"}
                               for f in body.values())
@@ -212,16 +242,17 @@ def discover_packed_orphan_closure(
             if candidate.address in attempted:
                 continue
             body = _complete_cfg(image, candidate, virtual, decoded,
-                                 protected_ranges, render_instruction, data)
+                                 round_protected, render_instruction, data, inline_traps)
             if len(body) >= 2 and accept_body(body):
                 attempted.add(candidate.address)
                 candidates[candidate.address] = candidate
         for candidate in discover_packed_orphan_candidates(image, virtual):
-            if candidate.address in attempted:
+            if candidate.address in attempted or any(
+                    left <= candidate.address < right for left, right in inline_protected):
                 continue
             attempted.add(candidate.address)
             body = _complete_cfg(image, candidate, virtual, decoded,
-                                 protected_ranges, render_instruction, data)
+                                 round_protected, render_instruction, data, inline_traps)
             if accept_body(body):
                 candidates[candidate.address] = candidate
         # Exhaust adjacent roots before resynchronizing inside data gaps.
@@ -232,7 +263,7 @@ def discover_packed_orphan_closure(
                     continue
                 attempted.add(candidate.address)
                 body = _complete_cfg(image, candidate, virtual, decoded,
-                                     protected_ranges, render_instruction, data)
+                                     round_protected, render_instruction, data, inline_traps)
                 calls_known = any((int.from_bytes(f.raw[:2], "big") & 0xFFC0 == 0x4E80
                                    or int.from_bytes(f.raw[:2], "big") & 0xFF00 == 0x6100)
                                   and set(f.flows) & virtual.keys() for f in body.values())

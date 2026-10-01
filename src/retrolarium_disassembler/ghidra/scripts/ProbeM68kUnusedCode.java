@@ -12,11 +12,22 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.TreeMap;
 
 public class ProbeM68kUnusedCode extends GhidraScript {
     private static final int MAX_GAP = 2048;
+
+    private boolean hasTrapHandler(MemoryBlock rom, int opcode) throws Exception {
+        if ((opcode & 0xfff0) != 0x4e40) return false;
+        Address vector = rom.getStart().getAddressSpace().getAddress((32 + (opcode & 15)) * 4);
+        if (!rom.contains(vector) || !rom.contains(vector.add(3))) return false;
+        long handler = currentProgram.getMemory().getInt(vector) & 0x00ffffffL;
+        return currentProgram.getListing().getInstructionAt(
+            vector.getAddressSpace().getAddress(handler)) != null;
+    }
 
     private static boolean functionSignature(int opcode) {
         return (opcode & 0xf1c0) == 0x41c0 // LEA
@@ -28,7 +39,12 @@ public class ProbeM68kUnusedCode extends GhidraScript {
 
     private void probe(PseudoDisassembler decoder, long start, long end,
             MemoryBlock rom, TreeMap<Long, String> rows) throws Exception {
-        for (long cursor = start; cursor < end;) {
+        ArrayDeque<Long> pending = new ArrayDeque<>();
+        HashSet<Long> visited = new HashSet<>();
+        pending.add(start);
+        while (!pending.isEmpty()) {
+          for (long cursor = pending.removeFirst(); cursor < end;) {
+            if (!visited.add(cursor)) break;
             monitor.checkCancelled();
             Instruction instruction;
             try {
@@ -41,7 +57,28 @@ public class ProbeM68kUnusedCode extends GhidraScript {
             if (instruction == null || instruction.getLength() < 2
                     || cursor + instruction.getLength() > end) break;
             rows.put(cursor, row(instruction, rom.getName()));
+            // Inline data can misalign the linear walk. Decode direct branch
+            // targets as separate hypotheses, within this same bounded gap.
+            // Python still proves whole CFGs and protects data before seeding.
+            for (Address flow : instruction.getFlows()) {
+                long target = flow.getOffset();
+                if (flow.getAddressSpace().equals(rom.getStart().getAddressSpace())
+                        && target >= start && target < end && (target & 1) == 0
+                        && !visited.contains(target)) pending.add(target);
+            }
+            int opcode = currentProgram.getMemory().getShort(instruction.getAddress()) & 0xffff;
+            if (instruction.getLength() == 2 && hasTrapHandler(rom, opcode)) {
+                // These are hypotheses, never real instructions/data
+                // declarations. Python selects only the continuation
+                // proven by the already rooted vector's frame protocol.
+                for (int size = 2; size <= 32; size += 2) {
+                    long continuation = cursor + 2 + size;
+                    if (continuation < end && !visited.contains(continuation))
+                        pending.add(continuation);
+                }
+            }
             cursor += instruction.getLength();
+          }
         }
     }
 
@@ -94,6 +131,17 @@ public class ProbeM68kUnusedCode extends GhidraScript {
         for (int index = 0; index < known.size(); index++) {
             monitor.checkCancelled();
             Instruction previous = known.get(index);
+            int opcode = currentProgram.getMemory().getShort(previous.getAddress()) & 0xffff;
+            if (previous.getLength() == 2 && hasTrapHandler(rom, opcode)) {
+                long at = previous.getAddress().getOffset();
+                int next = index + 1;
+                while (next < known.size() && known.get(next).getAddress().getOffset() < at + 34) next++;
+                long limit = next < known.size() ? known.get(next).getAddress().getOffset()
+                    : rom.getEnd().getOffset() + 1;
+                // A known TRAP may border backend code islands, so ordinary
+                // terminal-gap probing would miss its real continuation.
+                probe(decoder, at, Math.min(limit, at + MAX_GAP), rom, rows);
+            }
             if (!(previous.getFlowType().isTerminal() || previous.getFlowType().isJump()
                     && !previous.getFlowType().isConditional())) continue;
             long start = previous.getAddress().getOffset() + previous.getLength();
@@ -107,9 +155,9 @@ public class ProbeM68kUnusedCode extends GhidraScript {
             // them to the real listing. Python requires a full CFG, RTS,
             // a known callee, and absence of known data use before seeding.
             for (long candidate = start + 2; candidate + 2 <= end; candidate += 2) {
-                int opcode = currentProgram.getMemory().getShort(
+                int candidateOpcode = currentProgram.getMemory().getShort(
                     rom.getStart().getAddressSpace().getAddress(candidate)) & 0xffff;
-                if (functionSignature(opcode)) probe(decoder, candidate, end, rom, rows);
+                if (functionSignature(candidateOpcode)) probe(decoder, candidate, end, rom, rows);
             }
         }
         List<String> lines = new ArrayList<>();

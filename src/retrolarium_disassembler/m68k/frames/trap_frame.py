@@ -42,27 +42,34 @@ def _handler_consumes_word(facts, handler):
             break
     if not consumed or not advanced:
         return False
-    pending = deque([(cursor, False)])
+    pending = deque([(cursor, False, False)])
     visited = set()
     returns = set()
     edges = {}
     while pending and len(visited) < 512:
         node = pending.popleft()
-        address, restored = node
+        address, restored, discarded_sr = node
         if node in visited:
             continue
         visited.add(node)
         fact = facts.get(address)
         if fact is None or address in prefix or slot in fact.operands.upper():
             return False  # Further PC edits would make the argument length variable.
-        if fact.raw == b"\x4e\x73":
-            if not restored:
+        if fact.raw in {b"\x4e\x73", b"\x4e\x75"}:
+            # Some flag-query TRAPs intentionally preserve their result CCR:
+            # restore registers, discard only the saved SR word, then RTS.
+            if not restored or (fact.raw == b"\x4e\x75") != discarded_sr:
                 return False
             returns.add(node)
             edges[node] = set()
             continue
         operands = fact.operands.upper().split("|")
-        if fact.mnemonic.upper() == restore_mnemonic and operands[0] == "(SP)+":
+        if discarded_sr:
+            return False  # The adjusted exception frame must return immediately.
+        if (restored and fact.mnemonic.upper() == "ADDQ.L"
+                and operands == ["0X2", "SP"]):
+            discarded_sr = True
+        elif fact.mnemonic.upper() == restore_mnemonic and operands[0] == "(SP)+":
             if restored or set(_register_list(operands[-1])) != saved:
                 return False
             restored = True
@@ -72,11 +79,11 @@ def _handler_consumes_word(facts, handler):
         flow = fact.flow_type.upper()
         targets = {target & 0xFFFFFF for target in fact.flows}
         if flow in {"FALL_THROUGH", "UNCONDITIONAL_CALL", "CONDITIONAL_CALL"}:
-            successors = {(following, restored)}
+            successors = {(following, restored, discarded_sr)}
         elif flow == "CONDITIONAL_JUMP":
-            successors = {(target, restored) for target in targets} | {(following, restored)}
+            successors = {(target, restored, discarded_sr) for target in targets} | {(following, restored, discarded_sr)}
         elif flow == "UNCONDITIONAL_JUMP" and targets:
-            successors = {(target, restored) for target in targets}
+            successors = {(target, restored, discarded_sr) for target in targets}
         else:
             return False
         edges[node] = successors

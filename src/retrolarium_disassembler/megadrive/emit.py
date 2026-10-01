@@ -311,6 +311,21 @@ def _asm_instruction(
                 if registers is not None:
                     ordered = (registers, address) if set_index == 0 else (address, registers)
                     return fact.mnemonic.lower() + " " + ",".join(ordered)
+    if fact.mnemonic.upper() in {"LINK", "LINK.W"}:
+        # Ghidra spells the 68000 form LINK.W and prints its signed frame
+        # displacement without '#'. Prove the register and word from bytes
+        # before emitting the assembler's ordinary LINK immediate syntax.
+        opcode = int.from_bytes(fact.raw[:2], "big")
+        parts = fact.operands.upper().split("|")
+        if len(fact.raw) != 4 or opcode & 0xFFF8 != 0x4E50 or len(parts) != 2:
+            return None
+        register = "A7" if parts[0] == "SP" else parts[0]
+        displacement = int.from_bytes(fact.raw[2:], "big", signed=True)
+        if register != f"A{opcode & 7}" or not re.fullmatch(r"#?-?(?:0X[0-9A-F]+|\d+)", parts[1]):
+            return None
+        if int(parts[1].lstrip("#"), 0) != displacement:
+            return None
+        return f"link a{opcode & 7},#{displacement}"
     allowed = {
         "MOVE", "MOVE.B", "MOVE.W", "MOVE.L", "MOVEA.W", "MOVEA.L",
         "LEA", "CLR.B", "CLR.W", "CLR.L", "TST.B", "TST.W", "TST.L",

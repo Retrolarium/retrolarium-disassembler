@@ -213,6 +213,7 @@ class _M68kHarness:
             "discover_inline_trap_calls": lambda *args: tuple(self._current().get("inline", ())),
             "discover_returning_call_seeds": lambda *args: tuple(self._current().get("returning", ())),
             "discover_callback_abi_seeds": lambda *args, **kwargs: (),
+            "discover_ram_record_dispatch_seeds": lambda *args: (),
             "_discover_packed_code": lambda *args: (),
             "_discover_unused_code": lambda *args: (tuple(self._current().get("unused", ())), ()),
             "load_megadrive": lambda rom: _image(),

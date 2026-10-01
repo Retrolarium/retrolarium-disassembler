@@ -118,13 +118,17 @@ def _consumption(facts, start, slot, pc_register, saved, width):
 
 def discover_variable_inline_trap_calls(image, facts):
     from .m68k_ram_dispatch import InlineTrapCall
+    from .m68k_trap_callbacks import executed_arrays, setter_array
+    from .megadrive_pointers import _instruction_sets
     facts = {fact.cpu_address: fact for fact in facts.values()}
+    arrays = executed_arrays(image, facts)
+    _, interiors, _ = _instruction_sets(facts)
     handlers = {}
     for number in range(max(0, min(16, len(image.vector_table) - 32))):
         handler = image.vector_table[32 + number].address
         dispatch = _dispatch(image, facts, handler)
         if dispatch: handlers[number] = (handler, dispatch)
-    calls, summaries = [], {}
+    calls, summaries, setters = [], {}, {}
     for fact in facts.values():
         if fact.mnemonic.upper() != "TRAP" or len(fact.raw) != 2: continue
         opcode = int.from_bytes(fact.raw, "big")
@@ -137,8 +141,17 @@ def discover_variable_inline_trap_calls(image, facts):
         key = handler, selector
         if key not in summaries:
             summaries[key] = _consumption(facts, targets[selector], slot, pc_register, saved, width)
+            setters[key] = setter_array(image, facts, targets[selector], slot, pc_register)
         length = summaries[key]
         if length and offset + length <= len(image.data):
+            target = None
+            if length == 6 and setters[key] in arrays:
+                pointer = int.from_bytes(image.data[offset + 2:offset + 6], "big") & 0xFFFFFF
+                physical = pointer - image.header.rom_start
+                if (not pointer & 1 and 0x200 <= physical <= len(image.data) - 2
+                        and physical not in interiors
+                        and image.data[physical:physical + 2] not in {b"\x00\x00", b"\xff\xff"}):
+                    target = pointer
             calls.append(InlineTrapCall(fact.cpu_address, fact.cpu_address + 2,
-                         fact.cpu_address + 2 + length, None, handler, length))
+                         fact.cpu_address + 2 + length, target, handler, length))
     return tuple(calls)

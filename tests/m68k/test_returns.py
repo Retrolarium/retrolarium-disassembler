@@ -58,6 +58,15 @@ class NormalReturnTests(unittest.TestCase):
         self.facts[0x326] = replace(self.facts[0x326], flow_type="UNCONDITIONAL_JUMP")
         self.assertFalse(self.discover())
 
+    def test_address_register_pop_and_backend_suppressed_tail_branch(self):
+        self.facts[0x300] = instruction(0x300, "2f08", "MOVE.L", "A0|-(SP)")
+        self.facts[0x302] = instruction(0x302, "205f", "MOVEA.L", "(SP)+|A0")
+        self.facts[0x304] = instruction(0x304, "6000001a", "BRA.W", "0x320", "CALL_TERMINATOR", (0x320,))
+        self.assertEqual({0x206}, self.discover())
+        # Restoring more than was saved consumes the caller's return PC.
+        self.facts[0x300] = instruction(0x300, "3f08", "MOVE.W", "A0w|-(SP)")
+        self.assertFalse(self.discover())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,6 +29,7 @@ from .m68k_packed import discover_packed_orphan_closure
 from .m68k_returns import discover_returning_call_seeds
 from .m68k_callback_abi import discover_callback_abi_seeds
 from .m68k_ram_dispatch import discover_inline_trap_calls
+from .m68k_ram_record_dispatch import discover_ram_record_dispatch_seeds
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project, _asm_instruction
 from .megadrive_pointers import (
     detect_pointer_candidates,
@@ -301,6 +302,7 @@ def analyze_megadrive(
         for candidate in validated_unused:
             unused_candidates.setdefault(candidate.address, candidate)
         dispatch_seeds = list(discover_dispatch_table_seeds(image, trusted_facts))
+        dispatch_seeds.extend(discover_ram_record_dispatch_seeds(image, trusted_facts))
         return_seeds = discover_returning_call_seeds(image, facts, trusted_facts)
         dispatch_seeds.extend(return_seeds)
         new_return_calls = {seed.source_address for seed in return_seeds} - returning_calls.keys()
@@ -310,10 +312,16 @@ def analyze_megadrive(
                                   (call.target, "inline_trap_target")):
                 if address is None:
                     continue
+                callback_evidence = (
+                    "; inline pointer is stored in a bounded RAM array whose slots "
+                    "are called by a matching counted loop"
+                    if kind == "inline_trap_target" and call.data_size == 6 else ""
+                )
                 dispatch_seeds.append(DecoderSeed(
                     address, kind, "proven",
                     f"TRAP at {call.call_address:06X}; handler {call.handler:06X} "
-                    f"consumes {call.data_size} inline bytes and advances the saved exception PC",
+                    f"consumes {call.data_size} inline bytes and advances the saved exception PC"
+                    + callback_evidence,
                     call.call_address,
                 ))
         dispatch_seeds.extend(discover_descriptor_ram_code_seeds(image, trusted_facts))

@@ -8,6 +8,7 @@ from retrolarium_kit.m68k_packed import discover_packed_orphan_closure, _call_co
 from retrolarium_kit.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_emit import _asm_instruction
 from retrolarium_kit.facts import InstructionReference
+from retrolarium_kit.m68k_ram_dispatch import discover_inline_trap_calls
 from test_megadrive import cartridge
 from test_m68k_unused import instruction
 
@@ -38,6 +39,62 @@ class PackedClosureTests(unittest.TestCase):
     def test_multiple_adjacent_routines_and_tail_jump_in_one_batch(self):
         result = self.discover()
         self.assertTrue({0x202, 0x206, 0x20A} <= set(result))
+
+    def test_inline_trap_argument_in_suppressed_call_continuation(self):
+        self.known = {
+            0x200: instruction(0x200, "4eb900000540", "JSR", "0x540.l", "CALL_TERMINATOR", (0x540,)),
+            0x220: instruction(0x220, "4e75", "RTS", flow="TERMINATOR"),
+            0x500: instruction(0x500, "48e74080", "MOVEM.L", "D1/A0|-(SP)"),
+            0x504: instruction(0x504, "206f000a", "MOVEA.L", "(0xa,SP)|A0"),
+            0x508: instruction(0x508, "3210", "MOVE.W", "(A0)|D1w"),
+            0x50A: instruction(0x50A, "54af000a", "ADDQ.L", "0x2|(0xa,SP)"),
+            0x50E: instruction(0x50E, "4cdf0102", "MOVEM.L", "(SP)+|D1/A0"),
+            0x512: instruction(0x512, "4e73", "RTE", flow="TERMINATOR"),
+            0x540: instruction(0x540, "4e75", "RTS", flow="TERMINATOR"),
+        }
+        self.decoded = {
+            0x206: instruction(0x206, "7001", "MOVEQ", "0x1|D0"),
+            0x208: instruction(0x208, "4e45", "TRAP", "0x5", "FALL_THROUGH"),
+            0x20C: instruction(0x20C, "4a40", "TST.W", "D0w"),
+            0x20E: instruction(0x20E, "4e75", "RTS", flow="TERMINATOR"),
+        }
+        def checked_body():
+            data = bytearray(cartridge(size=0x800))
+            data[(32+5)*4:(33+5)*4] = (0x500).to_bytes(4, "big")
+            data[0x20A:0x20C] = b"\x00\x07"  # parameter has no instruction fact
+            for fact in (*self.known.values(), *self.decoded.values()):
+                data[fact.cpu_address:fact.cpu_address+fact.length] = fact.raw
+            image = parse_megadrive(bytes(data))
+            traps = {a: f for a, f in self.decoded.items() if f.mnemonic == "TRAP"}
+            inline = {c.call_address: c for c in discover_inline_trap_calls(
+                image, {**traps, **self.known}) if c.handler in self.known}
+            candidate = next(_call_continuations(self.known, image))
+            return _complete_cfg(image, candidate, self.known, self.decoded,
+                                 (), _asm_instruction, (), inline)
+
+        self.assertEqual({0x206, 0x208, 0x20C, 0x20E}, checked_body().keys())
+        # A branch into the consumed word is not a valid code path.
+        self.decoded[0x20C] = instruction(0x20C, "66fc", "BNE.B", "0x20a", "CONDITIONAL_JUMP", (0x20A,))
+        self.assertFalse(checked_body())
+        self.decoded[0x20C] = instruction(0x20C, "4a40", "TST.W", "D0w")
+        # Even a parameter that looks like RTS cannot become a separate root
+        # after the known TRAP has been marked as a terminating flow.
+        self.known[0x208] = replace(self.decoded[0x208], flow_type="CALL_TERMINATOR")
+        self.known[0x20C] = self.decoded[0x20C]
+        data = bytearray(cartridge(size=0x800))
+        data[(32+5)*4:(33+5)*4] = (0x500).to_bytes(4, "big")
+        for fact in (*self.known.values(), *self.decoded.values()):
+            data[fact.cpu_address:fact.cpu_address+fact.length] = fact.raw
+        data[0x20A:0x20C] = b"\x4e\x75"
+        roots = {c.address for c in discover_packed_orphan_closure(
+            parse_megadrive(bytes(data)), self.known, self.decoded, render_instruction=_asm_instruction)}
+        self.assertNotIn(0x20A, roots)
+        del self.known[0x208], self.known[0x20C]
+        # Handler facts existing only in the speculative probe cannot prove ABI.
+        for address in tuple(self.known):
+            if 0x500 <= address < 0x540:
+                self.decoded[address] = self.known.pop(address)
+        self.assertFalse(checked_body())
 
     def test_no_resynchronization_after_unknown_bytes(self):
         del self.decoded[0x204]

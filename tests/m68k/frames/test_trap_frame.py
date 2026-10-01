@@ -66,6 +66,20 @@ class TrapFrameTests(unittest.TestCase):
         self.facts[0x216] = replace(self.facts[0x216], mnemonic="MOVEM.W", operands="(SP)+|D0")
         self.assertEqual(1, len(self.discover()))
 
+    def test_flag_result_abi_discards_saved_sr_then_returns_by_rts(self):
+        self.facts[0x21A] = instruction(0x21A, "548f", "ADDQ.L", "0x2|SP")
+        self.facts[0x21C] = instruction(0x21C, "4e75", "RTS", flow="TERMINATOR")
+        self.assertEqual(1, len(self.discover()))
+        self.facts[0x21A] = replace(self.facts[0x21A], operands="0x4|SP")
+        self.assertFalse(self.discover())
+
+    def test_plain_rts_or_rte_after_discard_is_not_an_exception_return(self):
+        self.facts[0x21A] = instruction(0x21A, "4e75", "RTS", flow="TERMINATOR")
+        self.assertFalse(self.discover())
+        self.facts[0x21A] = instruction(0x21A, "548f", "ADDQ.L", "0x2|SP")
+        self.facts[0x21C] = instruction(0x21C, "4e73", "RTE", flow="TERMINATOR")
+        self.assertFalse(self.discover())
+
 
 if __name__ == "__main__":
     unittest.main()

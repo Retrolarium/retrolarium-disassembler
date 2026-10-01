@@ -50,7 +50,7 @@ def discover_returning_call_seeds(image, facts, call_sites=None):
                         stack -= size * len(_register_list(operands[1]))
                     else:
                         continue
-                elif mnemonic in {"MOVE.L", "MOVE.W", "MOVE.B", "MOVE"} and len(operands) == 2:
+                elif mnemonic in {"MOVE.L", "MOVE.W", "MOVE.B", "MOVE", "MOVEA.L", "MOVEA.W"} and len(operands) == 2:
                     size = 4 if mnemonic.endswith(".L") else 2
                     if operands[1] == "-(SP)" and "SP" not in operands[0]:
                         stack += size
@@ -72,7 +72,11 @@ def discover_returning_call_seeds(image, facts, call_sites=None):
                 continue
             flow = fact.flow_type.upper()
             decision = _branch_outcome(fact, outgoing) if flow == "CONDITIONAL_JUMP" else TruthValue.UNKNOWN
-            if flow in {"UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP"} or opcode & 0xFFC0 == 0x4EC0:
+            # A backend can mark an ordinary tail BRA as CALL_TERMINATOR
+            # after inferring that its destination does not return. The
+            # architectural instruction still jumps without pushing a PC.
+            tail_branch = opcode & 0xFF00 == 0x6000
+            if flow in {"UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP"} or opcode & 0xFFC0 == 0x4EC0 or tail_branch:
                 if decision != TruthValue.FALSE:
                     pending.extend((target, stack, outgoing) for target in targets)
             if flow in {"FALL_THROUGH", "CONDITIONAL_JUMP"} and decision != TruthValue.TRUE:
