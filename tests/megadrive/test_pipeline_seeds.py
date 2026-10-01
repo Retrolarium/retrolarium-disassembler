@@ -29,6 +29,12 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         probe = patch.object(pipeline, "_discover_unused_code", return_value=((), ()))
         probe.start()
         self.addCleanup(probe.stop)
+        packed = patch.object(pipeline, "_discover_packed_code", return_value=())
+        packed.start()
+        self.addCleanup(packed.stop)
+        inline = patch.object(pipeline, "discover_inline_trap_calls", return_value=())
+        inline.start()
+        self.addCleanup(inline.stop)
 
     def test_decoded_but_untrusted_packed_function_gets_a_planned_root(self) -> None:
         payload = bytearray(dispatch_image().data)

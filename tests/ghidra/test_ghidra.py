@@ -203,6 +203,8 @@ class GhidraBackendTests(unittest.TestCase):
             workspace = root / "analysis"
             seed_plan = root / "seeds.txt"
             seed_plan.write_text("000B5A\n", encoding="ascii")
+            return_plan = root / "normal-return-calls.txt"
+            return_plan.write_text("000B54 000B5A\n", encoding="ascii")
 
             def complete(
                 command: list[str], **_: object
@@ -232,6 +234,10 @@ class GhidraBackendTests(unittest.TestCase):
 
             command = run.call_args.args[0]
             script_index = command.index("SeedMegaDriveVectors.java")
+            repair_index = command.index("RestoreM68kReturningCalls.java")
+            self.assertGreater(repair_index, script_index)
+            self.assertLess(repair_index, command.index("ExportInstructionFacts.java"))
+            self.assertEqual(str(return_plan.resolve()), command[repair_index + 1])
             self.assertEqual(str(seed_plan.resolve()), command[script_index + 1])
 
     def test_z80_uses_independent_program_and_address_space(self) -> None:

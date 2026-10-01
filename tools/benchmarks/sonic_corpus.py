@@ -88,7 +88,7 @@ def normalise_reference_listing(
         if re.match(r"^\S+\s+macros?\b", code, re.I):
             macro_depth += 1
         if macro_depth:
-            if op == "endm":
+            if op == "endm" or re.fullmatch(r"\S+\s+endm", code, re.I):
                 macro_depth -= 1
             continue
         if pending_obj is not None:

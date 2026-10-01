@@ -90,7 +90,8 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
                 candidates[site] = seeds[0].evidence
                 candidates.update((s.address, s.evidence) for s in seeds)
         probes = _load_ghidra_facts(artifacts.orphan_facts, image.data, lambda a: a,
-                                  bank=0, address_label="overlay", allow_empty=True)
+                                  bank=0, address_label="overlay", expected_block="CD_MODULE",
+                                  allow_empty=True, allow_overlaps=True)
         unused, _ = discover_validated_unused_candidates(
             image, trusted.facts, {**probes, **facts}, render_instruction=_asm_instruction)
         candidates.update((c.address, c.evidence) for c in unused)

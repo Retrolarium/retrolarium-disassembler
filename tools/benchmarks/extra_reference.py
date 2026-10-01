@@ -95,10 +95,15 @@ def evaluate(unit: dict, project: Path, dest: Path, toolchain_cache: Path, resul
     if verification["status"] != "exact":
         # Metrics above stay visible; an inexact rebuild still fails the case.
         raise ValueError("generated project does not reproduce the original ROM")
+    # Preserve measured metrics before generating a potentially large HTML.
+    # An interrupted report must not hide a completed, exact ROM comparison.
+    result["html_status"] = "pending"
+    (dest / "comparison.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     counts = write_html(Path(unit["source"]).parent, project / "generated", dest / "opcode-differences.html",
                         differences_only=True, opcodes_only=True, rom=rom_path,
                         reference_listing=normalized, title=unit["name"])
     result["html_status_counts"] = dict(counts)
+    result["html_status"] = "complete"
     for key in ("missing", "extra"):
         lines = ["start\tend_exclusive\tinstructions\treference_context"]
         lines.extend(f"${group['start']:06X}\t${group['end']:06X}\t{group['instructions']}\t"

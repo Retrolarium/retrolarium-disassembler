@@ -6,6 +6,8 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.data.ArrayDataType;
+import ghidra.program.model.data.ByteDataType;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -57,9 +59,27 @@ public class SeedMegaDriveVectors extends GhidraScript {
         }
         Path plan = Paths.get(arguments[0]);
         int seeded = 0;
+        // Inline arguments proven by Python must exist as data BEFORE any
+        // root is decoded, so TRAP fall-through cannot swallow continuation
+        // instructions as operands of an accidental decode.
         for (String raw : Files.readAllLines(plan)) {
             String line = raw.split("#", 2)[0].trim();
-            if (line.isEmpty()) {
+            if (!line.startsWith("DATA ")) continue;
+            String[] fields = line.split("\\s+");
+            if (fields.length != 3)
+                throw new IllegalArgumentException("invalid inline-data range: " + line);
+            long offset = Long.parseLong(fields[1], 16);
+            int size = Integer.parseInt(fields[2]);
+            if (size < 2 || size > 32 || (size & 1) != 0 || offset < 0x200
+                    || offset + size > rom.getSize() || (offset & 1) != 0)
+                throw new IllegalArgumentException("invalid inline-data range: " + line);
+            Address address = rom.getStart().add(offset);
+            clearListing(address, address.add(size - 1));
+            createData(address, new ArrayDataType(ByteDataType.dataType, size, 1));
+        }
+        for (String raw : Files.readAllLines(plan)) {
+            String line = raw.split("#", 2)[0].trim();
+            if (line.isEmpty() || line.startsWith("DATA ")) {
                 continue;
             }
             long target = Long.parseLong(line, 16);

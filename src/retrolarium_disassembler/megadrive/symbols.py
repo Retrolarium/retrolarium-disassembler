@@ -48,7 +48,7 @@ def pc_indexed_target(fact: InstructionFact) -> tuple[int, int, str, str] | None
         return None
     source = fact.operands.split("|", 1)[0]
     operand = re.fullmatch(
-        r"\(0x([0-9a-f]+),PC,([DA])([0-7])([wl])\*0x1\)", source, re.I
+        r"\(0x([0-9a-f]+),PC,([DA])([0-7])([wl]?)\*0x1\)", source, re.I
     )
     if operand is None:
         return None
@@ -63,7 +63,7 @@ def pc_indexed_target(fact: InstructionFact) -> tuple[int, int, str, str] | None
     if (int(operand.group(1), 16) != target
             or operand.group(2).upper() != kind
             or int(operand.group(3)) != register
-            or operand.group(4).lower() != size):
+            or (operand.group(4).lower() or "l") != size):
         return None
     return target, register, kind.lower(), size
 

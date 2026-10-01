@@ -83,6 +83,11 @@ def run_megadrive_analysis(
         seed_arguments=(str(seed_plan.resolve()),),
         export_block="ROM",
         probe_m68k_orphans=probe_orphans,
+        post_analysis_scripts=(
+            ("-postScript", "RestoreM68kReturningCalls.java",
+             str(seed_plan.with_name("normal-return-calls.txt").resolve()))
+            if seed_plan.with_name("normal-return-calls.txt").is_file() else ()
+        ),
     )
 
 
@@ -260,6 +265,7 @@ def _run_analysis(
     export_block: str | None,
     seed_arguments: tuple[str, ...] = (),
     probe_m68k_orphans: bool = False,
+    post_analysis_scripts: tuple[str, ...] = (),
 ) -> GhidraArtifacts:
     image = image.resolve()
     if not image.is_file():
@@ -295,6 +301,7 @@ def _run_analysis(
             "-preScript",
             seed_script,
             *seed_arguments,
+            *post_analysis_scripts,
             "-postScript",
             "InspectProgram.java",
             str(report.resolve()),

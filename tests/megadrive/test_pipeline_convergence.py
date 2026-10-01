@@ -33,6 +33,7 @@ from retrolarium_kit.m68k_seeds import DecoderSeed
 from retrolarium_kit.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_emit import MegaDriveEmitError
 from retrolarium_kit.m68k_unused import UnusedCodeCandidate
+from retrolarium_kit.m68k_ram_dispatch import InlineTrapCall
 from retrolarium_kit.megadrive_z80 import CrossCpuCopy
 from retrolarium_kit.z80_dispatch import Z80DispatchTable
 from test_megadrive import cartridge
@@ -172,7 +173,7 @@ class _M68kHarness:
             iterations=1,
         )
 
-    def load_facts(self, path, image):
+    def load_facts(self, path, image, **kwargs):
         self._last_facts = {
             address: SimpleNamespace(cpu_address=address)
             for address in self._current().get("raw", ())
@@ -209,6 +210,10 @@ class _M68kHarness:
 
     def patches(self) -> dict[str, object]:
         return {
+            "discover_inline_trap_calls": lambda *args: tuple(self._current().get("inline", ())),
+            "discover_returning_call_seeds": lambda *args: tuple(self._current().get("returning", ())),
+            "discover_callback_abi_seeds": lambda *args, **kwargs: (),
+            "_discover_packed_code": lambda *args: (),
             "_discover_unused_code": lambda *args: (tuple(self._current().get("unused", ())), ()),
             "load_megadrive": lambda rom: _image(),
             "toolchain_status": lambda home: None,
@@ -236,6 +241,30 @@ class M68kConvergenceTests(unittest.TestCase):
             return pipeline.analyze_megadrive(
                 self.root / "game.bin", self.root / "out", self.root / "ghidra"
             )
+
+    def test_inline_data_is_planned_before_decoding_continuation(self):
+        call = InlineTrapCall(0x200, 0x202, 0x204, 0x300, 0x240)
+        harness = _M68kHarness([{"inline": (call,)}, {"inline": (call,)}])
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+        self.assertEqual(2, len(harness.plans_seen))
+        self.assertTrue(harness.plans_seen[1].startswith("DATA 000202 2\n"))
+        self.assertIn("000204\n", harness.plans_seen[1])
+        progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertTrue(progress["converged"])
+        self.assertEqual([0x202], progress["passes"][0]["new_inline_data_addresses"])
+
+    def test_new_return_witness_requires_backend_pass_even_for_planned_root(self):
+        seed = DecoderSeed(0x206, "normal_return_continuation", "proven", "balanced RTS", 0x200)
+        harness = _M68kHarness([{"returning": (seed,)}, {"returning": (seed,)}],
+                              initial_seeds=(seed,))
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+        self.assertEqual(2, len(harness.plans_seen))
+        self.assertEqual("000200 000206\n", (self.root / "out/m68k/normal-return-calls.txt").read_text())
+        progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertEqual([0x200], progress["passes"][0]["new_normal_return_calls"])
+        self.assertTrue(progress["converged"])
 
     def test_perpetual_discovery_raises_after_bounded_passes(self) -> None:
         # Every pass proves a brand-new target, so the loop can never settle.

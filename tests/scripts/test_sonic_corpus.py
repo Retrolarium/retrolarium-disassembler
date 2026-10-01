@@ -52,6 +52,14 @@ class SonicCorpusBenchmarkTests(unittest.TestCase):
         ], bytes.fromhex("4E714E75"), sn=True)
         self.assertEqual({0: bytes.fromhex("4E71"), 2: bytes.fromhex("4E75")}, found)
 
+    def test_as_named_endm_closes_definition_without_hiding_real_code(self):
+        found, _, _ = self.read([
+            as_line(0, "", "wrapper macro x"),
+            as_line(0, "", "dc.w x"), as_line(0, "", "wrapper endm"),
+            as_line(0, "4E75", "rts"),
+        ], bytes.fromhex("4E75"))
+        self.assertEqual({0: bytes.fromhex("4E75")}, found)
+
     def test_phase_maps_ram_instruction_to_physical_rom(self):
         found, _, _ = self.read([
             as_line(0, "4E71", "nop"),

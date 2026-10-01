@@ -37,6 +37,48 @@ from test_megadrive_pointers import word_dispatch_image
 
 
 class MegaDriveEmitTests(unittest.TestCase):
+    def test_overlapping_z80_sources_build_complete_programs_emit_shared_byte_once(self):
+        from retrolarium_kit.contracts import _validate_megadrive_assets, ContractError
+        data = bytearray(cartridge(size=0x600))
+        data[0x300:0x307] = bytes.fromhex("f30000c90000c9")
+        image = parse_megadrive(bytes(data))
+        copies = []
+        for index, (offset, size, base) in enumerate(((0x300, 4, 0), (0x303, 4, 0x1000), (0x302, 2, 0x1800))):
+            payload = data[offset:offset + size]
+            copies.append(CrossCpuCopy(
+                str(index), "test", "m68k", "m68k", offset, offset + size - 1,
+                "z80", "z80", base, base + size - 1, size,
+                hashlib.sha256(payload).hexdigest(), (0x200,), "proven-static-copy"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = emit_project(root, image, {}, (), (), tuple(copies),
+                                  tuple((f"z80.{i}", c.target_start, {}) for i, c in enumerate(copies)))
+            source = (root / "src/rom-000200.s").read_text()
+            self.assertIn('binclude "build/z80-program01.bin",1,3', source)
+            self.assertNotIn('binclude "build/z80-program02.bin"', source)
+            programs = [a for a in result.assets if a["kind"] == "z80_program"]
+            self.assertEqual([4, 4, 2], [a["size"] for a in programs])
+            self.assertEqual([], programs[2]["rom_emission"])
+            _validate_megadrive_assets({"assets": {"schema": "retrolarium.assets",
+                "schema_version": 1, "items": list(result.assets)}}, root, len(data))
+            if os.name == "nt":
+                suite = materialize_build_toolchain("megadrive", cache_root=root / "toolchains")
+                _asl_build({"source": "src/main.s", "object": "build/main.p",
+                            "z80_prebuild": list(result.z80_builds)}, root, root / "rebuilt.bin", suite)
+                self.assertEqual(bytes(data), (root / "rebuilt.bin").read_bytes())
+                for i, c in enumerate(copies):
+                    self.assertEqual(bytes(data[c.source_start:c.source_start + c.size]),
+                                     (root / f"build/z80-program{i:02d}.bin").read_bytes())
+            programs[1]["rom_emission"][0]["file_offset"] = 0
+            with self.assertRaisesRegex(ContractError, "coordinates"):
+                _validate_megadrive_assets({"assets": {"schema": "retrolarium.assets",
+                    "schema_version": 1, "items": list(result.assets)}}, root, len(data))
+
+    def test_pc_long_index_implicit_ghidra_suffix_emits_exact_instruction(self):
+        item = replace(fact(0x11954, "MOVEA.L", "(0x11962,PC,D0*0x1)|A0"),
+                       raw=bytes.fromhex("207b080c"), length=4)
+        self.assertEqual("movea.l $011962(pc,d0.l),a0", _asm_instruction(item))
+
     def test_68000_rejects_movem_load_predecrement_and_tst_address_register(self):
         movem = replace(fact(0x200, "MOVEM.W", "-(A4)|{ D0 D1 D6 D7 A0}"),
                         raw=bytes.fromhex("4C A4 01 C3"), length=4)

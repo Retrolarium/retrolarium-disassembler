@@ -656,6 +656,8 @@ def discover_object_field_handler_candidates(
     Require the target to begin exactly after known terminating code. This
     separates callbacks from asset pointers stored in overloaded fields.
     """
+    from .m68k_record_dispatch import executed_stack_fields
+    stack_fields = executed_stack_fields(facts)
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
     executed_object_slots = _executed_ram_callback_slots(facts)
@@ -678,7 +680,7 @@ def discover_object_field_handler_candidates(
         match = _IMMEDIATE_TO_FIELD.fullmatch(store.operands)
         if match is not None:
             field = (int(match.group(2), 0), match.group(3).upper())
-            reader = readers.get(field)
+            reader = readers.get(field, stack_fields.get(field[0]))
             if reader is None:
                 continue
             proof = f"called at {reader:06X}"

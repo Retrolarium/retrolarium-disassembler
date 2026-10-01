@@ -680,7 +680,7 @@ def _animation_candidates(
 _REGISTER_INDIRECT = re.compile(r"\(([Aa][0-7])\)$")
 _DATA_TO_ADDRESS = re.compile(r"[Dd][0-7]w?\|([Aa][0-7])$", re.I)
 _PC_INDEXED_ADDRESS = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7]w\*0x1\)\|([Aa][0-7])$", re.I
+    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x1\)\|([Aa][0-7])$", re.I
 )
 _IMMEDIATE_ADDRESS = re.compile(r"#(-?0x[0-9a-f]+|-?\d+)\|([Aa][0-7])$", re.I)
 _INDIRECT_TO_ADDRESS = re.compile(r"\(([Aa][0-7])\)\|([Aa][0-7])$", re.I)
@@ -884,11 +884,9 @@ def _dispatch_tables(
             call = indirect_call(load, loaded_register)
             if _guarded_nonzero_byte_index(ends, load, call):
                 table += 4
-            index_evidence = (
-                "pc_relative_address_register_word_index"
-                if ",A" in load.operands.upper()
-                else "pc_relative_data_register_word_index"
-            )
+            kind = "address" if ",A" in load.operands.upper() else "data"
+            size = "word" if "w*" in load.operands.lower() else "long"
+            index_evidence = f"pc_relative_{kind}_register_{size}_index"
         else:
             assert match is not None
             table = int(match.group(1), 0)
@@ -982,7 +980,19 @@ def discover_dispatch_table_seeds(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[DecoderSeed, ...]:
     """Turn instruction-proven absolute and relative dispatch tables into seeds."""
-    seeds = []
+    from .m68k_record_dispatch import discover_record_callback_seeds
+    from .m68k_callback_abi import discover_callback_abi_seeds
+    from .m68k_ram_dispatch import discover_ram_stub_dispatch_seeds
+    from .m68k_table_dispatch import discover_lea_indexed_call_seeds, discover_trap_relative_dispatch_seeds
+    from .m68k_indexed_dispatch import (
+        discover_register_indexed_dispatch_seeds, discover_added_index_dispatch_seeds,
+        discover_nested_word_dispatch_seeds,
+    )
+    seeds = [*discover_record_callback_seeds(image, facts),
+             *discover_callback_abi_seeds(image, facts),
+             *discover_ram_stub_dispatch_seeds(image, facts),
+             *discover_lea_indexed_call_seeds(image, facts),
+             *discover_trap_relative_dispatch_seeds(image, facts)]
     for table in (*_dispatch_tables(image, facts), *_word_dispatch_tables(image, facts),
                   *_pc_word_dispatch_tables(image, facts),
                   *_object_callback_tables(image, facts)):
@@ -1003,6 +1013,15 @@ def discover_dispatch_table_seeds(
             )
             for entry in candidate.entries
         )
+    # These readers are also used by CD overlays. Cartridge analysis must
+    # receive the same proven register-index and nested-table discoveries.
+    seen = {seed.address for seed in seeds}
+    for seed in (*discover_register_indexed_dispatch_seeds(image, facts),
+                 *discover_added_index_dispatch_seeds(image, facts),
+                 *discover_nested_word_dispatch_seeds(image, facts)):
+        if seed.address not in seen:
+            seeds.append(seed)
+            seen.add(seed.address)
     return tuple(seeds)
 
 

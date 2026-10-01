@@ -24,6 +24,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 
 from prepare_sonic_references import export, sha256
 from sonic_corpus_benchmark import M68K, normalise_reference_listing
@@ -592,6 +593,21 @@ sys.exit(0 if function(*arguments) == 0 else 1)
             raise RuntimeError(f"KENS {kind} compression failed (exit {child.returncode:#x}): {source}")
 
 
+def nemesis_cli_compress(tool: Path, source: Path, target: Path) -> None:
+    """Optional clownnemesis CLI; prove decompression before using the asset."""
+    require(tool, source)
+    target.unlink(missing_ok=True)
+    with tempfile.TemporaryDirectory(prefix="nemesis-check-", dir=target.parent) as directory:
+        restored = Path(directory) / "restored.bin"
+        for command in ([str(tool), "-ca", str(source), str(target)],
+                        [str(tool), "-d", str(target), str(restored)]):
+            result = subprocess.run(command, capture_output=True, timeout=120)
+            if result.returncode:
+                raise RuntimeError(f"Nemesis CLI failed ({result.returncode}): {source}")
+        if not restored.is_file() or restored.read_bytes() != source.read_bytes():
+            raise RuntimeError(f"Nemesis CLI round-trip mismatch: {source}")
+
+
 def quackshot_name(text: str, table: dict[str, int]) -> bytes:
     """level_names.py txt2bin: UTF-8 text to tile words, unknown characters as spaces."""
     return b"".join(struct.pack(">H", 0x2000 + table.get(char, table[" "]))
@@ -614,6 +630,13 @@ def build_quackshot(profile: Profile, ctx: Context) -> Build:
     require(asw, p2bin)
     env = as_environment(toolchain)
     kens = Kens(root / "kens")
+    nemesis_tool = ctx.settings.get("nemesis_tool")
+
+    def nemesis(source, target):
+        if nemesis_tool:
+            nemesis_cli_compress(Path(nemesis_tool), source, target)
+        else:
+            kens.compress("Nemesis", source, target)
     before = {path: sha256(root / path) for path in ("src/levels/kosinski_params.bin",) if (root / path).is_file()}
     # assemble.py order: level params, enemy tiles, font, level names, dialogs, main.
     def kosinski_unit(directory: str, stem: str) -> None:
@@ -626,8 +649,8 @@ def build_quackshot(profile: Profile, ctx: Context) -> Build:
     kosinski_unit("src/levels", "kosinski_params")
     for enemy in sorted(path for path in (root / "src/enemies").iterdir() if path.is_dir()):
         if (enemy / "nemesis_tiles_dec.bin").is_file():
-            kens.compress("Nemesis", enemy / "nemesis_tiles_dec.bin", enemy / "nemesis_tiles.bin")
-    kens.compress("Nemesis", root / "src/fonts/nemesis_main_dec.bin", root / "src/fonts/nemesis_main.bin")
+            nemesis(enemy / "nemesis_tiles_dec.bin", enemy / "nemesis_tiles.bin")
+    nemesis(root / "src/fonts/nemesis_main_dec.bin", root / "src/fonts/nemesis_main.bin")
     table = quackshot_font_table(root)
     levels = root / "src/levels"
     names = [levels / name / "name" for name in sorted(os.listdir(levels))
@@ -638,7 +661,9 @@ def build_quackshot(profile: Profile, ctx: Context) -> Build:
             quackshot_name(stem.with_suffix(".txt").read_bytes().decode("utf-8"), table))
     kosinski_unit("src/dialogs", "kosinski_dialogs")
     ctx.record["asset_preparation"] = ("assemble.py steps reimplemented for Python 3: AS sub-units, bundled KENS "
-                                       "Kosinski/Nemesis DLLs, level_names txt2bin")
+                                       "Kosinski DLL, level_names txt2bin; Nemesis via "
+                                       + ("explicit clownnemesis CLI (-ca), all assets round-trip checked"
+                                          if nemesis_tool else "bundled KENS DLL"))
     ctx.record["regenerated_tracked_files"] = {
         path: {"before": digest, "after": sha256(root / path)} for path, digest in before.items()}
     export_unified(root, profile.entry, dest / "main.s", {}, ctx.record)
@@ -646,7 +671,7 @@ def build_quackshot(profile: Profile, ctx: Context) -> Build:
         obj = output.with_suffix(".p")
         obj.unlink(missing_ok=True)
         source.with_suffix(".lst").unlink(missing_ok=True)
-        run_step([str(asw), "-maxerrors", "2", "-L", "-o", str(obj), str(source)], root,
+        run_step([str(asw), "-maxerrors", "2", "-L", "-i", ".", "-o", str(obj), str(source)], root,
                  output.with_suffix(".assembly.log"), env=env, timeout=ctx.timeout)
         require(obj)
         run_step([str(p2bin), str(obj), str(output)], root, output.with_suffix(".conversion.log"),
@@ -654,7 +679,8 @@ def build_quackshot(profile: Profile, ctx: Context) -> Build:
         require(output)
         shutil.copy2(source.with_suffix(".lst"), output.with_suffix(".lst"))
     return Build(dest / "upstream.bin", dest / "reference.bin", dest / "reference.lst", "as",
-                 [asw, p2bin, *sorted((root / "kens").glob(f"*{kens.suffix}.dll"))])
+                 [asw, p2bin, *([Path(nemesis_tool)] if nemesis_tool else []),
+                  *sorted((root / "kens").glob(f"*{kens.suffix}.dll"))])
 
 
 def vasm_absolute_pc_labels(text: str) -> tuple[str, int]:

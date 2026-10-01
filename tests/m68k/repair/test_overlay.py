@@ -18,6 +18,27 @@ def row(address, raw, mnemonic, operands="", flows="", flow="TERMINATOR"):
 
 
 class OverlayTests(unittest.TestCase):
+    def test_alternative_overlapping_probes_remain_hypotheses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "module.bin"
+            source.write_bytes(bytes.fromhex("4E750C040E040C04"))
+
+            def decode(path, workspace, *args, **kwargs):
+                workspace.mkdir(exist_ok=True)
+                facts = workspace / "instructions.tsv"
+                facts.write_text(HEADER + row(0x1000, "4E75", "RTS"))
+                probes = workspace / "probes.tsv"
+                probes.write_text(HEADER + row(0x1002, "0C040E04", "CMPI.B", "#0xe04|D4b", flow="FALL_THROUGH")
+                                 + row(0x1004, "0E040C04", "MOVES.B", "D0b|D4b", flow="FALL_THROUGH"))
+                return GhidraArtifacts(facts, workspace / "report", workspace / "log", probes)
+
+            with patch("retrolarium_kit.m68k_overlay.run_m68k_overlay_analysis", decode):
+                result = analyze_overlay(source, root / "analysis", root, root,
+                                         base_address=0x1000, entry_addresses=(0x1000,))
+            with result.facts.open() as stream:
+                self.assertEqual(["00001000"], [r["address"] for r in csv.DictReader(stream, delimiter="\t")])
+
     def test_rejects_non_file_backed_or_unaligned_entries(self):
         for entries in [(), (0x1001,), (0x1002,), (0x200,)]:
             with self.assertRaises(ValueError):

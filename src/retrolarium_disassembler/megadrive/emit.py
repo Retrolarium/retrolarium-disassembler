@@ -101,7 +101,7 @@ def _m68k_operand(
             return f"0.w({displacement.group(2).lower()})"
         return f"{value}({displacement.group(2).lower()})"
     indexed = re.fullmatch(
-        r"\((-?0x[0-9a-f]+),([Aa][0-7]|SP),([DA][0-7])([wl])\*0x1\)",
+        r"\((-?0x[0-9a-f]+),([Aa][0-7]|SP),([DA][0-7])([wl]?)\*0x1\)",
         operand,
         re.I,
     )
@@ -110,10 +110,10 @@ def _m68k_operand(
         prefix = "" if value == 0 else str(value)
         return (
             f"{prefix}({indexed.group(2).lower()},"
-            f"{indexed.group(3).lower()}.{indexed.group(4).lower()})"
+            f"{indexed.group(3).lower()}.{indexed.group(4).lower() or 'l'})"
         )
     pc_indexed = re.fullmatch(
-        r"\((0x[0-9a-f]+),PC,([DA][0-7])([wl])\*0x1\)", operand, re.I
+        r"\((0x[0-9a-f]+),PC,([DA][0-7])([wl]?)\*0x1\)", operand, re.I
     )
     if pc_indexed and fact is not None:
         indexed_target = pc_indexed_target(fact)
@@ -122,7 +122,7 @@ def _m68k_operand(
             return (
                 f"{_target_expression(target, primary or {}, 6)}"
                 f"(pc,{pc_indexed.group(2).lower()}."
-                f"{pc_indexed.group(3).lower()})"
+                f"{pc_indexed.group(3).lower() or 'l'})"
             )
     pc_displacement = re.fullmatch(r"\((-?0x[0-9a-f]+),PC\)", operand, re.I)
     if pc_displacement and fact is not None:
@@ -354,7 +354,7 @@ def _asm_instruction(
         indexed_eas = int(has_ea and (opcode & 0x38 == 0x30 or opcode & 0x3F == 0x3B))
         if fact.mnemonic.upper().startswith(("MOVE.", "MOVEA.")):
             indexed_eas += int(opcode >> 6 & 7 == 6)
-        described_indices = len(re.findall(r",[DA][0-7][wl]\*0x[1248]\)", fact.operands, re.I))
+        described_indices = len(re.findall(r",[DA][0-7][wl]?\*0x[1248]\)", fact.operands, re.I))
         if indexed_eas > described_indices:
             # Ghidra can decode a 68020 full extension while analysing 68000
             # data and describe it as a plain displacement. Rendering that EA
@@ -880,6 +880,7 @@ def _emit_payload_module(
     asset_ranges: dict[int, tuple[int, str]],
     primary: dict[int, TechnicalSymbol],
     aliases: dict[int, tuple[str, ...]],
+    asset_slices: dict[int, tuple[int, int]] | None = None,
 ) -> tuple[int, int, int, int, int, int, int]:
     lines = [f"; ROM ${start:06X}..${limit - 1:06X}"]
     instruction_bytes = 0
@@ -906,7 +907,11 @@ def _emit_payload_module(
         asset = asset_ranges.get(offset)
         if asset is not None:
             size, asset_path = asset
-            lines.append(f'{M68K_INDENT}binclude "{asset_path}"')
+            suffix = ""
+            if asset_slices and offset in asset_slices:
+                file_offset, length = asset_slices[offset]
+                suffix = f",{file_offset},{length}"
+            lines.append(f'{M68K_INDENT}binclude "{asset_path}"{suffix}')
             lines.append("")
             asset_bytes += size
             offset += size
@@ -1028,6 +1033,7 @@ def emit_project(
     ]
 
     asset_ranges: dict[int, tuple[int, str]] = {}
+    asset_slices: dict[int, tuple[int, int]] = {}
     ranges: list[tuple[int, int]] = []
     z80_builds: list[dict[str, str]] = []
     if z80_copies and len(z80_programs) != len(z80_copies):
@@ -1061,7 +1067,21 @@ def emit_project(
             "object": f"build/z80-program{index:02d}.p",
             "output": build_relative,
         })
-        asset_ranges[offset] = (copy.size, build_relative)
+        # Distinct Z80 copies may share ROM bytes (including an inclusive
+        # DBF boundary byte). Keep and build both complete Z80 programs, but
+        # give every physical byte exactly one owner in the 68000 source.
+        spans = [(offset, offset + copy.size)]
+        for left, right in ranges:
+            spans = [(a, b) for start, end in spans
+                     for a, b in ((start, min(end, left)), (max(start, right), end))
+                     if a < b]
+        emission = []
+        for start, end in spans:
+            asset_ranges[start] = (end - start, build_relative)
+            emission.append({"rom_file_offset": start, "file_offset": start - offset,
+                             "size": end - start})
+            if start != offset or end - start != copy.size:
+                asset_slices[start] = (start - offset, end - start)
         ranges.append((offset, offset + copy.size))
         assets.append(
             {
@@ -1072,6 +1092,7 @@ def emit_project(
                 "size": copy.size,
                 "sha256": copy.payload_sha256,
                 "emit": "binclude",
+                "rom_emission": emission,
                 "address": {
                     "space": "z80",
                     "start": copy.target_start,
@@ -1149,6 +1170,7 @@ def emit_project(
             asset_ranges,
             primary,
             aliases,
+            asset_slices,
         )
         offset = result[0]
         counts = [left + right for left, right in zip(counts, result[1:])]

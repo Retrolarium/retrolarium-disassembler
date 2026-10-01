@@ -277,7 +277,7 @@ class MegaDrivePointerTests(unittest.TestCase):
 
     def test_pc_indexed_long_dispatch_requires_supported_index_and_matching_jump(self) -> None:
         for operands, call in (
-            ("(0x300,PC,D1l*0x1)|A4", "(A4)"),
+            ("(0x300,PC,D1l*0x2)|A4", "(A4)"),
             ("(0x300).l|A4", "(A4)"),
             ("(0x300,PC,D1w*0x1)|A4", "(A3)"),
         ):
@@ -288,6 +288,15 @@ class MegaDrivePointerTests(unittest.TestCase):
                 facts[0x206] = replace(facts[0x206], operands=call)
                 self.assertEqual((), discover_dispatch_table_seeds(
                     dispatch_image(0x400, 0x410, 0x420), facts))
+
+    def test_pc_long_index_accepts_explicit_and_ghidra_implicit_size(self):
+        for index in ("D1l", "D1"):
+            facts = dispatch_facts()
+            del facts[0x200]
+            facts[0x202] = replace(facts[0x202], operands=f"(0x300,PC,{index}*0x1)|A4")
+            facts[0x206] = replace(facts[0x206], operands="(A4)")
+            self.assertEqual((0x400, 0x410, 0x420), tuple(
+                s.address for s in discover_dispatch_table_seeds(dispatch_image(0x400, 0x410, 0x420), facts)))
 
     def test_signed_word_dispatch_seeds_forward_and_backward_handlers(self) -> None:
         image, facts, targets = word_dispatch_image()

@@ -53,6 +53,24 @@ def cartridge(
 
 
 class MegaDriveTests(unittest.TestCase):
+    def test_only_speculative_facts_allow_alternate_overlapping_decodes(self):
+        image = parse_megadrive(cartridge())
+        header = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
+        rows = ["ROM\tram\t0200\t4\t00010203\tORI.B\t\t\tFALL_THROUGH\t\t\n",
+                "ROM\tram\t0202\t4\t02030405\tORI.B\t\t\tFALL_THROUGH\t\t\n"]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "probes.tsv"
+            path.write_text(header + "".join(rows), encoding="utf-8")
+            with self.assertRaisesRegex(FactError, "overlapping instruction"):
+                load_megadrive_ghidra_facts(path, image)
+            self.assertEqual({0x200, 0x202}, set(load_megadrive_ghidra_facts(path, image, speculative=True)))
+            path.write_text(header + rows[0] + rows[0], encoding="utf-8")
+            with self.assertRaisesRegex(FactError, "duplicate physical instruction"):
+                load_megadrive_ghidra_facts(path, image, speculative=True)
+            path.write_text(header + rows[1].replace("02030405", "FFFFFFFF"), encoding="utf-8")
+            with self.assertRaisesRegex(FactError, "backend bytes disagree"):
+                load_megadrive_ghidra_facts(path, image, speculative=True)
+
     def test_normalizes_backend_address_notations(self) -> None:
         self.assertEqual(0x4000, parse_address("ram:4000"))
         self.assertEqual(0xC000, parse_address("PRG0::c000"))

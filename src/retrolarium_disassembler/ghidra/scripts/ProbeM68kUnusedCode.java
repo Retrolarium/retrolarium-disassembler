@@ -18,12 +18,39 @@ import java.util.TreeMap;
 public class ProbeM68kUnusedCode extends GhidraScript {
     private static final int MAX_GAP = 2048;
 
+    private static boolean functionSignature(int opcode) {
+        return (opcode & 0xf1c0) == 0x41c0 // LEA
+            || opcode == 0x48e7 || opcode == 0x48a7 // MOVEM saves
+            || (opcode & 0xfff8) == 0x4e50 // LINK
+            || (opcode & 0xf1ff) == 0x303c // MOVE.W immediate,Dn
+            || (opcode & 0xff00) == 0x0c00 && (opcode & 0x00c0) != 0x00c0; // CMPI
+    }
+
+    private void probe(PseudoDisassembler decoder, long start, long end,
+            MemoryBlock rom, TreeMap<Long, String> rows) throws Exception {
+        for (long cursor = start; cursor < end;) {
+            monitor.checkCancelled();
+            Instruction instruction;
+            try {
+                instruction = decoder.disassemble(rom.getStart().getAddressSpace().getAddress(cursor));
+            } catch (ghidra.program.model.lang.InsufficientBytesException
+                    | ghidra.program.model.lang.UnknownInstructionException
+                    | ghidra.program.model.lang.UnknownContextException exception) {
+                break;
+            }
+            if (instruction == null || instruction.getLength() < 2
+                    || cursor + instruction.getLength() > end) break;
+            rows.put(cursor, row(instruction, rom.getName()));
+            cursor += instruction.getLength();
+        }
+    }
+
     private static String clean(String value) {
         return value.replace("\\", "\\\\").replace("\t", "\\t")
             .replace("\r", "").replace("\n", "\\n");
     }
 
-    private static String row(Instruction instruction) throws Exception {
+    private static String row(Instruction instruction, String block) throws Exception {
         Address address = instruction.getAddress();
         List<String> bytes = new ArrayList<>();
         for (byte value : instruction.getBytes()) bytes.add(String.format("%02X", value & 255));
@@ -41,7 +68,7 @@ public class ProbeM68kUnusedCode extends GhidraScript {
         }
         List<String> flows = new ArrayList<>();
         for (Address flow : instruction.getFlows()) flows.add(flow.toString());
-        return "ROM\t" + clean(address.getAddressSpace().getName()) + "\t"
+        return clean(block) + "\t" + clean(address.getAddressSpace().getName()) + "\t"
             + String.format("%06X", address.getOffset()) + "\t" + instruction.getLength()
             + "\t" + String.join(" ", bytes) + "\t" + clean(instruction.getMnemonicString())
             + "\t" + String.join("|", operands) + "\t" + String.join("|", flows)
@@ -72,22 +99,17 @@ public class ProbeM68kUnusedCode extends GhidraScript {
             long start = previous.getAddress().getOffset() + previous.getLength();
             long end = index + 1 < known.size() ? known.get(index + 1).getAddress().getOffset()
                 : rom.getEnd().getOffset() + 1;
-            if (start < 0x200 || (start & 1) != 0 || end - start < 2 || end - start > MAX_GAP) continue;
-            long cursor = start;
-            while (cursor < end) {
-                monitor.checkCancelled();
-                Instruction instruction;
-                try {
-                    instruction = decoder.disassemble(rom.getStart().getAddressSpace().getAddress(cursor));
-                } catch (ghidra.program.model.lang.InsufficientBytesException
-                        | ghidra.program.model.lang.UnknownInstructionException
-                        | ghidra.program.model.lang.UnknownContextException exception) {
-                    break;
-                }
-                if (instruction == null || instruction.getLength() < 2
-                        || cursor + instruction.getLength() > end) break;
-                rows.put(cursor, row(instruction));
-                cursor += instruction.getLength();
+            if (start < 0x200 || (start & 1) != 0 || end - start < 2) continue;
+            end = Math.min(end, start + MAX_GAP);
+            probe(decoder, start, end, rom, rows);
+            // An unused function can follow a local table/string. Decode
+            // selected prologues inside this bounded gap, without adding
+            // them to the real listing. Python requires a full CFG, RTS,
+            // a known callee, and absence of known data use before seeding.
+            for (long candidate = start + 2; candidate + 2 <= end; candidate += 2) {
+                int opcode = currentProgram.getMemory().getShort(
+                    rom.getStart().getAddressSpace().getAddress(candidate)) & 0xffff;
+                if (functionSignature(opcode)) probe(decoder, candidate, end, rom, rows);
             }
         }
         List<String> lines = new ArrayList<>();

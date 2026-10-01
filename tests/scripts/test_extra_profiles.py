@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from extra_reference_benchmark import benchmark, comparable
@@ -12,6 +13,7 @@ from extra_reference_profiles import (
     inspect_sega_cd_image, landstalker_build, normalise_vasm_listing, option_overrides,
     parse_simple_yaml, prepare_profile, quackshot_name, read_header, scan_roms,
     sega_cd_applicability, select_split_input, vasm_absolute_pc_labels,
+    nemesis_cli_compress,
 )
 from prepare_extra_references import PROFILES as FIRST_BATCH
 from source_benchmark import read_listing
@@ -42,6 +44,23 @@ def identity_of(rom: bytes) -> Identity:
 
 
 class HeaderAndSelectionTests(unittest.TestCase):
+    def test_nemesis_cli_rejects_a_successful_tool_with_wrong_roundtrip(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tool, source, target = root / "tool.exe", root / "plain.bin", root / "packed.bin"
+            tool.write_bytes(b"tool")
+            source.write_bytes(bytes(range(32)))
+            target.write_bytes(b"stale")
+
+            def incorrect_tool(command, **kwargs):
+                self.assertFalse(target.exists()) if command[1] == "-ca" else None
+                Path(command[-1]).write_bytes(b"wrong")
+                return type("Result", (), {"returncode": 0})()
+
+            with patch("extra_reference_profiles.subprocess.run", side_effect=incorrect_tool):
+                with self.assertRaisesRegex(RuntimeError, "round-trip mismatch"):
+                    nemesis_cli_compress(tool, source, target)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)

@@ -161,6 +161,8 @@ def main():
     parser.add_argument("--quackshot-as", type=Path,
                         help="AS directory (asw.exe, p2bin.exe, *.msg) for QuackShot; default SITDDISASM/tools/asw")
     parser.add_argument("--sega-cd-image", type=Path, help="optional Shining Force CD image to identify")
+    parser.add_argument("--nemesis-tool", type=Path,
+                        help="optional clownnemesis executable for QuackShot; -ca mode with round-trip checks")
     parser.add_argument("--timeout", type=int, default=1800, help="seconds per external build step")
     args = parser.parse_args()
     refs = args.references.resolve()
@@ -170,6 +172,7 @@ def main():
         print("ROM inventory:", json.dumps(problem), flush=True)
     settings = {"vasm": args.vasm and args.vasm.resolve(), "timeout": args.timeout,
                 "quackshot_as": args.quackshot_as and args.quackshot_as.resolve(),
+                "nemesis_tool": args.nemesis_tool and args.nemesis_tool.resolve(),
                 "sega_cd_image": args.sega_cd_image and args.sega_cd_image.resolve()}
     selected = args.only or ([] if args.confirm_existing else
                              [*PROFILES] if args.batch == "first" else

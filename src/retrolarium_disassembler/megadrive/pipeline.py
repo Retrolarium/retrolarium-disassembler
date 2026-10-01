@@ -25,6 +25,10 @@ from .m68k_abstract import (
 from .m68k_seeds import DecoderSeed, discover_initial_decoder_seeds
 from .m68k_ram_copies import discover_descriptor_ram_code_seeds
 from .m68k_unused import UnusedCodeCandidate, discover_validated_unused_candidates
+from .m68k_packed import discover_packed_orphan_closure
+from .m68k_returns import discover_returning_call_seeds
+from .m68k_callback_abi import discover_callback_abi_seeds
+from .m68k_ram_dispatch import discover_inline_trap_calls
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project, _asm_instruction
 from .megadrive_pointers import (
     detect_pointer_candidates,
@@ -183,18 +187,32 @@ def _discover_unused_code(
     facts: dict[int, InstructionFact],
     artifacts: GhidraArtifacts,
 ) -> tuple[tuple[UnusedCodeCandidate, ...], tuple[dict[str, object], ...]]:
-    speculative_facts = load_megadrive_ghidra_facts(artifacts.orphan_facts, image)
+    speculative_facts = load_megadrive_ghidra_facts(artifacts.orphan_facts, image, speculative=True)
     protected_ranges = tuple(
         (candidate.physical_start, candidate.physical_end)
         for candidate in detect_pointer_candidates(image, trusted_facts)
         if candidate.status == "accepted"
     ) + tuple(
-        (copy.source_start, copy.source_end)
+        (copy.source_start, copy.source_end + 1)
         for copy in detect_z80_copies(image, trusted_facts)
     )
     return discover_validated_unused_candidates(
         image, trusted_facts, {**speculative_facts, **facts},
         protected_ranges=protected_ranges, render_instruction=_asm_instruction,
+    )
+
+
+def _discover_packed_code(image, trusted_facts, facts, artifacts):
+    probe_facts = load_megadrive_ghidra_facts(artifacts.orphan_facts, image, speculative=True)
+    protected = tuple(
+        (item.physical_start, item.physical_end)
+        for item in detect_pointer_candidates(image, trusted_facts)
+        if item.status == "accepted"
+    ) + tuple((copy.source_start, copy.source_end + 1)
+              for copy in detect_z80_copies(image, trusted_facts))
+    return discover_packed_orphan_closure(
+        image, trusted_facts, {**probe_facts, **facts},
+        protected_ranges=protected, render_instruction=_asm_instruction,
     )
 
 
@@ -231,6 +249,10 @@ def analyze_megadrive(
         newline="\n",
     )
     abstract_passes = []
+    inline_data = {}
+    returning_calls = {}
+    return_plan = program_root / "normal-return-calls.txt"
+    return_plan.unlink(missing_ok=True)
     unused_candidates: dict[int, UnusedCodeCandidate] = {}
     unused_rejections = ()
     converged = False
@@ -251,6 +273,12 @@ def analyze_megadrive(
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
         # Dispatch sites must themselves be trusted code, never an island.
         trusted_facts = trusted.facts
+        inline_calls = discover_inline_trap_calls(image, trusted_facts)
+        new_inline_data = {call.data_address for call in inline_calls} - inline_data.keys()
+        for call in inline_calls:
+            if call.data_address in inline_data and inline_data[call.data_address] != call.data_size:
+                raise ValueError("conflicting proven inline TRAP argument sizes")
+            inline_data[call.data_address] = call.data_size
         abstract_candidates = (
             *discover_ram_handler_candidates(image, trusted_facts),
             *discover_object_field_handler_candidates(image, trusted_facts),
@@ -264,16 +292,40 @@ def analyze_megadrive(
                 *discover_packed_orphan_candidates(image, trusted_facts),
             )
         }.values())
+        orphan_candidates = tuple({candidate.address: candidate for candidate in (
+            *orphan_candidates,
+            *_discover_packed_code(image, trusted_facts, facts, artifacts),
+        )}.values())
         validated_unused, unused_rejections = _discover_unused_code(
             image, trusted_facts, facts, artifacts)
         for candidate in validated_unused:
             unused_candidates.setdefault(candidate.address, candidate)
         dispatch_seeds = list(discover_dispatch_table_seeds(image, trusted_facts))
+        return_seeds = discover_returning_call_seeds(image, facts, trusted_facts)
+        dispatch_seeds.extend(return_seeds)
+        new_return_calls = {seed.source_address for seed in return_seeds} - returning_calls.keys()
+        returning_calls.update((seed.source_address, seed.address) for seed in return_seeds)
+        for call in inline_calls:
+            for address, kind in ((call.continuation, "inline_trap_continuation"),
+                                  (call.target, "inline_trap_target")):
+                if address is None:
+                    continue
+                dispatch_seeds.append(DecoderSeed(
+                    address, kind, "proven",
+                    f"TRAP at {call.call_address:06X}; handler {call.handler:06X} "
+                    f"consumes {call.data_size} inline bytes and advances the saved exception PC",
+                    call.call_address,
+                ))
         dispatch_seeds.extend(discover_descriptor_ram_code_seeds(image, trusted_facts))
         # A structurally proven dispatcher can itself be an unreachable code
         # island. Bootstrap only strong tables from backend facts, then make
         # the dispatcher a planned root on the next decoder pass.
         raw_dispatch = discover_dispatch_table_seeds(image, facts)
+        # Unused object code can pass a callback to a decoded allocator. Its
+        # ABI is structural proof, unlike an abstract edge from unknown state;
+        # the field executor must already belong to the trusted CFG.
+        dispatch_seeds.extend(discover_callback_abi_seeds(
+            image, facts, execution_facts=trusted_facts))
         decoded_starts = {fact.cpu_address for fact in facts.values()}
         trusted_starts = {fact.cpu_address for fact in trusted_facts.values()}
         by_dispatch: dict[int, list[DecoderSeed]] = {}
@@ -281,8 +333,6 @@ def analyze_megadrive(
             if seed.source_address is not None:
                 by_dispatch.setdefault(seed.source_address, []).append(seed)
         for site, table_seeds in by_dispatch.items():
-            if site in trusted_starts:
-                continue
             targets = {seed.address for seed in table_seeds}
             decoded_targets = len(targets & decoded_starts)
             if (
@@ -292,13 +342,14 @@ def analyze_megadrive(
             ):
                 continue
             dispatch_seeds.extend(table_seeds)
-            dispatch_seeds.append(DecoderSeed(
-                address=site,
-                kind="indexed_dispatch_site",
-                confidence="high",
-                evidence=table_seeds[0].evidence,
-                source_address=site,
-            ))
+            if site not in trusted_starts:
+                dispatch_seeds.append(DecoderSeed(
+                    address=site,
+                    kind="indexed_dispatch_site",
+                    confidence="high",
+                    evidence=table_seeds[0].evidence,
+                    source_address=site,
+                ))
         # A callback writer may sit in a backend-decoded island before its
         # caller has been reached. The terminal immediately before its ROM
         # target and the executed object slot prove a useful entrypoint; hand
@@ -421,6 +472,8 @@ def analyze_megadrive(
                 abstract_result.reached_addresses
             ),
             "new_seed_addresses": discovered,
+            "new_inline_data_addresses": sorted(new_inline_data),
+            "new_normal_return_calls": sorted(new_return_calls),
             "new_seed_evidence": [
                 {
                     "address": address,
@@ -433,18 +486,23 @@ def analyze_megadrive(
         (program_root / "decoder-passes.json").write_text(
             json.dumps({
                 "schema": "retrolarium.m68k.decoder-passes", "schema_version": 1,
-                "input_sha256": image.sha256, "converged": not discovered,
+                "input_sha256": image.sha256, "converged": not discovered and not new_inline_data and not new_return_calls,
                 "passes": abstract_passes,
             }, indent=2) + "\n", encoding="utf-8", newline="\n",
         )
-        if not discovered:
+        if not discovered and not new_inline_data and not new_return_calls:
             converged = True
             break
         planned_seeds.update(discovered)
         seed_plan.write_text(
-            "".join(f"{address:06X}\n" for address in sorted(planned_seeds)),
+            "".join(f"DATA {address:06X} {inline_data[address]}\n" for address in sorted(inline_data))
+            + "".join(f"{address:06X}\n" for address in sorted(planned_seeds)),
             encoding="ascii",
             newline="\n",
+        )
+        return_plan.write_text(
+            "".join(f"{site:06X} {following:06X}\n" for site, following in sorted(returning_calls.items())),
+            encoding="ascii", newline="\n",
         )
     if not converged:
         raise ValueError(

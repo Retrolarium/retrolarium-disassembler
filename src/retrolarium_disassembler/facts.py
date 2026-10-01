@@ -87,7 +87,7 @@ def load_ghidra_facts(
 
 
 def load_megadrive_ghidra_facts(
-    path: Path, image: MegaDriveImage
+    path: Path, image: MegaDriveImage, *, speculative: bool = False
 ) -> dict[int, InstructionFact]:
     def project(address: int) -> int:
         try:
@@ -102,6 +102,8 @@ def load_megadrive_ghidra_facts(
         bank=0,
         address_label="M68K",
         expected_block="ROM",
+        allow_empty=speculative,
+        allow_overlaps=speculative,
     )
 
 
@@ -190,6 +192,7 @@ def _load_ghidra_facts(
     address_label: str,
     expected_block: str | None = None,
     allow_empty: bool = False,
+    allow_overlaps: bool = False,
 ) -> dict[int, InstructionFact]:
     facts: dict[int, InstructionFact] = {}
     occupied: set[int] = set()
@@ -211,7 +214,7 @@ def _load_ghidra_facts(
             offset = address_to_offset(cpu_address)
             raw = bytes.fromhex(row["bytes"])
             length = int(row["length"])
-            if len(raw) != length:
+            if length <= 0 or len(raw) != length:
                 raise FactError(
                     f"instruction {address_label} ${cpu_address:04X} has invalid length"
                 )
@@ -221,7 +224,10 @@ def _load_ghidra_facts(
                     f"{address_label} ${cpu_address:04X}"
                 )
             byte_range = set(range(offset, offset + length))
-            if occupied & byte_range:
+            # Alternate pseudo decodes may start inside another probe's
+            # operands. They remain hypotheses; primary listing facts are
+            # always required to be disjoint.
+            if not allow_overlaps and occupied & byte_range:
                 raise FactError(
                     f"overlapping instruction at {address_label} ${cpu_address:04X}"
                 )
