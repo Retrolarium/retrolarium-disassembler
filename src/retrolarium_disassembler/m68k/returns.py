@@ -11,9 +11,15 @@ from .m68k_abstract import _register_list, AbstractState, TruthValue, transfer_i
 from .m68k_seeds import DecoderSeed
 
 
-def discover_returning_call_seeds(image, facts, call_sites=None):
+def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_roots=frozenset()):
     facts = {fact.cpu_address: fact for fact in facts.values()}
-    call_sites = facts if call_sites is None else call_sites
+    call_sites = dict(facts if call_sites is None else call_sites)
+    # An already validated root can be erased by backend no-return inference.
+    # Its immediate caller may then be unrooted too. Repair only a caller
+    # whose architectural continuation is already an independently planned
+    # root; no unrooted call is allowed to invent a new entrypoint.
+    call_sites.update((address, fact) for address, fact in facts.items()
+                      if fact.cpu_address + fact.length in planned_roots)
     returning = set()
 
     def may_return(start, recursion=()):

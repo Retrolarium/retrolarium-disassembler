@@ -202,18 +202,26 @@ class _M68kHarness:
             return []
         return list(self._current().get("orphans", ()))
 
-    def dispatch_seeds(self, image, facts):
-        # Dispatch discovery must only ever see this pass's trusted facts.
+    def dispatch_seeds(self, image, facts, *, handler_validator=None):
+        # Raw dispatcher islands are considered separately from trusted code.
         if facts is not self._trusted_facts:
-            return []
+            return list(self._current().get("raw_dispatch", ()))
         return list(self._current().get("dispatch", ()))
+
+    def word_callbacks(self, image, facts, *, execution_facts):
+        assert facts is self._last_facts
+        assert execution_facts is self._trusted_facts
+        return tuple(self._current().get("word_callbacks", ()))
 
     def patches(self) -> dict[str, object]:
         return {
             "discover_inline_trap_calls": lambda *args: tuple(self._current().get("inline", ())),
-            "discover_returning_call_seeds": lambda *args: tuple(self._current().get("returning", ())),
+            "discover_inline_subroutine_calls": lambda *args: tuple(self._current().get("inline_subroutine", ())),
+            "discover_returning_call_seeds": lambda *args, **kwargs: tuple(self._current().get("returning", ())),
+            "discover_register_callback_seeds": lambda *args, **kwargs: (),
             "discover_callback_abi_seeds": lambda *args, **kwargs: (),
             "discover_ram_record_dispatch_seeds": lambda *args: (),
+            "discover_word_ram_callback_seeds": self.word_callbacks,
             "_discover_packed_code": lambda *args: (),
             "_discover_unused_code": lambda *args: (tuple(self._current().get("unused", ())), ()),
             "load_megadrive": lambda rom: _image(),
@@ -254,6 +262,34 @@ class M68kConvergenceTests(unittest.TestCase):
         progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
         self.assertTrue(progress["converged"])
         self.assertEqual([0x202], progress["passes"][0]["new_inline_data_addresses"])
+
+    def test_subroutine_argument_is_data_and_continuation_skips_it(self):
+        call = InlineTrapCall(0x200, 0x204, 0x206, None, 0x300)
+        harness = _M68kHarness([{"inline_subroutine": (call,)}, {"inline_subroutine": (call,)}])
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+        self.assertEqual(2, len(harness.plans_seen))
+        self.assertTrue(harness.plans_seen[1].startswith("DATA 000204 2\n"))
+        self.assertIn("000206\n", harness.plans_seen[1])
+        self.assertNotIn("000204\n", harness.plans_seen[1])
+        progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertTrue(progress["converged"])
+
+    def test_exact_shared_leaf_can_bootstrap_without_predecoded_handlers(self):
+        roots = [0x400, 0x420]
+        for kind, confidence, expected in (("leaf_word_dispatch", "proven", 2),
+                                           ("pc_word_dispatch", "proven", 2),
+                                           ("inline_word_dispatch", "proven", 2),
+                                           ("leaf_word_dispatch", "high", 1),
+                                           ("indexed_pointer_table_target", "proven", 1)):
+            with self.subTest(kind=kind, confidence=confidence):
+                seeds = tuple(DecoderSeed(a, kind, confidence, "leaf semantics", 0x300) for a in roots)
+                harness = _M68kHarness([{"raw":(0x300,), "raw_dispatch":seeds}, {}])
+                with self.assertRaises(_StopAfterLoop):
+                    self._analyze(harness)
+                self.assertEqual(expected, len(harness.plans_seen))
+                if expected == 2:
+                    self.assertEqual([0x300, *roots], _plan_addresses(harness.plans_seen[1]))
 
     def test_new_return_witness_requires_backend_pass_even_for_planned_root(self):
         seed = DecoderSeed(0x206, "normal_return_continuation", "proven", "balanced RTS", 0x200)

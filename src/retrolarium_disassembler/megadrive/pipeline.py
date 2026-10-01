@@ -27,13 +27,18 @@ from .m68k_ram_copies import discover_descriptor_ram_code_seeds
 from .m68k_unused import UnusedCodeCandidate, discover_validated_unused_candidates
 from .m68k_packed import discover_packed_orphan_closure
 from .m68k_returns import discover_returning_call_seeds
+from .m68k_register_callbacks import discover_register_callback_seeds
 from .m68k_callback_abi import discover_callback_abi_seeds
 from .m68k_ram_dispatch import discover_inline_trap_calls
+from .m68k_inline_calls import discover_inline_subroutine_calls
 from .m68k_ram_record_dispatch import discover_ram_record_dispatch_seeds
+from .m68k_word_callbacks import discover_word_ram_callback_seeds
+from .m68k_dispatch_witness import make_dispatch_handler_validator
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project, _asm_instruction
 from .megadrive_pointers import (
     detect_pointer_candidates,
     discover_dispatch_table_seeds,
+    can_bootstrap_dispatch_seeds,
     write_pointer_report,
 )
 from .megadrive_symbols import generate_symbols, write_symbol_report
@@ -217,6 +222,28 @@ def _discover_packed_code(image, trusted_facts, facts, artifacts):
     )
 
 
+def _dispatch_handler_validator(image, trusted_facts, facts, artifacts):
+    # Most arrays already have a decoded handler or an adjacent bound.
+    # Load and validate speculative facts only for a gapped unknown array.
+    validator = None
+
+    def validate(address):
+        nonlocal validator
+        if validator is None:
+            probes = load_megadrive_ghidra_facts(artifacts.orphan_facts, image, speculative=True)
+            protected = tuple(
+                (p.physical_start, p.physical_end)
+                for p in detect_pointer_candidates(image, trusted_facts) if p.status == "accepted"
+            ) + tuple((p.source_start, p.source_end + 1)
+                      for p in detect_z80_copies(image, trusted_facts))
+            validator = make_dispatch_handler_validator(
+                image, trusted_facts, {**probes, **facts},
+                protected_ranges=protected, render_instruction=_asm_instruction)
+        return validator(address)
+
+    return validate
+
+
 def analyze_megadrive(
     rom: Path, output: Path, ghidra_home: Path
 ) -> dict[str, object]:
@@ -274,11 +301,13 @@ def analyze_megadrive(
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
         # Dispatch sites must themselves be trusted code, never an island.
         trusted_facts = trusted.facts
-        inline_calls = discover_inline_trap_calls(image, trusted_facts)
+        subroutine_calls = discover_inline_subroutine_calls(image, trusted_facts)
+        subroutine_sites = {call.call_address for call in subroutine_calls}
+        inline_calls = (*discover_inline_trap_calls(image, trusted_facts), *subroutine_calls)
         new_inline_data = {call.data_address for call in inline_calls} - inline_data.keys()
         for call in inline_calls:
             if call.data_address in inline_data and inline_data[call.data_address] != call.data_size:
-                raise ValueError("conflicting proven inline TRAP argument sizes")
+                raise ValueError("conflicting proven inline argument sizes")
             inline_data[call.data_address] = call.data_size
         abstract_candidates = (
             *discover_ram_handler_candidates(image, trusted_facts),
@@ -301,15 +330,22 @@ def analyze_megadrive(
             image, trusted_facts, facts, artifacts)
         for candidate in validated_unused:
             unused_candidates.setdefault(candidate.address, candidate)
-        dispatch_seeds = list(discover_dispatch_table_seeds(image, trusted_facts))
+        handler_validator = _dispatch_handler_validator(image, trusted_facts, facts, artifacts)
+        dispatch_seeds = list(discover_dispatch_table_seeds(
+            image, trusted_facts, handler_validator=handler_validator))
         dispatch_seeds.extend(discover_ram_record_dispatch_seeds(image, trusted_facts))
-        return_seeds = discover_returning_call_seeds(image, facts, trusted_facts)
+        dispatch_seeds.extend(discover_word_ram_callback_seeds(
+            image, facts, execution_facts=trusted_facts))
+        return_seeds = discover_returning_call_seeds(image, facts, trusted_facts, planned_roots=planned_seeds)
         dispatch_seeds.extend(return_seeds)
+        dispatch_seeds.extend(discover_register_callback_seeds(image, facts, execution_facts=trusted_facts))
         new_return_calls = {seed.source_address for seed in return_seeds} - returning_calls.keys()
         returning_calls.update((seed.source_address, seed.address) for seed in return_seeds)
         for call in inline_calls:
-            for address, kind in ((call.continuation, "inline_trap_continuation"),
-                                  (call.target, "inline_trap_target")):
+            is_trap = call.call_address not in subroutine_sites
+            prefix = "inline_trap" if is_trap else "inline_subroutine"
+            for address, kind in ((call.continuation, prefix + "_continuation"),
+                                  (call.target, prefix + "_target")):
                 if address is None:
                     continue
                 callback_evidence = (
@@ -319,8 +355,8 @@ def analyze_megadrive(
                 )
                 dispatch_seeds.append(DecoderSeed(
                     address, kind, "proven",
-                    f"TRAP at {call.call_address:06X}; handler {call.handler:06X} "
-                    f"consumes {call.data_size} inline bytes and advances the saved exception PC"
+                    f"{'TRAP' if is_trap else 'call'} at {call.call_address:06X}; handler {call.handler:06X} "
+                    f"consumes {call.data_size} inline bytes and advances the saved return PC"
                     + callback_evidence,
                     call.call_address,
                 ))
@@ -328,7 +364,7 @@ def analyze_megadrive(
         # A structurally proven dispatcher can itself be an unreachable code
         # island. Bootstrap only strong tables from backend facts, then make
         # the dispatcher a planned root on the next decoder pass.
-        raw_dispatch = discover_dispatch_table_seeds(image, facts)
+        raw_dispatch = discover_dispatch_table_seeds(image, facts, handler_validator=handler_validator)
         # Unused object code can pass a callback to a decoded allocator. Its
         # ABI is structural proof, unlike an abstract edge from unknown state;
         # the field executor must already belong to the trusted CFG.
@@ -341,13 +377,10 @@ def analyze_megadrive(
             if seed.source_address is not None:
                 by_dispatch.setdefault(seed.source_address, []).append(seed)
         for site, table_seeds in by_dispatch.items():
-            targets = {seed.address for seed in table_seeds}
-            decoded_targets = len(targets & decoded_starts)
-            if (
-                len(targets) < 4
-                or decoded_targets == 0
-                or (decoded_targets == 1 and len(table_seeds) < 8)
-            ):
+            # Exact leaf, inline and PC-relative word readers prove execution
+            # even before any of their handlers has been decoded.
+            # Other backend table guesses still need existing code witnesses.
+            if not can_bootstrap_dispatch_seeds(table_seeds, decoded_starts):
                 continue
             dispatch_seeds.extend(table_seeds)
             if site not in trusted_starts:

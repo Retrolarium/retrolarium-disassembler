@@ -126,8 +126,11 @@ class MegaDrivePointerTests(unittest.TestCase):
         call = replace(fact(0x204, "JMP", "(0x300,PC,D1w*0x1)"), length=4,
                        flow_type="COMPUTED_JUMP")
         facts = {0x200: load, 0x204: call}
+        seeds = discover_dispatch_table_seeds(image, facts)
+        self.assertEqual({"pc_word_dispatch"}, {seed.kind for seed in seeds})
+        self.assertEqual({"proven"}, {seed.confidence for seed in seeds})
         self.assertEqual(targets, tuple(
-            seed.address for seed in discover_dispatch_table_seeds(image, facts)
+            seed.address for seed in seeds
         ))
         for changed in (
             replace(call, operands="(0x302,PC,D1w*0x1)"),
@@ -144,11 +147,14 @@ class MegaDrivePointerTests(unittest.TestCase):
                 image, {0x200: load, 0x204: pushed, 0x208: delayed}
             )
         ))
-        clobber = fact(0x204, "MOVEQ", "0x0|D1")
-        too_late = replace(call, physical_offset=0x206, cpu_address=0x206)
-        self.assertEqual((), discover_dispatch_table_seeds(
-            image, {0x200: load, 0x204: clobber, 0x206: too_late}
-        ))
+        for clobber in (fact(0x204, "MOVEQ", "0x0|D1"),
+                        fact(0x204, "MOVE.B", "#0x2|D1b"),
+                        fact(0x204, "MOVEM.L", "(SP)+|{D0-D2}"),
+                        fact(0x204, "EXG", "D1|D2")):
+            too_late = replace(call, physical_offset=0x206, cpu_address=0x206)
+            with self.subTest(clobber=clobber.mnemonic):
+                self.assertEqual((), discover_dispatch_table_seeds(
+                    image, {0x200: load, 0x204: clobber, 0x206: too_late}))
 
     def test_pc_dispatch_skips_guarded_zero_slot_before_pointer_table(self) -> None:
         data = bytearray(cartridge(size=0x800))

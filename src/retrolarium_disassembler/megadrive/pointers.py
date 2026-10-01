@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+from typing import Callable
 
 from .facts import InstructionFact
 from .megadrive import MegaDriveImage
@@ -699,6 +700,8 @@ class _DispatchTable:
     load_address: int
     call_address: int
     call_mnemonic: str
+    seed_kind: str = "indexed_pointer_table_target"
+    seed_confidence: str = "high"
 
 
 _ADDRESS_REGISTER = re.compile(r"\b(?:A[0-7]|SP)\b", re.I)
@@ -976,14 +979,30 @@ def _dispatch_tables(
     return tuple(tables[address] for address in sorted(tables))
 
 
+def can_bootstrap_dispatch_seeds(seeds, decoded_starts) -> bool:
+    """Exact executable word-table readers need two targets; guesses need witnesses."""
+    targets = {seed.address for seed in seeds}
+    if len(targets) < 2:
+        return False
+    if all(seed.confidence == "proven" and seed.kind in {
+        "leaf_word_dispatch", "inline_word_dispatch", "pc_word_dispatch",
+    } for seed in seeds):
+        return True
+    decoded = len(targets & decoded_starts)
+    return len(targets) >= 4 and (decoded >= 2 or decoded == 1 and len(seeds) >= 8)
+
+
 def discover_dispatch_table_seeds(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
+    image: MegaDriveImage, facts: dict[int, InstructionFact],
+    *, handler_validator: Callable[[int], bool] | None = None,
 ) -> tuple[DecoderSeed, ...]:
     """Turn instruction-proven absolute and relative dispatch tables into seeds."""
     from .m68k_record_dispatch import discover_record_callback_seeds
     from .m68k_callback_abi import discover_callback_abi_seeds
     from .m68k_ram_dispatch import discover_ram_stub_dispatch_seeds
     from .m68k_table_dispatch import discover_lea_indexed_call_seeds, discover_trap_relative_dispatch_seeds
+    from .m68k_word_callbacks import discover_nested_word_resolver_seeds
+    from .m68k_leaf_dispatch import discover_leaf_word_dispatch_seeds
     from .m68k_indexed_dispatch import (
         discover_register_indexed_dispatch_seeds, discover_added_index_dispatch_seeds,
         discover_nested_word_dispatch_seeds,
@@ -991,6 +1010,8 @@ def discover_dispatch_table_seeds(
     seeds = [*discover_record_callback_seeds(image, facts),
              *discover_callback_abi_seeds(image, facts),
              *discover_ram_stub_dispatch_seeds(image, facts),
+             *discover_nested_word_resolver_seeds(image, facts),
+             *discover_leaf_word_dispatch_seeds(image, facts, handler_validator=handler_validator),
              *discover_lea_indexed_call_seeds(image, facts),
              *discover_trap_relative_dispatch_seeds(image, facts)]
     for table in (*_dispatch_tables(image, facts), *_word_dispatch_tables(image, facts),
@@ -1006,8 +1027,8 @@ def discover_dispatch_table_seeds(
         seeds.extend(
             DecoderSeed(
                 address=entry.target,
-                kind="indexed_pointer_table_target",
-                confidence="high",
+                kind=table.seed_kind,
+                confidence=table.seed_confidence,
                 evidence=evidence,
                 source_address=table.load_address,
             )
@@ -1263,6 +1284,7 @@ def _pc_word_dispatch_tables(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[_DispatchTable, ...]:
     """Recover signed offsets loaded from a table then used by PC-indexed JMP/JSR."""
+    from .m68k_abstract import _register_list
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     boundaries = _absolute_referenced_addresses(facts)
@@ -1284,12 +1306,18 @@ def _pc_word_dispatch_tables(
             branch = _PC_WORD_BRANCH.fullmatch(call.operands)
             if call.mnemonic.upper() in {"JMP", "JSR"} and branch is not None:
                 break
+            offset_register = indexed.group(2).upper()
+            operands = call.operands.upper().split("|")
+            operation = call.mnemonic.upper().split(".", 1)[0]
+            clobbers_offset = operands[-1] in {
+                offset_register + size for size in ("", "B", "W", "L")
+            }
+            if operation == "MOVEM":
+                clobbers_offset |= offset_register.lower() in _register_list(operands[-1])
+            if operation == "EXG":
+                clobbers_offset |= offset_register in operands
             if (call.flow_type.upper() != "FALL_THROUGH"
-                    or call.operands.rsplit("|", 1)[-1].upper() in {
-                        f"{indexed.group(2).upper()}W",
-                        f"{indexed.group(2).upper()}L",
-                        indexed.group(2).upper(),
-                    }):
+                    or clobbers_offset):
                 call = None
                 break
             call = by_address.get(call.cpu_address + call.length)
@@ -1342,6 +1370,7 @@ def _pc_word_dispatch_tables(
             ),
             load_address=load.cpu_address, call_address=call.cpu_address,
             call_mnemonic=call.mnemonic.upper(),
+            seed_kind="pc_word_dispatch", seed_confidence="proven",
         )
     return tuple(tables[address] for address in sorted(tables))
 

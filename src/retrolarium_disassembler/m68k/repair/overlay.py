@@ -16,8 +16,10 @@ from .m68k_abstract import (
     discover_object_field_handler_candidates, discover_ram_handler_candidates,
     MAX_BACKEND_COMPUTED_FLOW_TARGETS,
 )
-from .megadrive_pointers import discover_dispatch_table_seeds
+from .megadrive_pointers import (discover_dispatch_table_seeds, can_bootstrap_dispatch_seeds,
+                                detect_pointer_candidates)
 from .m68k_unused import discover_validated_unused_candidates
+from .m68k_dispatch_witness import make_dispatch_handler_validator
 from .megadrive_emit import _asm_instruction
 from .m68k_seeds import discover_dense_branch_table_seeds, discover_indexed_branch_table_seeds
 from .m68k_indexed_dispatch import (discover_register_indexed_dispatch_seeds,
@@ -66,6 +68,15 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
                             references=tuple(replace(r, address=r.address & 0xFFFFFF)
                                              for r in f.references)) for a, f in raw.items()}
         trusted = interpret_trusted_cfg(image, facts, entrypoints=planned)
+        probes = _load_ghidra_facts(artifacts.orphan_facts, image.data, lambda a: a,
+                                  bank=0, address_label="overlay", expected_block="CD_MODULE",
+                                  allow_empty=True, allow_overlaps=True)
+        handler_validator = make_dispatch_handler_validator(
+            image, trusted.facts, {**probes, **facts},
+            protected_ranges=tuple((p.physical_start, p.physical_end)
+                                   for p in detect_pointer_candidates(image, trusted.facts)
+                                   if p.status == "accepted"),
+            render_instruction=_asm_instruction)
         candidates: dict[int, str] = {}
         for fact in trusted.facts.values():
             if fact.flow_type.upper() in {"COMPUTED_JUMP", "COMPUTED_CALL"} and len(fact.flows) > MAX_BACKEND_COMPUTED_FLOW_TARGETS:
@@ -75,23 +86,18 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
         for edge in trusted.interpretation.indirect_edges:
             if edge.confidence == "proven":
                 candidates[edge.target_address] = edge.evidence
-        for seed in (*discover_dispatch_table_seeds(image, trusted.facts),
+        for seed in (*discover_dispatch_table_seeds(image, trusted.facts, handler_validator=handler_validator),
                      *discover_register_indexed_dispatch_seeds(image, trusted.facts),
                      *discover_nested_word_dispatch_seeds(image, trusted.facts),
                      *discover_added_index_dispatch_seeds(image, trusted.facts)):
             candidates[seed.address] = seed.evidence
         tables = {}
-        for seed in discover_dispatch_table_seeds(image, facts):
+        for seed in discover_dispatch_table_seeds(image, facts, handler_validator=handler_validator):
             tables.setdefault(seed.source_address, []).append(seed)
         for site, seeds in tables.items():
-            targets = {s.address for s in seeds}
-            decoded_targets = len(targets & facts.keys())
-            if site not in trusted.facts and len(targets) >= 4 and (decoded_targets >= 2 or decoded_targets == 1 and len(seeds) >= 8):
+            if site not in trusted.facts and can_bootstrap_dispatch_seeds(seeds, facts.keys()):
                 candidates[site] = seeds[0].evidence
                 candidates.update((s.address, s.evidence) for s in seeds)
-        probes = _load_ghidra_facts(artifacts.orphan_facts, image.data, lambda a: a,
-                                  bank=0, address_label="overlay", expected_block="CD_MODULE",
-                                  allow_empty=True, allow_overlaps=True)
         unused, _ = discover_validated_unused_candidates(
             image, trusted.facts, {**probes, **facts}, render_instruction=_asm_instruction)
         candidates.update((c.address, c.evidence) for c in unused)
