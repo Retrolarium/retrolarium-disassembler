@@ -348,11 +348,11 @@ def _ps4(revision: int) -> dict:
 LANDSTALKER = "fb8a9c6c64ec27c05acea75f9556c928d2b9f081"
 PROFILES: dict[str, Profile] = {profile.name: profile for profile in (
     Profile("quackshot-rev01-header", "quackshot_src", "90f7be9961c78ca4df2deede0790789aea944f6e",
-            "QuackShot", "quackshot", "qs.s",
-            identity=Identity("GM 00004054-01", 0xA4B3, "JUE", 0x80000),
-            notes=("qs.s carries the REV01 serial but ends at $7FFFF (512 KiB); the supplied REV01 is 1.25 MiB.",
-                   "Upstream recompresses Nemesis/Kosinski assets with bundled KENS DLLs.",
-                   "The repository does not vendor bin/asw; an AS toolchain is chosen explicitly.")),
+            "QuackShot", "quackshot-restored", "qs.s",
+            identity=Identity("GM 00004054-01", 0xA4B3, "JUE", 0x140000),
+            notes=("Reviewed evaluation-only restoration of the manual REV01 source; not a pristine upstream build.",
+                   "Retail checksum loop, layout and unchanged binary includes are restored in a staged copy.",
+                   "Both split and flattened assemblies must reproduce the independently pinned retail ROM.")),
     *(Profile(f"landstalker-{variant.lower()}", "landstalker_disasm", LANDSTALKER, "Landstalker",
               "landstalker", variant=variant, identity=identity)
       for variant, identity in (
@@ -746,8 +746,31 @@ def build_vasm(profile: Profile, ctx: Context) -> Build:
     return Build(dest / "upstream.bin", dest / "reference.bin", dest / "reference.vasm.lst", "vasm", [vasm])
 
 
+def build_quackshot_restored(profile: Profile, ctx: Context) -> Build:
+    # Import at execution time: the standalone evaluation adapter reuses the
+    # header and assembler helpers in this module, not the ROM analyzer.
+    from prepare_quackshot_reference import PLAN, assemble, prepare
+
+    plan = json.loads(PLAN.read_text(encoding="utf-8"))
+    originals = [item for item in ctx.pool if item.sha256 == plan["rom_sha256"]]
+    if not originals:
+        raise ValueError("QuackShot restoration requires the hash-pinned retail REV01 ROM")
+    tools = Path(ctx.settings.get("quackshot_as") or ctx.refs / "SITDDISASM/tools/asw")
+    prepared = prepare(ctx.checkout, Path(originals[0].path), ctx.dest / "restoration", tools, ctx.timeout)
+    stage = Path(prepared["asset_root"])
+    export_unified(stage, profile.entry, ctx.dest / "main.s", {}, ctx.record)
+    upstream = ctx.dest / "upstream.bin"
+    shutil.copy2(prepared["upstream_binary"], upstream)
+    listing = assemble(ctx.dest / "main.s", ctx.dest / "reference.bin", stage, tools, ctx.timeout)
+    for key in ("restoration_plan", "restoration_plan_sha256", "restored_split_listing"):
+        ctx.record[key] = prepared[key]
+    ctx.record["asset_preparation"] = "Original binary includes extracted using the pinned retail layout; no recompression"
+    shutil.copy2(Path(prepared["source"]).parent / "asset-provenance.json", ctx.dest / "asset-provenance.json")
+    return Build(upstream, ctx.dest / "reference.bin", listing, "as", [tools / "asw.exe", tools / "p2bin.exe"])
+
+
 FAMILIES = {"landstalker": build_landstalker, "sitd": build_sitd, "phantasy-star": build_phantasy_star,
-            "quackshot": build_quackshot, "vasm": build_vasm}
+            "quackshot": build_quackshot, "quackshot-restored": build_quackshot_restored, "vasm": build_vasm}
 
 
 # ---------------------------------------------------------------------------

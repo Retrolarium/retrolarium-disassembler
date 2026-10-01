@@ -1,0 +1,1970 @@
+{
+  "schema": "retrolarium.quackshot-reference-restoration",
+  "schema_version": 1,
+  "evaluation_only": true,
+  "upstream_commit": "90f7be9961c78ca4df2deede0790789aea944f6e",
+  "entry_sha256": "c419be790a17590893f904c96f14fbe37edcefd07c29dcffe6d94c898ca25d21",
+  "rom_sha256": "acec1370e6c682fea82df14154b19d734173466d612556959d14d853f5d33381",
+  "rom_size": 1310720,
+  "symbol_addresses": {
+    "init_sound_type1": 1310208,
+    "palettes_data_1": 1297008,
+    "nemesis_main_font": 114976,
+    "nemesis_sega_logo": 1305406,
+    "nemesis_enemy_tiles_62": 1203976,
+    "nemesis_enemy_tiles_34": 127156,
+    "nemesis_enemy_tiles_49": 1192158,
+    "nemesis_enemy_tiles_29": 127486,
+    "enigma_sega_logo_mapping": 1305392,
+    "kosinski_level_params": 1302566,
+    "kosinski_dialogs": 1290240,
+    "nemesis_enemy_tiles_0": 1180372,
+    "nemesis_enemy_tiles_1": 1140186,
+    "nemesis_enemy_tiles_2": 1142840,
+    "nemesis_enemy_tiles_3": 1144922,
+    "nemesis_enemy_tiles_4": 1146206,
+    "nemesis_enemy_tiles_5": 1147086,
+    "nemesis_enemy_tiles_6": 1146720,
+    "nemesis_enemy_tiles_7": 1147638,
+    "nemesis_enemy_tiles_8": 1147786,
+    "nemesis_enemy_tiles_9": 1143744,
+    "nemesis_enemy_tiles_10": 1144224,
+    "nemesis_enemy_tiles_11": 1147274,
+    "nemesis_enemy_tiles_12": 1153112,
+    "nemesis_enemy_tiles_13": 1149102,
+    "nemesis_enemy_tiles_14": 1151640,
+    "nemesis_enemy_tiles_15": 1144598,
+    "nemesis_enemy_tiles_16": 1152666,
+    "nemesis_enemy_tiles_17": 1153700,
+    "nemesis_enemy_tiles_18": 1151282,
+    "nemesis_enemy_tiles_19": 1149684,
+    "nemesis_enemy_tiles_20": 1184750,
+    "nemesis_enemy_tiles_21": 1180770,
+    "nemesis_enemy_tiles_22": 1152420,
+    "nemesis_enemy_tiles_23": 1182062,
+    "nemesis_enemy_tiles_24": 1181696,
+    "nemesis_enemy_tiles_25": 1183272,
+    "nemesis_enemy_tiles_26": 1181492,
+    "nemesis_enemy_tiles_27": 1183970,
+    "nemesis_enemy_tiles_28": 1184346,
+    "nemesis_enemy_tiles_30": 1179366,
+    "nemesis_enemy_tiles_31": 1189798,
+    "nemesis_enemy_tiles_32": 1164870,
+    "nemesis_enemy_tiles_33": 1173324,
+    "nemesis_enemy_tiles_35": 1174792,
+    "nemesis_enemy_tiles_36": 1174300,
+    "nemesis_enemy_tiles_37": 1166662,
+    "nemesis_enemy_tiles_38": 1131008,
+    "nemesis_enemy_tiles_39": 1170474,
+    "nemesis_enemy_tiles_40": 1212662,
+    "nemesis_enemy_tiles_41": 1178072,
+    "nemesis_enemy_tiles_42": 1176064,
+    "nemesis_enemy_tiles_43": 1177030,
+    "nemesis_enemy_tiles_44": 1166866,
+    "nemesis_enemy_tiles_45": 1175154,
+    "nemesis_enemy_tiles_46": 124016,
+    "nemesis_enemy_tiles_47": 1132464,
+    "nemesis_enemy_tiles_48": 1168866,
+    "nemesis_enemy_tiles_50": 1164654,
+    "nemesis_enemy_tiles_51": 1165274,
+    "nemesis_enemy_tiles_52": 1163412,
+    "nemesis_enemy_tiles_53": 1168652,
+    "nemesis_enemy_tiles_54": 1137804,
+    "nemesis_enemy_tiles_55": 1164406,
+    "nemesis_enemy_tiles_56": 1159960,
+    "nemesis_enemy_tiles_57": 1160942,
+    "nemesis_enemy_tiles_58": 1139502,
+    "nemesis_enemy_tiles_59": 1139970,
+    "nemesis_enemy_tiles_60": 1159416,
+    "nemesis_enemy_tiles_61": 1158928,
+    "nemesis_enemy_tiles_63": 1205510,
+    "nemesis_enemy_tiles_64": 1134652,
+    "nemesis_enemy_tiles_65": 1161592,
+    "nemesis_enemy_tiles_66": 1139740,
+    "nemesis_enemy_tiles_67": 1139010,
+    "nemesis_enemy_tiles_68": 1198116,
+    "nemesis_enemy_tiles_69": 1189064,
+    "nemesis_enemy_tiles_70": 1207952,
+    "nemesis_enemy_tiles_71": 1198682,
+    "nemesis_enemy_tiles_72": 1210024,
+    "nemesis_enemy_tiles_73": 1201028,
+    "init_z80_driver": 714,
+    "tbl_lvl_names": 20014,
+    "smps_bank0": 1245184,
+    "smps_bank1": 1277952,
+    "smps_driver_part1": 1279200,
+    "smps_driver_part2": 1282726,
+    "smps_driver_part3": 1286346,
+    "sega_logo_palette": 1305334
+  },
+  "assets": [
+    {
+      "path": "src/init_z80.bin",
+      "offset": 714,
+      "size": 38,
+      "sha256": "2eaa830f89e9443f07c1c637df822f83d6a9e17d6a797c32947e20fd2435bb01"
+    },
+    {
+      "path": "src/levels/01_Duckburg/name.bin",
+      "offset": 20014,
+      "size": 24,
+      "sha256": "e09d2cbd4873fa24e8f6589df248d84bb56a75b168d831c5bf2c721046cc0ce7"
+    },
+    {
+      "path": "src/levels/02_Mexico/name.bin",
+      "offset": 20038,
+      "size": 24,
+      "sha256": "d519bc47b16f476a2492d5f0d58a0fd8df1cefef935bf848c24b5cfb4598649f"
+    },
+    {
+      "path": "src/levels/03_Transylvania/name.bin",
+      "offset": 20062,
+      "size": 24,
+      "sha256": "fe325936e320e8b8488e8ec78cfb65a81b375e5736a2892e690819a61f4e866f"
+    },
+    {
+      "path": "src/levels/04_Viking_Ship/name.bin",
+      "offset": 20086,
+      "size": 24,
+      "sha256": "5c78e97efc7c8413e77d9404deeb2d291e4ac67ee04e07a897398c7f92593fc0"
+    },
+    {
+      "path": "src/levels/05_South_Pole/name.bin",
+      "offset": 20110,
+      "size": 24,
+      "sha256": "ff2e9afefddac5c7e766333a579870f9f6311bceebf481b3f6505f1955a1e43a"
+    },
+    {
+      "path": "src/levels/06_Maharajah/name.bin",
+      "offset": 20134,
+      "size": 24,
+      "sha256": "e1cc34b75de530d9d52870aea53802b2b1ed226ed4f735de402ffcecf917468f"
+    },
+    {
+      "path": "src/levels/07_Egypt/name.bin",
+      "offset": 20158,
+      "size": 24,
+      "sha256": "8566243bdba930bb60fab57ba85175eaa8891bebe9424d39ad2fb4ec79fe38cd"
+    },
+    {
+      "path": "src/levels/08_Hideout/name.bin",
+      "offset": 20182,
+      "size": 24,
+      "sha256": "43f3b4b1538e974b07749c95a2896ecb409a64bb9665930eaac317e10795988b"
+    },
+    {
+      "path": "src/levels/09_The_Island/name.bin",
+      "offset": 20206,
+      "size": 24,
+      "sha256": "eb12394c55e136a3c4c8a95b8e5fe5c25a09f49908d05906f8438ca63dfb481f"
+    },
+    {
+      "path": "src/main_menu/room1_name.bin",
+      "offset": 20230,
+      "size": 24,
+      "sha256": "3a51dea7a6692e4d714955c12010ca589b577004ac6765593965e15f0bb224e8"
+    },
+    {
+      "path": "src/main_menu/room2_name.bin",
+      "offset": 20254,
+      "size": 24,
+      "sha256": "1179e7ee4d370288484e4d0cda1ea70266ae685d46ff8aa89995aa327fdf1316"
+    },
+    {
+      "path": "src/kosinski/data_019F18.bin",
+      "offset": 106264,
+      "size": 8643,
+      "sha256": "baaf8828f62f1978a00cc4a34d5610a853bca65d23ca02e8348344acfc69fd5e"
+    },
+    {
+      "path": "src/fonts/nemesis_main.bin",
+      "offset": 114976,
+      "size": 2762,
+      "sha256": "6df6eb41f7b0cf47bbe8837bf623e729869643e8c85aabd2b58e037c1114f7ec"
+    },
+    {
+      "path": "src/nemesis/data_01CBEA.bin",
+      "offset": 117738,
+      "size": 880,
+      "sha256": "20962edaa1d0bcb6c7b9cfae9c256b675d690d198eaf94362c2fe174aa3bbd3f"
+    },
+    {
+      "path": "src/enigma/data_01CF5A.bin",
+      "offset": 118618,
+      "size": 92,
+      "sha256": "e0d59824feaa52923cff37e8bade28bf0aea3e8d102330f85dd869f7a99e0328"
+    },
+    {
+      "path": "src/enigma/data_01CFB6.bin",
+      "offset": 118710,
+      "size": 420,
+      "sha256": "fea42071bdb9f1536a42c1dcbdfd895f3b43faf9dd7fdf556daa6a9eb9f0711f"
+    },
+    {
+      "path": "src/nemesis/data_01D15A.bin",
+      "offset": 119130,
+      "size": 1296,
+      "sha256": "098d01593c2fa87161325e16c69e31cf90257f39f2e446ef6fc07c703b9181e7"
+    },
+    {
+      "path": "src/nemesis/data_01D70E.bin",
+      "offset": 120590,
+      "size": 990,
+      "sha256": "7ee7d6a28314cfdc51ef1df58c5236b10dad26be0aebf7825fb1b7292be746fb"
+    },
+    {
+      "path": "src/nemesis/data_01DAEC.bin",
+      "offset": 121580,
+      "size": 1420,
+      "sha256": "f87186b8b009b59a931879340d16ca59254cf7af364a08623c577d5e702fb254"
+    },
+    {
+      "path": "src/nemesis/data_01E0B4.bin",
+      "offset": 123060,
+      "size": 342,
+      "sha256": "b9f29fdef516e5ef76bac40eaf553a8435bb8a8f26215dec72ea4ec8e3fc2b6d"
+    },
+    {
+      "path": "src/nemesis/data_01E242.bin",
+      "offset": 123458,
+      "size": 98,
+      "sha256": "01815dcde0a1e0ba737ee759473b170ac53c1d177e7f96897d4d5410444ff45a"
+    },
+    {
+      "path": "src/nemesis/data_01E2BA.bin",
+      "offset": 123578,
+      "size": 372,
+      "sha256": "75fb458801b49f6daa7df70762f5f7cdf5d530bd6e0a7daddbcab4903b38d0cf"
+    },
+    {
+      "path": "src/enemies/46/nemesis_tiles.bin",
+      "offset": 124016,
+      "size": 413,
+      "sha256": "1767cc7b440a5602236cde0f31b40d2891f468a524b64d8a740fbc10f2e0c1e0"
+    },
+    {
+      "path": "src/nemesis/data_01E644.bin",
+      "offset": 124484,
+      "size": 544,
+      "sha256": "c766c31603c961de9dc768f0b79c2621da6184ee9f0f9f539d1f6cb74f7aa269"
+    },
+    {
+      "path": "src/nemesis/data_01E898.bin",
+      "offset": 125080,
+      "size": 1850,
+      "sha256": "c90948290c65fb653f6b2b7751342eb9f1443855288f3112abba35f3ca241670"
+    },
+    {
+      "path": "src/enemies/34/nemesis_tiles.bin",
+      "offset": 127156,
+      "size": 256,
+      "sha256": "880ca63f1f1cac3101411e482ff6abe0bb7e88ae68737f6d114b8f9251495904"
+    },
+    {
+      "path": "src/enemies/29/nemesis_tiles.bin",
+      "offset": 127486,
+      "size": 590,
+      "sha256": "7b527cf0c510c85401334c2bfb405440bd7013b1d1439d76bacfc6d53dc84b7c"
+    },
+    {
+      "path": "src/nemesis/data_01F482.bin",
+      "offset": 128130,
+      "size": 200,
+      "sha256": "8a34cf8fc656963a5738d266dfe1f65b1ef1472e8bcd367682163ad3d82124ad"
+    },
+    {
+      "path": "src/nemesis/data_01F55C.bin",
+      "offset": 128348,
+      "size": 890,
+      "sha256": "1cf66454f97bfa2aa153cbac8f17414e570ce4f837e4005a469f80de692c863c"
+    },
+    {
+      "path": "src/nemesis/data_01F900.bin",
+      "offset": 129280,
+      "size": 640,
+      "sha256": "c24abf603f49778e9d8ffdbb5da63d19b02136a917b5d2db5c486c5cd061454d"
+    },
+    {
+      "path": "src/nemesis/data_01FBA0.bin",
+      "offset": 129952,
+      "size": 470,
+      "sha256": "66e7d9790fb638b42848256a0524744976c2552e6a30bd15beb510ed2de217e4"
+    },
+    {
+      "path": "src/nemesis/data_01FD9C.bin",
+      "offset": 130460,
+      "size": 304,
+      "sha256": "4e3029604a04d01b82b3dda11a0c2b57000abe020cbc67684fba34d3c5592675"
+    },
+    {
+      "path": "src/nemesis/data_01FEEA.bin",
+      "offset": 130794,
+      "size": 82,
+      "sha256": "8c521e27bdb105b878cfe5e91717969d0709dcd7123a24e4fbc97757ac507359"
+    },
+    {
+      "path": "src/nemesis/data_01FF84.bin",
+      "offset": 130948,
+      "size": 536,
+      "sha256": "803247f8af865de81a991280de1bd2c2e306e0f950c850e33e5aa703e33a8d1d"
+    },
+    {
+      "path": "src/nemesis/data_020200.bin",
+      "offset": 131584,
+      "size": 706,
+      "sha256": "0a831b7ac965702c89ab821b9db4da69c37325ef573404d93e6f5112ce007d39"
+    },
+    {
+      "path": "src/nemesis/data_020534.bin",
+      "offset": 132404,
+      "size": 698,
+      "sha256": "ce77ebb9946e8c34ec26205b47d9acbde92cd7a974983d8703e2ab564b92b24a"
+    },
+    {
+      "path": "src/nemesis/data_020834.bin",
+      "offset": 133172,
+      "size": 1282,
+      "sha256": "7228062e8420c1d9c59f4533075af454e3f3d2723cee08c2faced29b5049cd02"
+    },
+    {
+      "path": "src/nemesis/data_020D8C.bin",
+      "offset": 134540,
+      "size": 252,
+      "sha256": "a80dcd5a71c1f066724fb5bc650fe7e3147f0a5e73dc34710d4cae168e696393"
+    },
+    {
+      "path": "src/nemesis/data_020E9A.bin",
+      "offset": 134810,
+      "size": 1584,
+      "sha256": "871d1590398c0512dc201a828d75893f85eabd5f2e2e010494563c93d608eb9d"
+    },
+    {
+      "path": "src/nemesis/data_02BF24.bin",
+      "offset": 180004,
+      "size": 706,
+      "sha256": "6817e1a33859401f1a9d0a4abc80c18df32196f942f81e6ed6ebbe4dcb952202"
+    },
+    {
+      "path": "src/nemesis/data_02C1E6.bin",
+      "offset": 180710,
+      "size": 86,
+      "sha256": "e2b32292249180a70f367d0cca12494a07f375153c26cedf24a9404b49445d20"
+    },
+    {
+      "path": "src/nemesis/data_02C23C.bin",
+      "offset": 180796,
+      "size": 380,
+      "sha256": "303dd0767fefbffe7b865701f8647dcf07483d4f759d6e3725ba74665cefa4a2"
+    },
+    {
+      "path": "src/enigma/data_02C3B8.bin",
+      "offset": 181176,
+      "size": 184,
+      "sha256": "422d8109b2193cccbb116a9b842a73dda832c72002fb937a6c8086d629d8452a"
+    },
+    {
+      "path": "src/enigma/data_02C470.bin",
+      "offset": 181360,
+      "size": 258,
+      "sha256": "de3a233227c4fa5ed27d5bc83307b9c28c9b18f0f5d68a4a7c17147b96af5286"
+    },
+    {
+      "path": "src/enigma/data_02C572.bin",
+      "offset": 181618,
+      "size": 284,
+      "sha256": "8add5a57b86d53d12f31252a84baa24f771e8a0706535f564cfee398859f6489"
+    },
+    {
+      "path": "src/nemesis/data_02C68E.bin",
+      "offset": 181902,
+      "size": 1784,
+      "sha256": "6f1cc4b144ea5e64c9eebf631fd389b7650cedf4bf2c0286c22ff9447f1a80f4"
+    },
+    {
+      "path": "src/nemesis/data_02CD86.bin",
+      "offset": 183686,
+      "size": 1332,
+      "sha256": "48735e472c88aef36b51940caf338ecc0f7bfc8b9fb33644300c30e1a857a646"
+    },
+    {
+      "path": "src/nemesis/data_02D2BA.bin",
+      "offset": 185018,
+      "size": 1076,
+      "sha256": "6452f920645b22ed5c34c00f2caf2efbd0069dd982c37f287f5e96a2685474b4"
+    },
+    {
+      "path": "src/nemesis/data_02D6EE.bin",
+      "offset": 186094,
+      "size": 11896,
+      "sha256": "4ea8df4b1ea1105dbb11d8a69cec419657086cf45f6f51c8cc62df03207e753f"
+    },
+    {
+      "path": "src/nemesis/data_030566.bin",
+      "offset": 197990,
+      "size": 50,
+      "sha256": "e09aac7766e0ef90d0315c2f70829f5af2d1c664657aa0d91104c9c6a1d2e7f8"
+    },
+    {
+      "path": "src/enigma/data_030598.bin",
+      "offset": 198040,
+      "size": 136,
+      "sha256": "5295ad38a9d3369a6e6fae1a5ab38e3a0ca37a4d86e0c9da6bbf0d381ba7cace"
+    },
+    {
+      "path": "src/enigma/data_030620.bin",
+      "offset": 198176,
+      "size": 806,
+      "sha256": "a74d58d335de1b44f4fbabf28942802ee8cef85641b5e29b897e4f31c416b1e0"
+    },
+    {
+      "path": "src/nemesis/data_030946.bin",
+      "offset": 198982,
+      "size": 3164,
+      "sha256": "5eac94d6b2537e272190e71e7adf48e18b0ef8eee601ccdc94e83b9164e1bc3d"
+    },
+    {
+      "path": "src/enigma/data_0315A2.bin",
+      "offset": 202146,
+      "size": 50,
+      "sha256": "744dfe481b75657a7e004a929af04bf07b40181213aac98e4ed87646d2cea93b"
+    },
+    {
+      "path": "src/enigma/data_0315D4.bin",
+      "offset": 202196,
+      "size": 52,
+      "sha256": "34b2596f376179d2aef45be2803bd598f87bfa0f9a516b9d13efa06f45f1867b"
+    },
+    {
+      "path": "src/enigma/data_031608.bin",
+      "offset": 202248,
+      "size": 14,
+      "sha256": "ca6872f46494e56d143a2daf2b1cff1e48d6d38c502950e6e91a390eb2fb9f3d"
+    },
+    {
+      "path": "src/enigma/data_031616.bin",
+      "offset": 202262,
+      "size": 10,
+      "sha256": "e7a66971c82aa7afbd79e74223cebe79cff7d8bfade535bf16b0e04056a430e2"
+    },
+    {
+      "path": "src/nemesis/data_031620.bin",
+      "offset": 202272,
+      "size": 1496,
+      "sha256": "42b461fcac852dc416eafd696a4cd7e8e346ed3fb556aac0fc4e86c57ec8702a"
+    },
+    {
+      "path": "src/nemesis/data_031BF8.bin",
+      "offset": 203768,
+      "size": 652,
+      "sha256": "e65059cadf6c07cf56cd822e93497feb80bb3959b4596f2838bdef197b6e8f9a"
+    },
+    {
+      "path": "src/nemesis/data_031E84.bin",
+      "offset": 204420,
+      "size": 794,
+      "sha256": "a5341442be6e845700feaffaa72d914f93165b2af0a4eef9f8329663c2f6ec8f"
+    },
+    {
+      "path": "src/enigma/data_032200.bin",
+      "offset": 205312,
+      "size": 1010,
+      "sha256": "e6e46381f6284219a07bec1a72ddf189c314e47f49e18c5fe1c098bcbea5773c"
+    },
+    {
+      "path": "src/enigma/data_0325F2.bin",
+      "offset": 206322,
+      "size": 528,
+      "sha256": "33b9866835d49c17ebd11079d8748295fa7ce3ce36365e92020d26487602a7fc"
+    },
+    {
+      "path": "src/enigma/data_032802.bin",
+      "offset": 206850,
+      "size": 842,
+      "sha256": "6608e6ac55e24b471dce02691d74da91bc5ab6409aa9ecb7fcb10202d512b413"
+    },
+    {
+      "path": "src/kosinski/data_032B4C.bin",
+      "offset": 207692,
+      "size": 1728,
+      "sha256": "45ce43391936bb81f256526bb1a97eaf6f81d26f75313891296fbf0b4b8e9946"
+    },
+    {
+      "path": "src/kosinski/data_03320C.bin",
+      "offset": 209420,
+      "size": 336,
+      "sha256": "30b396dbb3b675ca858a9b6c7edd8316d86bc29002b381c6a25443fcd9373cd5"
+    },
+    {
+      "path": "src/kosinski/data_03335C.bin",
+      "offset": 209756,
+      "size": 1440,
+      "sha256": "631fd1a4901a62204fc1e59f41b978b88c090b5312b623ca18e2414a8c26dfc2"
+    },
+    {
+      "path": "src/kosinski/data_0338FC.bin",
+      "offset": 211196,
+      "size": 288,
+      "sha256": "547cfd9c5a5b6145e9ec1a081a22da7d590a7f106f923d734190e1b43fcbc541"
+    },
+    {
+      "path": "src/kosinski/data_033A1C.bin",
+      "offset": 211484,
+      "size": 944,
+      "sha256": "48e93cf1f65ba553e803a35ceb4fec29127de84923f5dc4e720e5297a82ca114"
+    },
+    {
+      "path": "src/kosinski/data_033DCC.bin",
+      "offset": 212428,
+      "size": 368,
+      "sha256": "211505ad75091a4ec16bc11486cc476981c563146760e0ff5dcbdb2ef4816500"
+    },
+    {
+      "path": "src/enigma/data_033F3C.bin",
+      "offset": 212796,
+      "size": 1122,
+      "sha256": "0749eab0ea04b9acc4e45bb618866b3fc92131cb56e2b73b737cd8e5d2b1398c"
+    },
+    {
+      "path": "src/enigma/data_03439E.bin",
+      "offset": 213918,
+      "size": 130,
+      "sha256": "848f008ae6eb2844bc89809e1be106d3be4da0ac09a2da727ead4863cfa96d5b"
+    },
+    {
+      "path": "src/enigma/data_034420.bin",
+      "offset": 214048,
+      "size": 102,
+      "sha256": "a9275634aba2527c8d76906ce8fa8a1253b899141778dd7055a0d68b7704b094"
+    },
+    {
+      "path": "src/enigma/data_034486.bin",
+      "offset": 214150,
+      "size": 72,
+      "sha256": "fe881ca93d6c9f75707d4def91af0923759b177400a0b28007eae89699de9979"
+    },
+    {
+      "path": "src/enigma/data_0344CE.bin",
+      "offset": 214222,
+      "size": 242,
+      "sha256": "a9b5e187d84dc217b0bb93ebeada338096c41f0d9a791719bf3e4b65f8c0e4f8"
+    },
+    {
+      "path": "src/kosinski/data_0345C0.bin",
+      "offset": 214464,
+      "size": 736,
+      "sha256": "857f8ff5d129e0a86d993d1ad7468fb0bf7273ac4647a50ecfeef45d10adab6e"
+    },
+    {
+      "path": "src/kosinski/data_0348A0.bin",
+      "offset": 215200,
+      "size": 224,
+      "sha256": "124775f70ebf4f742608042379be4baca632b3f986540eeb2c0d73a0355e847f"
+    },
+    {
+      "path": "src/kosinski/data_034980.bin",
+      "offset": 215424,
+      "size": 560,
+      "sha256": "f210804c36775be0ff441bbf467765237544c09b1513d0dd2f438426160fc80f"
+    },
+    {
+      "path": "src/kosinski/data_034BB0.bin",
+      "offset": 215984,
+      "size": 1072,
+      "sha256": "2aeab1aeef54c365a7ffc27bd055d4ba5a7fc0b5f93f40514386e3d73c60dece"
+    },
+    {
+      "path": "src/kosinski/data_034FE0.bin",
+      "offset": 217056,
+      "size": 400,
+      "sha256": "6fb912fac94d48f0a315e3d88597cc5e73bc1d8cebfa1e779a8b5aba163c3bd6"
+    },
+    {
+      "path": "src/kosinski/data_035170.bin",
+      "offset": 217456,
+      "size": 144,
+      "sha256": "0ee79d04f4bd4c1622ec7fcca17bc5a95953b3746483b12dc70f6a71b1d5d19e"
+    },
+    {
+      "path": "src/enigma/data_035200.bin",
+      "offset": 217600,
+      "size": 348,
+      "sha256": "068fd59583d88bb5b72d1332252c6ebab6c47407e47e572ab68ea22567b21bae"
+    },
+    {
+      "path": "src/enigma/data_03535C.bin",
+      "offset": 217948,
+      "size": 280,
+      "sha256": "e4251a353446db81df81ac0e68b71166c84c3a0a9374ba84a53a8b7dbf2a22e0"
+    },
+    {
+      "path": "src/enigma/data_035474.bin",
+      "offset": 218228,
+      "size": 532,
+      "sha256": "3db1e99104473ef625e5daa06d41a2ab5eaace3d722adbe449b5d70f8daab46c"
+    },
+    {
+      "path": "src/enigma/data_035688.bin",
+      "offset": 218760,
+      "size": 234,
+      "sha256": "85869758c0ac1f6d20787ce7adb495a8d90706e6738189015f66507c28de1281"
+    },
+    {
+      "path": "src/kosinski/data_035772.bin",
+      "offset": 218994,
+      "size": 752,
+      "sha256": "bd2174b99822dc2c3cfc4f5659bc0d00b5019f2616b40f0c319f763cee47a037"
+    },
+    {
+      "path": "src/kosinski/data_035A62.bin",
+      "offset": 219746,
+      "size": 128,
+      "sha256": "f66fa4a587498532c42c6309626e8de619850ae3e291148935908009c2c7d08d"
+    },
+    {
+      "path": "src/kosinski/data_035AE2.bin",
+      "offset": 219874,
+      "size": 1248,
+      "sha256": "96e46d176a173f1a28e961a8467c5bccc6db55b32f061a7d6ff41041e9d08334"
+    },
+    {
+      "path": "src/kosinski/data_035FC2.bin",
+      "offset": 221122,
+      "size": 144,
+      "sha256": "7eb3d979f8cfb2c71e9d1e69cd43051267d7a1c743a305072a1bee746fb685bf"
+    },
+    {
+      "path": "src/kosinski/data_036052.bin",
+      "offset": 221266,
+      "size": 816,
+      "sha256": "109c7ab6eb329b326c60fa8b5b5bb0496061fcac7445ce1b3fa622e884c82589"
+    },
+    {
+      "path": "src/kosinski/data_036382.bin",
+      "offset": 222082,
+      "size": 352,
+      "sha256": "0159432e2621dd85e1196c38e440225b2e2f6e51085b7b108eb7a8969dacfdc9"
+    },
+    {
+      "path": "src/kosinski/data_0364E2.bin",
+      "offset": 222434,
+      "size": 624,
+      "sha256": "d722ceac9ac9174e8be619ef6bb0f0a9150eba40eba4191a4fb90a973ea7c3ca"
+    },
+    {
+      "path": "src/kosinski/data_036752.bin",
+      "offset": 223058,
+      "size": 1152,
+      "sha256": "dc9bcde9c8b5b7fcbc57e8c2bd1e326fa1d7e02650e017b801aa376ba5dd21b8"
+    },
+    {
+      "path": "src/kosinski/data_036BD2.bin",
+      "offset": 224210,
+      "size": 768,
+      "sha256": "0d544a9d3200b752e3990657ef18062fc5828d5bc5b9e9cd269ac29baaea5fc2"
+    },
+    {
+      "path": "src/kosinski/data_036ED2.bin",
+      "offset": 224978,
+      "size": 48,
+      "sha256": "3fade83ebee74ba74969543be8f3069792d3a6479d0a6d77c4430391e4881f9b"
+    },
+    {
+      "path": "src/kosinski/data_036F02.bin",
+      "offset": 225026,
+      "size": 160,
+      "sha256": "e4cefeb29961c8abe1f1420f67a88f71eebe4196898c125718327e4a965eef5f"
+    },
+    {
+      "path": "src/enigma/data_036FA2.bin",
+      "offset": 225186,
+      "size": 966,
+      "sha256": "55fef0b30faad5a70729d973a197bfbaa5304c74fd6cfca650ca2c72ddc84e56"
+    },
+    {
+      "path": "src/enigma/data_037368.bin",
+      "offset": 226152,
+      "size": 408,
+      "sha256": "a07a448e31b4d143cec3984d05c7ba79138b027749d1a41d5a62cd889e7c11ee"
+    },
+    {
+      "path": "src/enigma/data_037500.bin",
+      "offset": 226560,
+      "size": 370,
+      "sha256": "06de6d234bb4a454f36eb65bec090cf58711d7454e37280265cf294915a30e24"
+    },
+    {
+      "path": "src/enigma/data_037672.bin",
+      "offset": 226930,
+      "size": 484,
+      "sha256": "636d65644e513654d6f2a505782e6bbc1fadf298374704a83d0d5bbf15db7c63"
+    },
+    {
+      "path": "src/kosinski/data_037856.bin",
+      "offset": 227414,
+      "size": 1264,
+      "sha256": "0171d839e41e5ae3d7404302ee3f46b7f61ececa7c083fb070312abd56b7c350"
+    },
+    {
+      "path": "src/kosinski/data_037D46.bin",
+      "offset": 228678,
+      "size": 288,
+      "sha256": "d5fc9ff2cdf42b57e1508d4b75623d97e545fe21898ee7443c10690fe4c6a803"
+    },
+    {
+      "path": "src/kosinski/data_037E66.bin",
+      "offset": 228966,
+      "size": 1888,
+      "sha256": "20e565bc3e3d0faec9f8b35711b6e503505a9bfbc90655cdf16ae6724ca4e62b"
+    },
+    {
+      "path": "src/kosinski/data_0385C6.bin",
+      "offset": 230854,
+      "size": 272,
+      "sha256": "6532eef00fed06861674dc05a48bd41db93fc9e683e01405bddffea64dc5867e"
+    },
+    {
+      "path": "src/kosinski/data_0386D6.bin",
+      "offset": 231126,
+      "size": 416,
+      "sha256": "43a25dce3e46d4619f491dc80eb76fdebc69566d3ad0e85e8b71eac232898c80"
+    },
+    {
+      "path": "src/kosinski/data_038876.bin",
+      "offset": 231542,
+      "size": 976,
+      "sha256": "a8d5d114ffaa5b555ed80406f08fac61227e7e45be07b1dfe346e34f7f66ad35"
+    },
+    {
+      "path": "src/kosinski/data_038C46.bin",
+      "offset": 232518,
+      "size": 480,
+      "sha256": "8f151d40b4c8f0e9a46e405c671cae7bad437f57c4958590b74d629cc28022c4"
+    },
+    {
+      "path": "src/kosinski/data_038E26.bin",
+      "offset": 232998,
+      "size": 336,
+      "sha256": "f99a56a52a1e7e903c76d1a45399c4843684b187ee1de0fdc76b443e5e39bec8"
+    },
+    {
+      "path": "src/enigma/data_038F76.bin",
+      "offset": 233334,
+      "size": 896,
+      "sha256": "047a5a490ae0e8918fee96dc98874606686ff83e1eb82bd0eef4e278b0098d89"
+    },
+    {
+      "path": "src/enigma/data_0392F6.bin",
+      "offset": 234230,
+      "size": 476,
+      "sha256": "ff461665a69acb3448b71a747f1ab6ebf28c089ea10246505a8f3cd96c08ebf0"
+    },
+    {
+      "path": "src/enigma/data_0394D2.bin",
+      "offset": 234706,
+      "size": 72,
+      "sha256": "2359bcfd5f1b820108b8b310813390c1680a2d3cb7816be8a3d1e8aa25942c35"
+    },
+    {
+      "path": "src/kosinski/data_03951A.bin",
+      "offset": 234778,
+      "size": 1600,
+      "sha256": "be1de8b2f460e3ca98810a6d2e62cc09feda24d78ca881df8fb1bbe43e78015a"
+    },
+    {
+      "path": "src/kosinski/data_039B5A.bin",
+      "offset": 236378,
+      "size": 96,
+      "sha256": "9c1ea0fa1fb0befd231550d8a6fba1a7ea273a54e92a051f18ea9cac5ad2a402"
+    },
+    {
+      "path": "src/kosinski/data_039BBA.bin",
+      "offset": 236474,
+      "size": 544,
+      "sha256": "182a197d981be42b97a1fb1b1562a4d238bc663f88d331397a73e17af418f60e"
+    },
+    {
+      "path": "src/kosinski/data_039DDA.bin",
+      "offset": 237018,
+      "size": 2032,
+      "sha256": "70c6aa8fe58bb91836663bd227b3e0212bea66349595157c3684916799b80e9d"
+    },
+    {
+      "path": "src/kosinski/data_03A5CA.bin",
+      "offset": 239050,
+      "size": 320,
+      "sha256": "6020a9159d4c994f9986643d0238e93bfc52a628a23202c693e2332f51742df4"
+    },
+    {
+      "path": "src/kosinski/data_03A70A.bin",
+      "offset": 239370,
+      "size": 112,
+      "sha256": "637b5e085e4385a629442c944746b8b067a4d7dd94fe4d82bba86338fd8ecaa7"
+    },
+    {
+      "path": "src/enigma/data_03A77A.bin",
+      "offset": 239482,
+      "size": 814,
+      "sha256": "be61cb376e2693a3da6d8f0a9d70ad7ad5330d135f1843b3a5bc36f0517ca2ab"
+    },
+    {
+      "path": "src/enigma/data_03AAA8.bin",
+      "offset": 240296,
+      "size": 562,
+      "sha256": "8715f6041233b12851034597769a72b7805b82a5a6b833f8efe6c2c25d470085"
+    },
+    {
+      "path": "src/kosinski/data_03ACDA.bin",
+      "offset": 240858,
+      "size": 912,
+      "sha256": "9c31b914c4e30e149ebc2a0c0da0f433566dd74e7d3c2de0fac66984291ff983"
+    },
+    {
+      "path": "src/kosinski/data_03B06A.bin",
+      "offset": 241770,
+      "size": 304,
+      "sha256": "83ec2615424e543c827a5ed363cee50412e07aed74582b97b021ce19ec83c65a"
+    },
+    {
+      "path": "src/kosinski/data_03B19A.bin",
+      "offset": 242074,
+      "size": 416,
+      "sha256": "27a27a60846822045521be6cd40382deb3256cc42a54024df124041e8304c360"
+    },
+    {
+      "path": "src/kosinski/data_03B33A.bin",
+      "offset": 242490,
+      "size": 400,
+      "sha256": "e8723c570a1f04331d102d66e3850b9b7d3e4ec0c753804a1582d5bde763205c"
+    },
+    {
+      "path": "src/kosinski/data_03B4CA.bin",
+      "offset": 242890,
+      "size": 800,
+      "sha256": "761c89fabe46ab9b1e318e0f604469dd9d57e38532218d86cd64300ef80a6867"
+    },
+    {
+      "path": "src/kosinski/data_03B7EA.bin",
+      "offset": 243690,
+      "size": 960,
+      "sha256": "caa5317b90937adb40e8a4a257a840ea63fe09b6448fbe1fd4a2f6245a863483"
+    },
+    {
+      "path": "src/kosinski/data_03BBAA.bin",
+      "offset": 244650,
+      "size": 528,
+      "sha256": "1bad30d921a5cb8ae6c702afe92d52b52d8471c3d61b55d5d1a47ee254f1ea7a"
+    },
+    {
+      "path": "src/kosinski/data_03BDBA.bin",
+      "offset": 245178,
+      "size": 224,
+      "sha256": "0cf6ecea965beb84fdcca7628bbec595f7c3895b98a948941e141f820576968a"
+    },
+    {
+      "path": "src/kosinski/data_03BE9A.bin",
+      "offset": 245402,
+      "size": 176,
+      "sha256": "2b5bcc04d967e95eeb5fd322a06e9339e9c64f64f7a0c3c9447bd35ea8170d8e"
+    },
+    {
+      "path": "src/enigma/data_03BF4A.bin",
+      "offset": 245578,
+      "size": 608,
+      "sha256": "471e70b3a694f02f5cc22b4e2c714987b525d677ecee361190c139c7e47e006b"
+    },
+    {
+      "path": "src/enigma/data_03C1AA.bin",
+      "offset": 246186,
+      "size": 210,
+      "sha256": "f0e39b8da6bf5773821ea2ec8d74f1d8b2d620f46227a7e196dc068c0c08acc3"
+    },
+    {
+      "path": "src/enigma/data_03C27C.bin",
+      "offset": 246396,
+      "size": 110,
+      "sha256": "fcd66320dae2fa620c1083116c64518102a0a5fcdc29eee140635c8cdf20f998"
+    },
+    {
+      "path": "src/enigma/data_03C2EA.bin",
+      "offset": 246506,
+      "size": 158,
+      "sha256": "e61c156b796da1d40e82535f9382b2e9803e14ac1c273c5320be2eb46f22074b"
+    },
+    {
+      "path": "src/kosinski/data_03C388.bin",
+      "offset": 246664,
+      "size": 416,
+      "sha256": "9aeebd491bec64d884c378528815b3755664813dc738b82d31b6e831b17dfa44"
+    },
+    {
+      "path": "src/kosinski/data_03C528.bin",
+      "offset": 247080,
+      "size": 384,
+      "sha256": "102fc58dc4a2ca19080b2ed1f5b45767f4c884c9dd00ffee6309cbdab27bab3d"
+    },
+    {
+      "path": "src/kosinski/data_03C6A8.bin",
+      "offset": 247464,
+      "size": 1248,
+      "sha256": "4265b5d630b94b3b1428f33397a09ce5c42bd8e59fcd8973b2cce17468e25532"
+    },
+    {
+      "path": "src/kosinski/data_03CB88.bin",
+      "offset": 248712,
+      "size": 368,
+      "sha256": "3cbc568747b4058cc9a0982dcf0689cf6247d8ddbc99ed4ea8e476b1c864373c"
+    },
+    {
+      "path": "src/kosinski/data_03CCF8.bin",
+      "offset": 249080,
+      "size": 352,
+      "sha256": "62bc622d9bc54fb7fcc6921e997416fe1f9a3f8464770c5284a7c3f45d726a6c"
+    },
+    {
+      "path": "src/kosinski/data_03CE58.bin",
+      "offset": 249432,
+      "size": 256,
+      "sha256": "9f46ac5071746c9733254417c018c38d4248af19445961e424745d1d9068834f"
+    },
+    {
+      "path": "src/kosinski/data_03CF58.bin",
+      "offset": 249688,
+      "size": 1232,
+      "sha256": "ef5fa88793c13f6c57c10a805368eb3743e684a9a324113d778af58cbb289775"
+    },
+    {
+      "path": "src/kosinski/data_03D428.bin",
+      "offset": 250920,
+      "size": 384,
+      "sha256": "05b8e5ab3cda274965f8cd2d692a229b3dbd60f2e85b46fe1efe08e6a7fb1969"
+    },
+    {
+      "path": "src/kosinski/data_03D5A8.bin",
+      "offset": 251304,
+      "size": 288,
+      "sha256": "403e9d8ce90c7a9808145315561a4b7e6923b06ee2923613edf6615f0a706ead"
+    },
+    {
+      "path": "src/kosinski/data_03D6C8.bin",
+      "offset": 251592,
+      "size": 176,
+      "sha256": "7aa7ad6b6f6e4b59cb8b3b116435a3abdaf6a4520b6f8a7c560da85c6cf9f2e1"
+    },
+    {
+      "path": "src/kosinski/data_03D778.bin",
+      "offset": 251768,
+      "size": 512,
+      "sha256": "2c7dc86285a53abb081662808caa3ca950e980fe0192c5d16cddf0ad2c4a35a6"
+    },
+    {
+      "path": "src/enigma/data_03D978.bin",
+      "offset": 252280,
+      "size": 860,
+      "sha256": "e76e60f109ff40ef06040e7669f7421f5f054e9d69aab71d6769ea2824080654"
+    },
+    {
+      "path": "src/enigma/data_03DCD4.bin",
+      "offset": 253140,
+      "size": 286,
+      "sha256": "beb5da025727af814ca0b21f7ed07297e3ee277377eb38ee74ff440dd4a03a99"
+    },
+    {
+      "path": "src/enigma/data_03DDF2.bin",
+      "offset": 253426,
+      "size": 468,
+      "sha256": "356592cf28cc7920ec86cc51d50fa9de0bb7f241a2abb710c755893615b46c16"
+    },
+    {
+      "path": "src/enigma/data_03DFC6.bin",
+      "offset": 253894,
+      "size": 446,
+      "sha256": "397edf7550bc830fb443e24454a938912a64c0a972347b582196822dae8e1b2d"
+    },
+    {
+      "path": "src/enigma/data_03E184.bin",
+      "offset": 254340,
+      "size": 290,
+      "sha256": "e7173c9be36bd4c4f818b70fcdc9db33174a06693f170ed20f012639d08a1a43"
+    },
+    {
+      "path": "src/enigma/data_03E2A6.bin",
+      "offset": 254630,
+      "size": 416,
+      "sha256": "4d180439a8ae7a3fbe831dd79ea6ad13b781dc342d532eaf2d1107b7331a502a"
+    },
+    {
+      "path": "src/kosinski/data_03E446.bin",
+      "offset": 255046,
+      "size": 3248,
+      "sha256": "171906ff63faa548dac3a0ad8b72afeb6073c67a1a3f92cc76cd2ce82c7de47a"
+    },
+    {
+      "path": "src/kosinski/data_03F0F6.bin",
+      "offset": 258294,
+      "size": 160,
+      "sha256": "7369584038f68b9363c02e3b05a1fa212f710c86702fd08a52c3293ae974088f"
+    },
+    {
+      "path": "src/kosinski/data_03F196.bin",
+      "offset": 258454,
+      "size": 384,
+      "sha256": "c4a3c74069b68ac830a4f52e6bd6a32a337852fa17f3b3de90851563577a5b56"
+    },
+    {
+      "path": "src/kosinski/data_03F316.bin",
+      "offset": 258838,
+      "size": 368,
+      "sha256": "aa9831beb0d479a5b6249884b5339f0c750f3c8822cbc0c1739e3136d75a03d2"
+    },
+    {
+      "path": "src/kosinski/data_03F486.bin",
+      "offset": 259206,
+      "size": 1456,
+      "sha256": "5c50ef4183f2ead1aefc26b5c37bbbbebba91e440716c8494e5bc93cff2b54af"
+    },
+    {
+      "path": "src/kosinski/data_03FA36.bin",
+      "offset": 260662,
+      "size": 560,
+      "sha256": "960e2b7670a5f6ddf40723104932d6428a04ee9476bf5d4c104ae091806ca0b4"
+    },
+    {
+      "path": "src/kosinski/data_03FC66.bin",
+      "offset": 261222,
+      "size": 272,
+      "sha256": "859370d9a0ddecfc5ff8a370ad1d1f9535dd4a17f2194ec9aeb97fe6ea98f69d"
+    },
+    {
+      "path": "src/kosinski/data_03FD76.bin",
+      "offset": 261494,
+      "size": 416,
+      "sha256": "f8adf4a6d6a52bbc099d739b31722210ca4310bbeb7c3f289ee21dacaba0eadd"
+    },
+    {
+      "path": "src/enigma/data_100000.bin",
+      "offset": 1048576,
+      "size": 298,
+      "sha256": "0793934b2aa162435ffa2e8bddf32da5bad4e2e55de91c3c3c53fe053ea6adc2"
+    },
+    {
+      "path": "src/enigma/data_10012A.bin",
+      "offset": 1048874,
+      "size": 442,
+      "sha256": "53382668f0e764703f91d410242c4d37b903e1e9dc07f98611d975208ae4a3de"
+    },
+    {
+      "path": "src/enigma/data_1002E4.bin",
+      "offset": 1049316,
+      "size": 560,
+      "sha256": "af4cb71fa7a475eaa9e523f6a33e3009c9f1567558d6cf381f380b2c60ad0ad0"
+    },
+    {
+      "path": "src/enigma/data_100514.bin",
+      "offset": 1049876,
+      "size": 128,
+      "sha256": "98ad2f072401cf69bb7ed824e125ca01183bded02aef736a34461ccadf63368a"
+    },
+    {
+      "path": "src/kosinski/data_100594.bin",
+      "offset": 1050004,
+      "size": 3328,
+      "sha256": "9d5050fba7fdc6afbd65fe1b41061641a077a5c0222fbe601d202e7ff29a87ee"
+    },
+    {
+      "path": "src/kosinski/data_101294.bin",
+      "offset": 1053332,
+      "size": 1680,
+      "sha256": "a78344623f586d9418aad3a9a833580314720217ab544674aa2d12ddf7784e8d"
+    },
+    {
+      "path": "src/kosinski/data_101924.bin",
+      "offset": 1055012,
+      "size": 320,
+      "sha256": "a686f21a2838a6e85bfb55e4e618f2d28069c3a64d8a3933c4508abb9e919408"
+    },
+    {
+      "path": "src/kosinski/data_101A64.bin",
+      "offset": 1055332,
+      "size": 992,
+      "sha256": "1d156f8b391761faabca14e34add72912a646a3859b7c3b9bfa9bce012aa727f"
+    },
+    {
+      "path": "src/kosinski/data_101E44.bin",
+      "offset": 1056324,
+      "size": 1904,
+      "sha256": "a48449ed1397e4205af6ffbc35dc054b4f4c8db22a8c0192066f4108ff16cd53"
+    },
+    {
+      "path": "src/kosinski/data_1025B4.bin",
+      "offset": 1058228,
+      "size": 400,
+      "sha256": "6fa03c5960c8e9ab1ee586cb0e7c879546d37c1f3d11783a503ebce08462958f"
+    },
+    {
+      "path": "src/kosinski/data_102744.bin",
+      "offset": 1058628,
+      "size": 659,
+      "sha256": "74ee3adb623c890eb1974e45c38d84ff72cad786f5fb111440802ff872453446"
+    },
+    {
+      "path": "src/nemesis/data_102A00.bin",
+      "offset": 1059328,
+      "size": 2740,
+      "sha256": "2e91ff4aed43b7a70833ef5257ccd5cb1dbfa126d4d422085d934399a2bb9910"
+    },
+    {
+      "path": "src/nemesis/data_1034B4.bin",
+      "offset": 1062068,
+      "size": 1346,
+      "sha256": "5831ae785f81686d53e8fc6358f27c0730953c7ac41ece91b43041f205546842"
+    },
+    {
+      "path": "src/nemesis/data_1039F6.bin",
+      "offset": 1063414,
+      "size": 2036,
+      "sha256": "a3e101e9901b361181d5032f614b74705572c8b2245680d30d5293eb42629665"
+    },
+    {
+      "path": "src/nemesis/data_1041EA.bin",
+      "offset": 1065450,
+      "size": 390,
+      "sha256": "be8722ec2e8bfbc96721236e21784825ae18ca10111f26e9d08a5c3d0fa82b30"
+    },
+    {
+      "path": "src/nemesis/data_104370.bin",
+      "offset": 1065840,
+      "size": 5582,
+      "sha256": "ea2193f6bf927f4bbbacdb0e83d0712b10353523d0c87cfdce09b937dd30b89d"
+    },
+    {
+      "path": "src/nemesis/data_10593E.bin",
+      "offset": 1071422,
+      "size": 2200,
+      "sha256": "a3cdb0b13786077e5b5a4d5d9ec10b25c45ce85b17c95fa4072f37763ac2b3cd"
+    },
+    {
+      "path": "src/nemesis/data_1061D6.bin",
+      "offset": 1073622,
+      "size": 1738,
+      "sha256": "677d6865523d3fe8a3b9b60a697db0cce8d20fa5a63c855a8fbd18ddeacd3433"
+    },
+    {
+      "path": "src/nemesis/data_1068A0.bin",
+      "offset": 1075360,
+      "size": 404,
+      "sha256": "e74eb52e807e17582598d6f97c86204cbb39a4278743166bbc030011d8590206"
+    },
+    {
+      "path": "src/nemesis/data_106A34.bin",
+      "offset": 1075764,
+      "size": 1424,
+      "sha256": "a6cd5bfd394564dfe9d2b736c1da907c2e08e0d5baaf56563d9b4e300aaaec4c"
+    },
+    {
+      "path": "src/nemesis/data_106FC4.bin",
+      "offset": 1077188,
+      "size": 528,
+      "sha256": "99dbea49358a27c4fb7fb99b2f0063830f27f05cc501177c153cad0bc830dd8e"
+    },
+    {
+      "path": "src/nemesis/data_1071D4.bin",
+      "offset": 1077716,
+      "size": 2342,
+      "sha256": "4863db8a8325112c241320d8dc0918dbaa0c051eb02c000b2f533e3eda5b3358"
+    },
+    {
+      "path": "src/nemesis/data_107AFA.bin",
+      "offset": 1080058,
+      "size": 1584,
+      "sha256": "7ae04239e87f9e6378cc689dc0c566a0944563cd45f66971d12dfaff7055d3fe"
+    },
+    {
+      "path": "src/nemesis/data_10812A.bin",
+      "offset": 1081642,
+      "size": 2796,
+      "sha256": "bab18bd4c8f36b5c09cf5b4e3984bff6a5061a7a5ffc802df1bf7a1e30c4218b"
+    },
+    {
+      "path": "src/nemesis/data_108C16.bin",
+      "offset": 1084438,
+      "size": 1702,
+      "sha256": "3f9107f51ce168cf66ce0ab9a40194f8c16d3ddc27f792e5539c9cdf5b0f501a"
+    },
+    {
+      "path": "src/nemesis/data_1092BC.bin",
+      "offset": 1086140,
+      "size": 298,
+      "sha256": "4bd0d576d8a02a8b83970f606c4a5e89c0f2eca17051cfec2a9df4cce6e937ee"
+    },
+    {
+      "path": "src/nemesis/data_1093E6.bin",
+      "offset": 1086438,
+      "size": 3784,
+      "sha256": "ca8987e209811f6bb09ef368eb98e3291dd2fcb44e61e362bbdf0d7460db1aa5"
+    },
+    {
+      "path": "src/nemesis/data_10A2AE.bin",
+      "offset": 1090222,
+      "size": 1378,
+      "sha256": "fedd45d4eecf4543e9331bbac2d188deda445ce2cc83f3173fb322656de577fa"
+    },
+    {
+      "path": "src/nemesis/data_10A810.bin",
+      "offset": 1091600,
+      "size": 1996,
+      "sha256": "fc9211ab3ec090fd0e25e31d5481150cd26606f2ff961f6d817f0a80ca6de5fe"
+    },
+    {
+      "path": "src/nemesis/data_10AFDC.bin",
+      "offset": 1093596,
+      "size": 1500,
+      "sha256": "1fe26d8285518d013d1f9cae4c7a8e6c64401b620a6efe37e6caafa1fbbfaba4"
+    },
+    {
+      "path": "src/nemesis/data_10B5B8.bin",
+      "offset": 1095096,
+      "size": 3710,
+      "sha256": "8066e5fd2aca44a2fb7910a0e0731da3fcc2fd4c2f4aef500d61b639ba3d4254"
+    },
+    {
+      "path": "src/nemesis/data_10C436.bin",
+      "offset": 1098806,
+      "size": 1702,
+      "sha256": "77fdc5eb8bcff8ac63058e8f1bb65c75be0dcd4f5471e0014fd84cd128ca3519"
+    },
+    {
+      "path": "src/nemesis/data_10CADC.bin",
+      "offset": 1100508,
+      "size": 1124,
+      "sha256": "25a81dde92bfcb05a730cde4bae0c35cc3f79deb03167e1c46c7eb05733058d8"
+    },
+    {
+      "path": "src/nemesis/data_10CF40.bin",
+      "offset": 1101632,
+      "size": 1888,
+      "sha256": "34a5745414e0e004f006f088099f38f255df394f74b43db1782275495cf16f85"
+    },
+    {
+      "path": "src/nemesis/data_10D6A0.bin",
+      "offset": 1103520,
+      "size": 1972,
+      "sha256": "d2e0b0fa5fdbde201033e541c595aac73e9e31e015eb15f3883c1b2e1af4e711"
+    },
+    {
+      "path": "src/nemesis/data_10DE54.bin",
+      "offset": 1105492,
+      "size": 2960,
+      "sha256": "82455892223dde11f27d5192a46c3ab7e76b8b75de917f463968cf6bc949ed11"
+    },
+    {
+      "path": "src/nemesis/data_10E9E4.bin",
+      "offset": 1108452,
+      "size": 838,
+      "sha256": "a4aa4d972f774d3141341fff0c62efa97656e4471fcdf89c8c7c7799267eb06a"
+    },
+    {
+      "path": "src/nemesis/data_10ED2A.bin",
+      "offset": 1109290,
+      "size": 1494,
+      "sha256": "b7ad41db85a37952fd36142909f6189072b546788971215e919c57f3d80db4ee"
+    },
+    {
+      "path": "src/nemesis/data_10F300.bin",
+      "offset": 1110784,
+      "size": 948,
+      "sha256": "08ffff9b22fe796bef2d4cd217177b3f63ca8c0a4702518c81e0463554f771a3"
+    },
+    {
+      "path": "src/nemesis/data_10F6B4.bin",
+      "offset": 1111732,
+      "size": 1236,
+      "sha256": "5d75a97e69aa052106e7ae20b1996c78e2f18923fdd24fd333c1213d2a86edb5"
+    },
+    {
+      "path": "src/nemesis/data_10FB88.bin",
+      "offset": 1112968,
+      "size": 1040,
+      "sha256": "ad66ea62b9008a6027419f23ea281e9abda18b52393fe17e1885ecf067193270"
+    },
+    {
+      "path": "src/nemesis/data_10FF98.bin",
+      "offset": 1114008,
+      "size": 1204,
+      "sha256": "d7a30dd1c01e4caaf33f097e3a0ed53d19abcb98ef1c104d288eb6ed5447758c"
+    },
+    {
+      "path": "src/nemesis/data_11044C.bin",
+      "offset": 1115212,
+      "size": 3492,
+      "sha256": "451520b31cd9571ff20b04416308c9492aeee5806bdb9f2942aef002bdb36bb7"
+    },
+    {
+      "path": "src/nemesis/data_1111F0.bin",
+      "offset": 1118704,
+      "size": 1372,
+      "sha256": "7953447d5552c77a1d5b779aca6a39be42c38e2a9ebbf70ce6a810b813630cc4"
+    },
+    {
+      "path": "src/nemesis/data_11174C.bin",
+      "offset": 1120076,
+      "size": 158,
+      "sha256": "9e82ebe575c9bac462b82f0ef4fcd3c6c2dfae55936992501527bd2e98b2fb28"
+    },
+    {
+      "path": "src/nemesis/data_1117EA.bin",
+      "offset": 1120234,
+      "size": 2782,
+      "sha256": "fbb180b1720cffbc89f5725bc3d70fc32a6b0340ad398dd70d5b78eb36395a10"
+    },
+    {
+      "path": "src/nemesis/data_1122C8.bin",
+      "offset": 1123016,
+      "size": 1120,
+      "sha256": "1a8c57655af9e54762832c94fb9fbe5119ed9b8a2b8899ccb83455de92d34193"
+    },
+    {
+      "path": "src/nemesis/data_112728.bin",
+      "offset": 1124136,
+      "size": 1564,
+      "sha256": "6021934c76cae47bc41569ee0e2795fda8ef8d2f489032be65a53b3411128830"
+    },
+    {
+      "path": "src/nemesis/data_112D44.bin",
+      "offset": 1125700,
+      "size": 2168,
+      "sha256": "cad04e14f3b97de5f53778c2c4db367f1c83177b384f894fe219b054d6d77906"
+    },
+    {
+      "path": "src/nemesis/data_1135BC.bin",
+      "offset": 1127868,
+      "size": 1698,
+      "sha256": "146b85258db624b7ddfa222bcc3877d031f9e2b590993140c4098f6cc070ae44"
+    },
+    {
+      "path": "src/nemesis/data_113C5E.bin",
+      "offset": 1129566,
+      "size": 1074,
+      "sha256": "fed7997094b68ebdccf0457853fa49dddfd1eb531f79193798381ca5ad0ed844"
+    },
+    {
+      "path": "src/enemies/38/nemesis_tiles.bin",
+      "offset": 1131008,
+      "size": 1456,
+      "sha256": "5371cf8b1984c01d9fff6debb4bef92347fbb944ce5ecbf6ffa8ee88be1ace5e"
+    },
+    {
+      "path": "src/enemies/47/nemesis_tiles.bin",
+      "offset": 1132464,
+      "size": 2187,
+      "sha256": "1dac5f5b4e8bfa5d9b5a2286a2514b58464634772e7573a1d484af71cad09df4"
+    },
+    {
+      "path": "src/enemies/64/nemesis_tiles.bin",
+      "offset": 1134652,
+      "size": 3151,
+      "sha256": "40818a464bfa4d61e7d77b7cf44c95922e74c05de03b2bf5a7e62f9be282d4a9"
+    },
+    {
+      "path": "src/enemies/54/nemesis_tiles.bin",
+      "offset": 1137804,
+      "size": 1206,
+      "sha256": "e5f05fbcfca2600c613f14ff52457a361d874ebe4710a82bc9f564cda44c96da"
+    },
+    {
+      "path": "src/enemies/67/nemesis_tiles.bin",
+      "offset": 1139010,
+      "size": 491,
+      "sha256": "811a52a09cd3ce93798de49dde5540091c9add203defeeb69c6a4dea6938a8ca"
+    },
+    {
+      "path": "src/enemies/58/nemesis_tiles.bin",
+      "offset": 1139502,
+      "size": 238,
+      "sha256": "c1e6294e248b2a2e1294cd466cc640cfa4b429de18f31b7337f32d5a8b8be8ab"
+    },
+    {
+      "path": "src/enemies/66/nemesis_tiles.bin",
+      "offset": 1139740,
+      "size": 229,
+      "sha256": "d131d013c1d7eb488450bdc6199fbf75bf259d55495a95beb8a2d69d50bef1ea"
+    },
+    {
+      "path": "src/enemies/59/nemesis_tiles.bin",
+      "offset": 1139970,
+      "size": 216,
+      "sha256": "c0cccfcd486757fd02a7b69291fa71e5c688e8408dfcfbdb96bae1b6e8c27a1d"
+    },
+    {
+      "path": "src/enemies/01/nemesis_tiles.bin",
+      "offset": 1140186,
+      "size": 2654,
+      "sha256": "6ca275ed6d61917246e453c1d25787b53bc338989a88486d1e6699a8c1ecdcb0"
+    },
+    {
+      "path": "src/enemies/02/nemesis_tiles.bin",
+      "offset": 1142840,
+      "size": 903,
+      "sha256": "9968b1aef4469729391efeb0016bf9b267542c13e18a7a626043ab241033e971"
+    },
+    {
+      "path": "src/enemies/09/nemesis_tiles.bin",
+      "offset": 1143744,
+      "size": 480,
+      "sha256": "2b99745fb33dad75b775b28471f97ab6740eb0f2e11ddfdd19adfa6691d14b6d"
+    },
+    {
+      "path": "src/enemies/10/nemesis_tiles.bin",
+      "offset": 1144224,
+      "size": 374,
+      "sha256": "dab7cf18cc5ef7f1040032d7087005f1e9a690db1ae410ef260c71d5492f3c31"
+    },
+    {
+      "path": "src/enemies/15/nemesis_tiles.bin",
+      "offset": 1144598,
+      "size": 323,
+      "sha256": "c88eee319ac69d4203f66913e0551643de27608ab968cb041bd62b0c961d7a3b"
+    },
+    {
+      "path": "src/enemies/03/nemesis_tiles.bin",
+      "offset": 1144922,
+      "size": 1284,
+      "sha256": "8ea7bcb03417b0cf5405089df055a484cef8669da467aee0670b67f00814534a"
+    },
+    {
+      "path": "src/enemies/04/nemesis_tiles.bin",
+      "offset": 1146206,
+      "size": 514,
+      "sha256": "dc062425066a0961f765e68cb5bd7d4936ecc40379b1c590f4f425b95322c2f2"
+    },
+    {
+      "path": "src/enemies/06/nemesis_tiles.bin",
+      "offset": 1146720,
+      "size": 366,
+      "sha256": "e1fdc1364c09df0ea3b630aa776cc20d8d5dd934f42c851f60166aaef04215d6"
+    },
+    {
+      "path": "src/enemies/05/nemesis_tiles.bin",
+      "offset": 1147086,
+      "size": 188,
+      "sha256": "7a3261d843cbe08313cef6629ff033aaa45197cb8780c16a43344de628ddc627"
+    },
+    {
+      "path": "src/enemies/11/nemesis_tiles.bin",
+      "offset": 1147274,
+      "size": 363,
+      "sha256": "d7465e348eff8980421d935b3869b448ee367b3a1d23f0c0daecb9bfe6430c52"
+    },
+    {
+      "path": "src/enemies/07/nemesis_tiles.bin",
+      "offset": 1147638,
+      "size": 147,
+      "sha256": "afe663b7a4279639e497b484f4859a85928a70882a41e7c1139272a9290c3573"
+    },
+    {
+      "path": "src/enemies/08/nemesis_tiles.bin",
+      "offset": 1147786,
+      "size": 1315,
+      "sha256": "f85aeeeb97c5d6278afebc07938c6df83c4448c4755add54d57ae8e5ae78ff30"
+    },
+    {
+      "path": "src/enemies/13/nemesis_tiles.bin",
+      "offset": 1149102,
+      "size": 581,
+      "sha256": "9be6c39b958711cd8fbc7e8ca6752580bb98b05d0677b3edd4c3ba7c2131a308"
+    },
+    {
+      "path": "src/enemies/19/nemesis_tiles.bin",
+      "offset": 1149684,
+      "size": 1597,
+      "sha256": "5e9f4c76055386c0d2da76c5cf8d18760c404de4a54e2a01f3a3c026123e0149"
+    },
+    {
+      "path": "src/enemies/18/nemesis_tiles.bin",
+      "offset": 1151282,
+      "size": 357,
+      "sha256": "bff27900452ddb35c6f4328601a0b6e24915227cdeeb0dbbc8b280e35419b246"
+    },
+    {
+      "path": "src/enemies/14/nemesis_tiles.bin",
+      "offset": 1151640,
+      "size": 779,
+      "sha256": "8d5eb7c89944dbef3bbc59b1885588b9d11b34078dcb91fdb161e079d6e4a738"
+    },
+    {
+      "path": "src/enemies/22/nemesis_tiles.bin",
+      "offset": 1152420,
+      "size": 245,
+      "sha256": "a0aaa5a98b07ee2c383e6b5d8124536d50e7963757d5e13981e4681dc4b7be45"
+    },
+    {
+      "path": "src/enemies/16/nemesis_tiles.bin",
+      "offset": 1152666,
+      "size": 445,
+      "sha256": "4241fa6c931473d31591686179821cc01d137a0ad82c2c684de893cea578ce6b"
+    },
+    {
+      "path": "src/enemies/12/nemesis_tiles.bin",
+      "offset": 1153112,
+      "size": 588,
+      "sha256": "5c5fecb4646ebdbceac8f273aede0394ecc3c1cfe3fbe8d96eb16f6d8eaa8cef"
+    },
+    {
+      "path": "src/enemies/17/nemesis_tiles.bin",
+      "offset": 1153700,
+      "size": 1286,
+      "sha256": "ff7f8ddc3bc424de377f7a94a648db7c983cb08e24805106a71f4714ff9501b0"
+    },
+    {
+      "path": "src/enemies/61/nemesis_tiles.bin",
+      "offset": 1158928,
+      "size": 487,
+      "sha256": "9d5e8f2934f8daacf2f94fd24d4937d6b1a8db5a08289cf7b0a87134642ebfa3"
+    },
+    {
+      "path": "src/enemies/60/nemesis_tiles.bin",
+      "offset": 1159416,
+      "size": 543,
+      "sha256": "924fb03b6105baa5a92d805fd92db63b2ca5c9bdeb128fb5fba4c5f8a8d01f5a"
+    },
+    {
+      "path": "src/enemies/56/nemesis_tiles.bin",
+      "offset": 1159960,
+      "size": 982,
+      "sha256": "2557481d4ac0bddcb33a55add8ab3da9f35fbef49375c98ed027b8d644cffc64"
+    },
+    {
+      "path": "src/enemies/57/nemesis_tiles.bin",
+      "offset": 1160942,
+      "size": 649,
+      "sha256": "08c8f6e1c435e57a321f4769e226071b9865a1a6df24697a2af268577787189b"
+    },
+    {
+      "path": "src/enemies/65/nemesis_tiles.bin",
+      "offset": 1161592,
+      "size": 1820,
+      "sha256": "960cc571771568ee4d1311d622e2228162076ffdd0a7f5bb5f511582b20a1a5c"
+    },
+    {
+      "path": "src/enemies/52/nemesis_tiles.bin",
+      "offset": 1163412,
+      "size": 993,
+      "sha256": "499b21596e9a25371edb0431102743069e3e16b25f1ef7b9fd78dc12610f69a3"
+    },
+    {
+      "path": "src/enemies/55/nemesis_tiles.bin",
+      "offset": 1164406,
+      "size": 248,
+      "sha256": "6935e9073f7e72137a6cac05358847e585e9c9a9d17f131a4bcf55ecb39e4492"
+    },
+    {
+      "path": "src/enemies/50/nemesis_tiles.bin",
+      "offset": 1164654,
+      "size": 215,
+      "sha256": "4c32afab310958ddbebc3d0e7424896179f6f8edcc496f014b2fea950b5c13da"
+    },
+    {
+      "path": "src/enemies/32/nemesis_tiles.bin",
+      "offset": 1164870,
+      "size": 404,
+      "sha256": "5799eda62dd3fbbdcf1c0e1b5cb81d43dd0acabbde4feebb91f5addac8c316bd"
+    },
+    {
+      "path": "src/enemies/51/nemesis_tiles.bin",
+      "offset": 1165274,
+      "size": 1388,
+      "sha256": "9db499745ece1b0fe5aaa1b9886ecba3ac61227d0799f2f2851d06afdf4b3a4e"
+    },
+    {
+      "path": "src/enemies/37/nemesis_tiles.bin",
+      "offset": 1166662,
+      "size": 203,
+      "sha256": "97042c8810ef43eb97db9cffec3157d41ffefe773525f16d8cebd00ad8b3cd77"
+    },
+    {
+      "path": "src/enemies/44/nemesis_tiles.bin",
+      "offset": 1166866,
+      "size": 1785,
+      "sha256": "b59e58a7812aec4018e753a7072af28a552dbfabe5de376942f04cff793e8c61"
+    },
+    {
+      "path": "src/enemies/53/nemesis_tiles.bin",
+      "offset": 1168652,
+      "size": 214,
+      "sha256": "e8cc9ea127119607320ca5e8b476ceae3240a778ec4a6c8dd22f3ecb44cf65b3"
+    },
+    {
+      "path": "src/enemies/48/nemesis_tiles.bin",
+      "offset": 1168866,
+      "size": 1608,
+      "sha256": "db7c26d947c629f7cba2091d9051930715d9aa8880af6c57fdfc93af1fbc8033"
+    },
+    {
+      "path": "src/enemies/39/nemesis_tiles.bin",
+      "offset": 1170474,
+      "size": 2849,
+      "sha256": "fc98bef6ee532b2746e01030d7d91501a60f77d893117e3c09afff941d271d95"
+    },
+    {
+      "path": "src/enemies/33/nemesis_tiles.bin",
+      "offset": 1173324,
+      "size": 975,
+      "sha256": "b80dc506be7a0ed8a972059418531c77929883d988ac858b67bc2c391fc2dfc3"
+    },
+    {
+      "path": "src/enemies/36/nemesis_tiles.bin",
+      "offset": 1174300,
+      "size": 492,
+      "sha256": "9042c4f08f81ddad94c35114450a83d2e5f39f0ed5195a0f9be9804f53768a68"
+    },
+    {
+      "path": "src/enemies/35/nemesis_tiles.bin",
+      "offset": 1174792,
+      "size": 362,
+      "sha256": "304e319298372d1ab0045c019763fc5fff830ccaeaf6bb6b858fec738d99ecf9"
+    },
+    {
+      "path": "src/enemies/45/nemesis_tiles.bin",
+      "offset": 1175154,
+      "size": 910,
+      "sha256": "c5e1a42e2637beaca71a5623724f82d2fd34824b11cf020e5d32e4316cbd554d"
+    },
+    {
+      "path": "src/enemies/42/nemesis_tiles.bin",
+      "offset": 1176064,
+      "size": 965,
+      "sha256": "a2c32f39fc4e60ace7cd639f863b0e87e02ed015cc09afd8e65cc7bb14f27e20"
+    },
+    {
+      "path": "src/enemies/43/nemesis_tiles.bin",
+      "offset": 1177030,
+      "size": 1042,
+      "sha256": "2baf2afad363410860e5c5938648bd8c2ada6b7fabaa1ae2cd9d2076a4261fed"
+    },
+    {
+      "path": "src/enemies/41/nemesis_tiles.bin",
+      "offset": 1178072,
+      "size": 1294,
+      "sha256": "b6d3c79ccf10d74da0aefcfc920720bf42c06fbbd8fd22d657151918cf777b85"
+    },
+    {
+      "path": "src/enemies/30/nemesis_tiles.bin",
+      "offset": 1179366,
+      "size": 1006,
+      "sha256": "3ce25000d367b14d77956fb27b6cf44b6fb7f00734cb057511219352ef7b8c0b"
+    },
+    {
+      "path": "src/enemies/00/nemesis_tiles.bin",
+      "offset": 1180372,
+      "size": 398,
+      "sha256": "f59c9f20ccfad90843d58d9ea06ba44f2bd9ebcb8c03222aadf785b3baa72927"
+    },
+    {
+      "path": "src/enemies/21/nemesis_tiles.bin",
+      "offset": 1180770,
+      "size": 722,
+      "sha256": "b12eb6a033942161c3830d5c0df22db4ea4c9aa5c26f7643b3c02ace48911954"
+    },
+    {
+      "path": "src/enemies/26/nemesis_tiles.bin",
+      "offset": 1181492,
+      "size": 203,
+      "sha256": "5d2360923c10e0e84b28af7c1e4f7671a03e5909d0669037635aa94621a9d557"
+    },
+    {
+      "path": "src/enemies/24/nemesis_tiles.bin",
+      "offset": 1181696,
+      "size": 366,
+      "sha256": "0bc76e592890b9c364200ad39ef21dd2bd8e11ff6f5f242f5f28db1871a6120e"
+    },
+    {
+      "path": "src/enemies/23/nemesis_tiles.bin",
+      "offset": 1182062,
+      "size": 1209,
+      "sha256": "278fd6a0d5b27577b712bcdc88df39ab4e88786806cf7174d32d67718d2c1125"
+    },
+    {
+      "path": "src/enemies/25/nemesis_tiles.bin",
+      "offset": 1183272,
+      "size": 697,
+      "sha256": "5acadb5b3099a1b27f22be1a7929ed5ae1edb46bc265f0ceae622a70b4867063"
+    },
+    {
+      "path": "src/enemies/27/nemesis_tiles.bin",
+      "offset": 1183970,
+      "size": 375,
+      "sha256": "8e45fa90381422f1844525ff8eb3199ccef00534af4b60abcb54bae200b07621"
+    },
+    {
+      "path": "src/enemies/28/nemesis_tiles.bin",
+      "offset": 1184346,
+      "size": 403,
+      "sha256": "3b7a58e89bd11b37d1dd19e3e65abd5bac3b2c2b384cd49ec1afb6db5c759e08"
+    },
+    {
+      "path": "src/enemies/20/nemesis_tiles.bin",
+      "offset": 1184750,
+      "size": 215,
+      "sha256": "34450b4d593aa61e02d076201bcef50688bb08198d201c42ed0b656ed2e3ff65"
+    },
+    {
+      "path": "src/enemies/69/nemesis_tiles.bin",
+      "offset": 1189064,
+      "size": 734,
+      "sha256": "19b3fe1782ee3472682ebf6772655a251cc51b3b88bb9c8cd72f7647954eb456"
+    },
+    {
+      "path": "src/enemies/31/nemesis_tiles.bin",
+      "offset": 1189798,
+      "size": 2359,
+      "sha256": "31521bdbaf518ea99f451522d54f792a74c5994abd4ef4cb4e2499bd668a2a6e"
+    },
+    {
+      "path": "src/enemies/49/nemesis_tiles.bin",
+      "offset": 1192158,
+      "size": 5328,
+      "sha256": "8c4ddf2a147c495da7e69b5a7bf3d832af2cef5505b6d4c9a0c082dbc174b0a7"
+    },
+    {
+      "path": "src/enemies/68/nemesis_tiles.bin",
+      "offset": 1198116,
+      "size": 471,
+      "sha256": "8560e21a56ff030baa744024f29a82a195c80b476909bac447d885accd5f974d"
+    },
+    {
+      "path": "src/enemies/71/nemesis_tiles.bin",
+      "offset": 1198682,
+      "size": 2261,
+      "sha256": "40026ebaacdf786ddafc88e0b07455eb4547e2dd17744bd891e71eaefa99564c"
+    },
+    {
+      "path": "src/enemies/73/nemesis_tiles.bin",
+      "offset": 1201028,
+      "size": 1275,
+      "sha256": "fbb130f6bb5ba6ab47b671f769902f78d455fae915a2bc2318d260f4d56cf5be"
+    },
+    {
+      "path": "src/enemies/62/nemesis_tiles.bin",
+      "offset": 1203976,
+      "size": 1534,
+      "sha256": "62a0f0f24627f031846c7d7d84776b7c9606f5ec5616f6e5319dd4882cf81efa"
+    },
+    {
+      "path": "src/enemies/63/nemesis_tiles.bin",
+      "offset": 1205510,
+      "size": 2442,
+      "sha256": "ea32d0597416159695c4ee66c81bc5d29b2afa873247801f9a2aef6d7ae5d100"
+    },
+    {
+      "path": "src/enemies/70/nemesis_tiles.bin",
+      "offset": 1207952,
+      "size": 2071,
+      "sha256": "e80c03615ef896a1c69100f39e2d8a185f09f6d8c24b616676cba6ad632919af"
+    },
+    {
+      "path": "src/enemies/72/nemesis_tiles.bin",
+      "offset": 1210024,
+      "size": 1583,
+      "sha256": "7a472825d8159146a644fcb2caef9922a57957e360f30ca100e77576a20802c8"
+    },
+    {
+      "path": "src/nemesis/data_127DA2.bin",
+      "offset": 1211810,
+      "size": 292,
+      "sha256": "0bf7c94d5bd44cd48b9590a401975815b145690df32d224fee7da44e5d305a76"
+    },
+    {
+      "path": "src/nemesis/data_127EC6.bin",
+      "offset": 1212102,
+      "size": 194,
+      "sha256": "b36632ede96fc5befadb905cb7be85507713eabf585833f1b3d136298accea43"
+    },
+    {
+      "path": "src/enigma/data_127F88.bin",
+      "offset": 1212296,
+      "size": 124,
+      "sha256": "06471c8a09c433cb585de963684213756608f26a05b49fc7d1fcec3c135b4bf6"
+    },
+    {
+      "path": "src/enigma/data_128004.bin",
+      "offset": 1212420,
+      "size": 36,
+      "sha256": "08261ecdf4c06b61e102f15b281471308f9177c3ae945995abdf3b078f661189"
+    },
+    {
+      "path": "src/nemesis/data_128028.bin",
+      "offset": 1212456,
+      "size": 206,
+      "sha256": "c431595641eaf5821ce46f26543c5a0290711175755149e7878f8b946ae8e8bf"
+    },
+    {
+      "path": "src/enemies/40/nemesis_tiles.bin",
+      "offset": 1212662,
+      "size": 3279,
+      "sha256": "d840e113beca6fd100dbca730129298037f92083a4dd8627b3d853b82a2a01a8"
+    },
+    {
+      "path": "src/kosinski/data_129144.bin",
+      "offset": 1216836,
+      "size": 96,
+      "sha256": "b59df6870e4cd4f83c04e88209dbaf7065ff4a79f173479aec3cd75f31868b73"
+    },
+    {
+      "path": "src/nemesis/data_1291A4.bin",
+      "offset": 1216932,
+      "size": 48,
+      "sha256": "2c8beff84f9500dc2112ce249a0032a32b5cae96b95ed2e1cfaae5e447bd4e4d"
+    },
+    {
+      "path": "src/nemesis/data_12A5FA.bin",
+      "offset": 1222138,
+      "size": 640,
+      "sha256": "2c76f6a6dfb128fcf27bdcee75cb8389bb466a3f6b1ca0c663258976171bdff3"
+    },
+    {
+      "path": "src/nemesis/data_12BBA6.bin",
+      "offset": 1227686,
+      "size": 118,
+      "sha256": "cd0eb854e6ed4826119187243e2a1e11e199a8bbcc3b0e5ef7e22fc1ed0b0920"
+    },
+    {
+      "path": "src/nemesis/data_12BCDC.bin",
+      "offset": 1227996,
+      "size": 1206,
+      "sha256": "7d8fb6ff1a018b1ee08198c7cdd4c6eb3a4d34b903fe5daa6d642fd1a6d50a56"
+    },
+    {
+      "path": "src/enigma/data_12C192.bin",
+      "offset": 1229202,
+      "size": 148,
+      "sha256": "a74c1f18c649136f11cadd40d372aa40425e8c0ddb427ea36e59dc91f4d9a751"
+    },
+    {
+      "path": "src/nemesis/data_12C226.bin",
+      "offset": 1229350,
+      "size": 8268,
+      "sha256": "5034b1613286cbae794c4398def550650ebf76a460a275b21c357b2723f7f2bd"
+    },
+    {
+      "path": "src/nemesis/data_12E4C8.bin",
+      "offset": 1238216,
+      "size": 6548,
+      "sha256": "576da84bc1cbe1539879262b3452dac53212c9e6c92d54a5a50f4d0084def001"
+    },
+    {
+      "path": "src/enigma/data_12FE5C.bin",
+      "offset": 1244764,
+      "size": 30,
+      "sha256": "9627e3dc36a61e99014edb2a2c5fd308e3e46ed454748a3c4fa64f21009df836"
+    },
+    {
+      "path": "src/enigma/data_12FE7A.bin",
+      "offset": 1244794,
+      "size": 52,
+      "sha256": "fecb0c863f0ca3d1632d8675ee7cc76318c7dd3fe5cb24b4aa74fdfff3198e0f"
+    },
+    {
+      "path": "src/enigma/data_12FEAE.bin",
+      "offset": 1244846,
+      "size": 58,
+      "sha256": "8060f8bdeb1bded5df085860050a6fc3dae049b08c2d5edca1969ffad40a183e"
+    },
+    {
+      "path": "src/enigma/data_12FEE8.bin",
+      "offset": 1244904,
+      "size": 26,
+      "sha256": "230c0c6fec0c5d1ec8f16a8b84137a649d9b9ead346a30907c4ad60143390213"
+    },
+    {
+      "path": "src/enigma/data_12FF02.bin",
+      "offset": 1244930,
+      "size": 28,
+      "sha256": "dcb40feb46424694e01446bdb24fdac8f004dfed58a4c080a071f067e837cf00"
+    },
+    {
+      "path": "src/enigma/data_12FF1E.bin",
+      "offset": 1244958,
+      "size": 42,
+      "sha256": "f033dc47a36e4c986220e981c26877a053fef5385d81230021a96bfb8f19420b"
+    },
+    {
+      "path": "src/smps/bank0.bin",
+      "offset": 1245184,
+      "size": 31485,
+      "sha256": "0ddace66f3ebdbfb5c2f3f9da08110f35e1ac10b559d6d1cf5eb03345fb95f7c"
+    },
+    {
+      "path": "src/smps/bank1.bin",
+      "offset": 1277952,
+      "size": 1248,
+      "sha256": "07e97839a86c992e5b38c6b47951b1917322e361cbacddc096328bf018bb323b"
+    },
+    {
+      "path": "src/smps/driver_1.bin",
+      "offset": 1279200,
+      "size": 3526,
+      "sha256": "b52564e8aeb5b97cee90725abc7776bfdd541b70fa34402f3b90e8361bfddfaa"
+    },
+    {
+      "path": "src/smps/driver_2.bin",
+      "offset": 1282726,
+      "size": 3620,
+      "sha256": "a045bd6c6f4418312675fa5f5af66fcd49af6edded6c39a0284bcf6beaff68e8"
+    },
+    {
+      "path": "src/smps/driver_3.bin",
+      "offset": 1286346,
+      "size": 1752,
+      "sha256": "0e6b91bbe779d0fe2f81e1d058971764af73df5a78f51cf40392dbd2248c051a"
+    },
+    {
+      "path": "src/dialogs/kosinski_dialogs.bin",
+      "offset": 1290240,
+      "size": 3392,
+      "sha256": "ab7f65eab3686d7fc93bcd964cdc6779b8f8ed09c6e52ed68b7b2eaf2648e96c"
+    },
+    {
+      "path": "src/kosinski/data_13BD40.bin",
+      "offset": 1293632,
+      "size": 3369,
+      "sha256": "b813ec48d413488ba6b252ce4c1525a91a41b7edd5745af9e492f205853cf395"
+    },
+    {
+      "path": "src/kosinski/data_13DAD6.bin",
+      "offset": 1301206,
+      "size": 1360,
+      "sha256": "99de706a80938a0ad657d44fa0572694562a867a3d87627d9b8014b4d4273aca"
+    },
+    {
+      "path": "src/levels/kosinski_params.bin",
+      "offset": 1302566,
+      "size": 2768,
+      "sha256": "511a4cab12c3f11ea37fc0b95b1e7d2e12b60f1b0d45836b7d16cd0c19e8be39"
+    },
+    {
+      "path": "src/sega_logo/palette.bin",
+      "offset": 1305334,
+      "size": 58,
+      "sha256": "e69b0b3b14720aab4165bd2da55b0638c5430cb853c4659e29bc1f4095c77107"
+    },
+    {
+      "path": "src/sega_logo/enigma_mapping.bin",
+      "offset": 1305392,
+      "size": 14,
+      "sha256": "5f30f4d4e88966109c1b19ce5664574c43b05d0585564dd6d3f79cc1eadc3eb2"
+    },
+    {
+      "path": "src/sega_logo/nemesis_tiles.bin",
+      "offset": 1305406,
+      "size": 1030,
+      "sha256": "11e3e818fb93fc6107e1d03d1c12e086fafa80f8db4eeacebbd38305d48785c9"
+    }
+  ],
+  "source_hashes": {
+    "qs.s": "c419be790a17590893f904c96f14fbe37edcefd07c29dcffe6d94c898ca25d21",
+    "qs_structs.inc": "a041d8cb7f8327cf031f9e53cd73f23a074ee9f1b8738d008710f6928e67ed9f",
+    "qs_equals.inc": "319556005b5dcb5c1a06ecae108a43c67878483fc9a185c6117140aafc21721b",
+    "qs_rams.inc": "2952d4c18a41a2a50f9ede7a0d1f35ccb19f11f9ff73a8f4db2c03f0c7bc6184",
+    "qs_externs.inc": "74626c17f1ff410459d50e3ea0e50bb0043ce35aa3a4961a1c10385633faef1c",
+    "qs_funcs.inc": "256b5b33383e4372b727c8daff05047a519ed02e9ba004f887657daab8ff3456"
+  }
+}
