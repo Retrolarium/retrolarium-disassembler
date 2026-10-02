@@ -171,6 +171,38 @@ class PackedClosureTests(unittest.TestCase):
         del self.decoded[0x206]
         self.assertNotIn(0x202, [candidate.address for candidate in discover()])
 
+    def test_address_loaded_as_immediate_argument_blocks_large_gap_prefix(self):
+        del self.known[0x220]
+        self.known[0xB00] = instruction(0xB00, "4e75", "RTS", flow="TERMINATOR")
+        self.known[0x200] = instruction(0x200, "4ed5", "JMP", "(A5)", "COMPUTED_JUMP")
+        self.decoded = {
+            0x202: instruction(0x202, "7001", "MOVEQ", "0x1|D0"),
+            0x204: instruction(0x204, "4e95", "JSR", "(A5)", "COMPUTED_CALL"),
+            0x206: instruction(0x206, "7202", "MOVEQ", "0x2|D1"),
+            0x208: instruction(0x208, "4ef900000b00", "JMP", "0xb00.l", "UNCONDITIONAL_JUMP", (0xB00,)),
+        }
+        # MOVEA.L #$202,A0 passes the bytes as a data argument.
+        self.known[0xA00] = instruction(0xA00, "207c00000202", "MOVEA.L", "#0x202|A0")
+        data = bytearray(cartridge(size=0xC00))
+        for fact in (*self.known.values(), *self.decoded.values()):
+            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+        image = parse_megadrive(bytes(data))
+        self.assertNotIn(0x202, [candidate.address for candidate in discover_packed_orphan_closure(
+            image, self.known, self.decoded, render_instruction=_asm_instruction)])
+
+    def test_immediate_code_pointer_reaching_indirect_jump_is_not_data(self):
+        from retrolarium_kit.m68k_abstract import immediate_rom_addresses
+        image = parse_megadrive(cartridge(size=0x800))
+        known = {
+            0x300: instruction(0x300, "47f900000400", "LEA", "(0x400).l|A3"),
+            0x306: instruction(0x306, "d6fc000a", "ADDA.W", "#0xa|A3"),
+            0x30A: instruction(0x30A, "4ed3", "JMP", "(A3)", "COMPUTED_JUMP"),
+            0x310: instruction(0x310, "207c00000500", "MOVEA.L", "#0x500|A0"),
+            0x316: instruction(0x316, "4eb900000600", "JSR", "0x600.l", "UNCONDITIONAL_CALL", (0x600,)),
+            0x31C: instruction(0x31C, "4e75", "RTS", flow="TERMINATOR"),
+        }
+        self.assertEqual({0x500}, immediate_rom_addresses(known, image))
+
     def test_signature_after_local_data_requires_full_function_and_known_callee(self):
         self.decoded = {
             0x20A: instruction(0x20A, "303c0001", "MOVE.W", "#0x1|D0w"),

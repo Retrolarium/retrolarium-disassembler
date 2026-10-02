@@ -217,6 +217,8 @@ class _M68kHarness:
         return {
             "discover_inline_trap_calls": lambda *args: tuple(self._current().get("inline", ())),
             "discover_inline_subroutine_calls": lambda *args: tuple(self._current().get("inline_subroutine", ())),
+            "discover_inline_operand_calls": lambda *args: tuple(self._current().get("inline_operand", ())),
+            "discover_link_continuation_seeds": lambda *args: (),
             "discover_returning_call_seeds": lambda *args, **kwargs: tuple(self._current().get("returning", ())),
             "discover_register_callback_seeds": lambda *args, **kwargs: (),
             "discover_callback_abi_seeds": lambda *args, **kwargs: (),

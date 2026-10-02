@@ -88,6 +88,22 @@ class M68kAbstractTests(unittest.TestCase):
             image, facts, additional_entrypoints={0x300},
         )))
 
+    def test_structural_word_table_bounds_backend_switch_flows(self) -> None:
+        # MOVE.W (T,PC,D3.W),D1 / JMP (T,PC,D1.W): the backend sizes the
+        # table from the index mask and reads code bytes after it as offsets.
+        data = bytearray(cartridge(size=0x800))
+        data[0x208:0x20C] = bytes.fromhex("0004 0006")  # entries -> 0x20C, 0x20E
+        data[0x20C:0x210] = bytes.fromhex("4E75 4E75")
+        image = parse_megadrive(bytes(data))
+        load = replace(fact(0x200, "MOVE.W", "(0x208,PC,D3w*0x1)|D1w"), length=4)
+        jump = replace(fact(0x204, "JMP", "(0x208,PC,D1w*0x1)"), length=4,
+                       flow_type="COMPUTED_JUMP", flows=(0x20C, 0x20E, 0x500))
+        returns = [replace(fact(address, "RTS", ""), flow_type="TERMINATOR")
+                   for address in (0x20C, 0x20E, 0x500)]
+        facts = {item.physical_offset: item for item in (load, jump, *returns)}
+        self.assertEqual({0x200, 0x204, 0x20C, 0x20E}, set(retain_trusted_instruction_facts(
+            image, facts, additional_entrypoints={0x200})))
+
     def test_trusted_fact_filter_rejects_unrooted_data_disassembly(self) -> None:
         image = parse_megadrive(cartridge(size=0x500))
         entry = replace(
@@ -514,6 +530,26 @@ class M68kAbstractTests(unittest.TestCase):
         self.assertEqual((0x202,), tuple(item.address for item in found))
         payload[0x2FE:0x300] = bytes.fromhex("00 06")  # An interior/unmapped start is not evidence.
         self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+
+    def test_alignment_pad_or_literal_before_a_frame_prologue_is_skipped(self) -> None:
+        payload = bytearray(cartridge(size=0x500))
+        payload[0x202:0x210] = bytes.fromhex("0000 4E56 FFF0 6100 00F8 4E5E 4E75")
+        facts = {
+            0x200: replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR"),
+            0x302: replace(fact(0x302, "RTS", ""), flow_type="TERMINATOR"),
+        }
+        payload[0x210:0x302] = bytes.fromhex("4E 71") * 0x79
+        found = discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)
+        self.assertEqual([(0x204, "after longword alignment padding")],
+                         [(c.address, c.evidence[-32:]) for c in found])
+        payload[0x204:0x206] = bytes.fromhex("7FF0")  # constants, no prologue
+        self.assertEqual((), discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts))
+        payload[0x202:0x208] = b"Play" + bytes(2)
+        payload[0x208:0x20C] = bytes.fromhex("48E7 3000")
+        payload[0x20C:0x210] = bytes.fromhex("6100 00F4")  # BSR.W $302
+        found = discover_packed_orphan_candidates(parse_megadrive(bytes(payload)), facts)
+        self.assertEqual([(0x208, "after NUL-terminated string")],
+                         [(c.address, c.evidence[-27:]) for c in found])
 
     def test_static_bit_entry_requires_known_absolute_call(self) -> None:
         payload = bytearray(cartridge(size=0x500))

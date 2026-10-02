@@ -31,6 +31,8 @@ from .m68k_register_callbacks import discover_register_callback_seeds
 from .m68k_callback_abi import discover_callback_abi_seeds
 from .m68k_ram_dispatch import discover_inline_trap_calls
 from .m68k_inline_calls import discover_inline_subroutine_calls
+from .m68k_inline_operands import discover_inline_operand_calls
+from .m68k_link_continuations import discover_link_continuation_seeds
 from .m68k_ram_record_dispatch import discover_ram_record_dispatch_seeds
 from .m68k_word_callbacks import discover_word_ram_callback_seeds
 from .m68k_dispatch_witness import make_dispatch_handler_validator
@@ -301,7 +303,10 @@ def analyze_megadrive(
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
         # Dispatch sites must themselves be trusted code, never an island.
         trusted_facts = trusted.facts
-        subroutine_calls = discover_inline_subroutine_calls(image, trusted_facts)
+        subroutine_calls = (
+            *discover_inline_subroutine_calls(image, trusted_facts),
+            *discover_inline_operand_calls(image, trusted_facts),
+        )
         subroutine_sites = {call.call_address for call in subroutine_calls}
         inline_calls = (*discover_inline_trap_calls(image, trusted_facts), *subroutine_calls)
         new_inline_data = {call.data_address for call in inline_calls} - inline_data.keys()
@@ -361,6 +366,7 @@ def analyze_megadrive(
                     call.call_address,
                 ))
         dispatch_seeds.extend(discover_descriptor_ram_code_seeds(image, trusted_facts))
+        dispatch_seeds.extend(discover_link_continuation_seeds(image, trusted_facts))
         # A structurally proven dispatcher can itself be an unreachable code
         # island. Bootstrap only strong tables from backend facts, then make
         # the dispatcher a planned root on the next decoder pass.
@@ -436,9 +442,16 @@ def analyze_megadrive(
             candidate.address for candidate in validated_unused
             if candidate.address not in planned_seeds
         }
+        # Proven inline operands are data even where a gap heuristic sees
+        # an instruction-shaped word after the call.
+        operand_bytes = {
+            address for start, size in inline_data.items()
+            for address in range(start, start + size)
+        }
         discovered = sorted(
-            indirect_targets | handler_targets | orphan_targets
-            | dispatch_targets | unused_targets | raw_callback_targets
+            (indirect_targets | handler_targets | orphan_targets
+             | dispatch_targets | unused_targets | raw_callback_targets)
+            - operand_bytes
         )
         for candidate in raw_callback_candidates:
             if candidate.address in discovered:
@@ -535,6 +548,7 @@ def analyze_megadrive(
             converged = True
             break
         planned_seeds.update(discovered)
+        planned_seeds -= operand_bytes
         seed_plan.write_text(
             "".join(f"DATA {address:06X} {inline_data[address]}\n" for address in sorted(inline_data))
             + "".join(f"{address:06X}\n" for address in sorted(planned_seeds)),

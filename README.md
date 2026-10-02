@@ -355,6 +355,29 @@ emitter writes its scalar fields as `dc.w`/`dc.l`, uses generated hardware
 symbols for the five device addresses, and preserves the embedded byte streams
 as `dc.b`.
 
+Calls whose handler consumes variable-length inline operands, such as a
+software floating-point runtime reached by `JSR` followed by an op word and
+optional immediates, are proven per call site by a partial 68000 emulator.
+ROM bytes are concrete, registers and RAM are unknown with per-bit tracking
+of data registers, the stack is symbolic, and both successors of an unknown
+condition are explored with context-sensitive joins. A site is accepted only
+when every explored return lands on one even address at most 32 bytes after
+the call; the operands become data and the continuation a decoder seed.
+Direct flow from each continuation is walked in the same pass, so a chain of
+such calls resolves without one decoder pass per call.
+
+Compiler switches that double a long index (`ADD.L Dn,Dn`,
+`MOVE.W (T,PC,Dn.L),Dn`, `JMP (T,PC,Dn.W)`) are recovered as
+`megadrive.s16be.target-table_base` tables. Ghidra's element references from
+the inferred index no longer split such tables, and backend switch flows of
+both PC-relative and `MOVEA.W`/`ADDA.L`/`JMP (An)` word tables are bounded
+by the structural table so over-read entries cannot become trusted code.
+Speculative packed-gap decoding treats ROM addresses loaded by
+`MOVEA.L #addr,An`, `LEA addr.l,An` or `PEA addr.l` as data arguments. `LEA`/`PEA d16(PC)` naming the instruction right after an unconditional
+branch is a hand-made return address and seeds that continuation. Packed
+orphan entries skip longword alignment padding or a NUL-terminated literal
+only when a `LINK` or `MOVEM.L ...,-(SP)` prologue follows.
+
 The Z80 analysis follows word dispatch tables when executable code loads their
 address into HL, calls a recognized A-indexed word lookup through RST, and
 jumps through HL. A preceding `sub` bounds the selector range. The analyzer

@@ -686,8 +686,13 @@ _PC_INDEXED_ADDRESS = re.compile(
 _IMMEDIATE_ADDRESS = re.compile(r"#(-?0x[0-9a-f]+|-?\d+)\|([Aa][0-7])$", re.I)
 _INDIRECT_TO_ADDRESS = re.compile(r"\(([Aa][0-7])\)\|([Aa][0-7])$", re.I)
 _PC_DATA_WORD_INDEX = re.compile(r",(D[0-7])w\*0x1\)\|A[0-7]$", re.I)
+# Compilers often double a long switch index (ADD.L Dn,Dn) and read the
+# offset with a long index; only the JMP needs the word-sized offset.
 _PC_WORD_TO_DATA = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7]w\*0x1\)\|(D[0-7])w$", re.I
+    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x1\)\|(D[0-7])w$", re.I
+)
+_PC_INDEXED_OPERAND = re.compile(
+    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x[1248]\)$", re.I
 )
 _PC_WORD_BRANCH = re.compile(
     r"\((-?0x[0-9a-f]+|-?\d+),PC,(D[0-7])w\*0x1\)$", re.I
@@ -735,6 +740,11 @@ def _absolute_referenced_addresses(
                 # A DATA annotation on #size/#flags does not mean the value
                 # addresses ROM. Dispatch bases are proven separately from
                 # the indexed reader; literal constants alone cannot cut it.
+                continue
+            indexed = _PC_INDEXED_OPERAND.fullmatch(operand)
+            if indexed is not None and int(indexed[1], 0) != reference.address:
+                # Only the base of (d8,PC,Xn) is explicit. Ghidra adds element
+                # addresses from inferred index values; they are not objects.
                 continue
             if re.fullmatch(r"(?:[DA][0-7][bwl]?|SP|SR|CCR|USP)", operand, re.I):
                 # Ghidra can attach a DATA reference to a register's inferred

@@ -12,7 +12,9 @@ from bisect import bisect_left, bisect_right
 from typing import Callable
 
 from .facts import InstructionFact
-from .m68k_abstract import OrphanCandidate, discover_packed_orphan_candidates
+from .m68k_abstract import (
+    OrphanCandidate, discover_packed_orphan_candidates, immediate_rom_addresses,
+)
 from .megadrive import MegaDriveImage
 from .m68k_ram_dispatch import discover_inline_trap_calls
 
@@ -223,7 +225,8 @@ def discover_packed_orphan_closure(
 
         data = tuple(sorted({ref.address & 0xFFFFFF
                              for fact in virtual.values() for ref in fact.references
-                             if ref.reference_type.upper() in {"READ", "DATA"}}))
+                             if ref.reference_type.upper() in {"READ", "DATA"}}
+                            | immediate_rom_addresses(virtual, image)))
         for candidate in _long_gap_prefixes(virtual, image):
             if candidate.address in attempted:
                 continue

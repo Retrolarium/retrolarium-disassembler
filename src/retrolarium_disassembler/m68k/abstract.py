@@ -711,6 +711,99 @@ def discover_object_field_handler_candidates(
     return tuple(candidates[address] for address in sorted(candidates))
 
 
+_ADDRESS_IMMEDIATE = re.compile(
+    r"#(0x[0-9a-f]+)\|(A[0-7])$|\((0x[0-9a-f]+)\)\.l(?:\|(A[0-7]))?$", re.I)
+_ADDRESS_ADJUST = ("ADDA.", "SUBA.", "ADDQ.", "SUBQ.")
+
+
+def _reaches_indirect_transfer(by_address, start, register, limit=64):
+    """Whether ``register`` reaches JMP/JSR through it before being replaced.
+
+    Offsets added to the register keep it a code pointer, as in
+    LEA handler,A3 / ADDA.W #10,A3 / JMP (A3).
+    """
+    pending, seen = [start], set()
+    while pending and len(seen) < limit:
+        address = pending.pop()
+        fact = by_address.get(address)
+        if fact is None or address in seen:
+            continue
+        seen.add(address)
+        mnemonic = fact.mnemonic.upper()
+        operands = fact.operands.upper().split("|")
+        if mnemonic in {"JMP", "JSR"} and re.fullmatch(
+                r"\((?:-?0X[0-9A-F]+,)?" + register + r"\)", operands[0]):
+            return True
+        if operands[-1] == register and not mnemonic.startswith(_ADDRESS_ADJUST):
+            continue
+        flow = fact.flow_type.upper()
+        if flow in {"TERMINATOR", "COMPUTED_JUMP", "CALL_TERMINATOR"}:
+            continue
+        pending.extend(target & 0xFFFFFF for target in fact.flows
+                       if flow != "UNCONDITIONAL_CALL")
+        if flow != "UNCONDITIONAL_JUMP":
+            pending.append(address + fact.length)
+    return False
+
+
+def immediate_rom_addresses(known: dict[int, InstructionFact], image: MegaDriveImage) -> set[int]:
+    """ROM addresses that rooted code passes as data arguments.
+
+    MOVEA.L #addr,An, LEA addr.l,An and PEA addr.l usually pass a data
+    argument; the backend often records no reference for them. Speculative
+    decoding must not claim those bytes. A register that later reaches
+    JMP/JSR (An) holds a code pointer instead and is not counted.
+    """
+    by_address = {fact.cpu_address: fact for fact in known.values()}
+    addresses = set()
+    for fact in known.values():
+        if fact.mnemonic.upper() not in {"MOVEA.L", "LEA", "PEA"}:
+            continue
+        match = _ADDRESS_IMMEDIATE.search(fact.operands)
+        if match is None:
+            continue
+        address = int(match[1] or match[3], 16) & 0xFFFFFF
+        register = (match[2] or match[4] or "").upper()
+        if not 0x200 <= address < len(image.data):
+            continue
+        if register and _reaches_indirect_transfer(
+                by_address, fact.cpu_address + fact.length, register):
+            continue
+        addresses.add(address)
+    return addresses
+
+
+MIN_PREFIX_STRING = 4
+
+
+def _skip_entry_prefix(data: bytes, start: int, end: int) -> tuple[int, str]:
+    """Skip data that commonly separates a terminal from the next function.
+
+    A zero word ending at a longword boundary is alignment padding (decoded
+    as ORI.B it would swallow the function's first word). A NUL-terminated
+    printable string is the previous function's literal. Either prefix is
+    skipped only when an explicit frame prologue (LINK An or MOVEM.L to
+    -(SP)) follows; constants and text before arbitrary words stay data.
+    """
+    def prologue(address):
+        if address + 4 > end:
+            return False
+        word = int.from_bytes(data[address:address + 2], "big")
+        return word & 0xFFF8 == 0x4E50 or word == 0x48E7
+
+    if (start % 4 == 2 and data[start:start + 2] == bytes(2)
+            and prologue(start + 2)):
+        return start + 2, "longword alignment padding"
+    cursor = start
+    while cursor < end and 0x20 <= data[cursor] < 0x7F:
+        cursor += 1
+    entry = (cursor + 2) & ~1
+    if (cursor - start >= MIN_PREFIX_STRING and cursor < end and data[cursor] == 0
+            and prologue(entry)):
+        return entry, "NUL-terminated string"
+    return start, ""
+
+
 def discover_packed_orphan_candidates(
     image: MegaDriveImage,
     facts: dict[int, InstructionFact],
@@ -737,7 +830,7 @@ def discover_packed_orphan_candidates(
         for fact in facts.values()
         for reference in fact.references
         if reference.reference_type.upper() in {"DATA", "READ"}
-    }
+    } | immediate_rom_addresses(facts, image)
     terminal_flows = {
         "TERMINATOR",
         "CALL_TERMINATOR",
@@ -759,6 +852,10 @@ def discover_packed_orphan_candidates(
             or not 2 <= gap_size <= maximum_gap
             or following > len(image.data)
         ):
+            continue
+        start, prefix = _skip_entry_prefix(image.data, start, following)
+        gap_size = following - start
+        if prefix and (gap_size < 2 or start in referenced_data):
             continue
         payload = image.data[start:following]
         first_word = int.from_bytes(payload[:2], "big")
@@ -845,7 +942,7 @@ def discover_packed_orphan_candidates(
                     else "packed gap after terminal flow with branch to known code"
                     if known_branch
                     else "short packed gap after terminal flow"
-                ),
+                ) + (f" after {prefix}" if prefix else ""),
             )
         )
     return tuple(candidates)
@@ -1556,11 +1653,29 @@ def interpret_known_cfg(
     )
 
 
+def bounded_word_dispatch_targets(
+    image: MegaDriveImage, facts: dict[int, InstructionFact]
+) -> dict[int, frozenset[int]]:
+    """Targets of each word-offset dispatch table, keyed by its jump.
+
+    Ghidra sizes such tables from the index mask and can read past their
+    end into following code or data. The structural reader stops at the
+    first entry that reaches a target, so its entries bound the real table.
+    """
+    from .megadrive_pointers import _pc_word_dispatch_tables, _word_dispatch_tables
+    return {
+        table.call_address: frozenset(entry.target for entry in table.candidate.entries)
+        for table in (*_word_dispatch_tables(image, facts), *_pc_word_dispatch_tables(image, facts))
+        if table.call_mnemonic == "JMP"
+    }
+
+
 def retain_trusted_instruction_facts(
     image: MegaDriveImage,
     facts: dict[int, InstructionFact],
     *,
     additional_entrypoints: set[int] | frozenset[int] = frozenset(),
+    bounded_dispatch: dict[int, frozenset[int]] | None = None,
 ) -> dict[int, InstructionFact]:
     """Remove backend code islands that have no trusted control-flow root.
 
@@ -1569,6 +1684,8 @@ def retain_trusted_instruction_facts(
     a backend function label alone does not make an island trusted.
     """
     by_address = {fact.cpu_address: fact for fact in facts.values()}
+    if bounded_dispatch is None:
+        bounded_dispatch = bounded_word_dispatch_targets(image, facts)
     roots = {image.reset_address, *additional_entrypoints}
     roots.update(
         vector.address
@@ -1589,7 +1706,9 @@ def retain_trusted_instruction_facts(
         # flow can turn the neighboring pointer table into trusted code.
         # The abstract interpreter and structural table readers supply
         # independently proven targets through additional_entrypoints.
-        if (flow not in {"COMPUTED_JUMP", "COMPUTED_CALL"}
+        if address in bounded_dispatch:
+            pending.extend(target for target in fact.flows if target in bounded_dispatch[address])
+        elif (flow not in {"COMPUTED_JUMP", "COMPUTED_CALL"}
                 or len(fact.flows) <= MAX_BACKEND_COMPUTED_FLOW_TARGETS):
             pending.extend(fact.flows)
         if flow in {
@@ -1635,9 +1754,11 @@ def interpret_trusted_cfg(
     entrypoints = frozenset(entrypoints)
     roots = entrypoints
     entry_reached: frozenset[int] | None = None
+    bounded_dispatch = bounded_word_dispatch_targets(image, facts)
     for iteration in range(1, max_iterations + 1):
         trusted = retain_trusted_instruction_facts(
-            image, facts, additional_entrypoints=roots
+            image, facts, additional_entrypoints=roots,
+            bounded_dispatch=bounded_dispatch,
         )
         if entry_reached is None:
             entry_reached = frozenset(fact.cpu_address for fact in trusted.values())

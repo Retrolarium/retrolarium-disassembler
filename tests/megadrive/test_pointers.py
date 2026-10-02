@@ -115,6 +115,25 @@ class MegaDrivePointerTests(unittest.TestCase):
             seed.address for seed in discover_dispatch_table_seeds(image, facts)
         ))
 
+    def test_compiler_switch_with_long_index_and_inferred_element_reads(self) -> None:
+        # ADD.L D0,D0 / MOVE.W (T,PC,D0.L),D0 / JMP (T,PC,D0.W). Ghidra also
+        # attaches READ references for inferred elements; only T is explicit.
+        data = bytearray(cartridge(size=0x800))
+        targets = (0x310, 0x318, 0x320, 0x328)
+        for index, target in enumerate(targets):
+            data[0x300 + 2 * index:0x302 + 2 * index] = (target - 0x300).to_bytes(2, "big")
+            data[target:target + 2] = bytes.fromhex("4E 75")
+        image = parse_megadrive(bytes(data))
+        load = replace(
+            fact(0x200, "MOVE.W", "(0x300,PC,D0*0x1)|D0w"), length=4,
+            references=tuple(InstructionReference(address, "READ", 0) for address in (0x300, 0x304)),
+        )
+        call = replace(fact(0x204, "JMP", "(0x300,PC,D0w*0x1)"), length=4,
+                       flow_type="COMPUTED_JUMP")
+        seeds = discover_dispatch_table_seeds(image, {0x200: load, 0x204: call})
+        self.assertEqual(targets, tuple(seed.address for seed in seeds))
+        self.assertEqual({"pc_word_dispatch"}, {seed.kind for seed in seeds})
+
     def test_pc_word_load_followed_by_indexed_branch_opens_offset_table(self) -> None:
         data = bytearray(cartridge(size=0x800))
         targets = (0x308, 0x310, 0x328)
