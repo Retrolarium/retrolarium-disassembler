@@ -27,6 +27,8 @@ from .megadrive_emit import _asm_instruction
 from .m68k_seeds import discover_dense_branch_table_seeds, discover_indexed_branch_table_seeds
 from .m68k_relative_record_callbacks import discover_relative_record_callback_seeds
 from .m68k_cleared_pool_states import discover_cleared_pool_state_seeds
+from .m68k_absolute_ram_callbacks import discover_absolute_ram_callback_seeds
+from .m68k_finite_records import discover_finite_record_callback_seeds
 from .m68k_indexed_dispatch import (discover_register_indexed_dispatch_seeds,
                                   discover_nested_word_dispatch_seeds,
                                   discover_added_index_dispatch_seeds,
@@ -131,6 +133,13 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
                      *discover_cleared_pool_state_seeds(
                          image, trusted.facts, {**probes, **facts},
                          protected_ranges=protected_ranges, render_instruction=_asm_instruction),
+                     *discover_absolute_ram_callback_seeds(
+                         image, trusted.facts, {**probes, **facts},
+                         protected_ranges=protected_ranges, decode_request=request_decode),
+                     *discover_finite_record_callback_seeds(
+                         image, {**probes, **facts}, execution_facts=trusted.facts,
+                         protected_ranges=protected_ranges, render_instruction=_asm_instruction,
+                         forbidden_reads=((0, base_address),), decode_request=request_decode),
                      *discover_register_indexed_dispatch_seeds(image, trusted.facts),
                      *discover_nested_word_dispatch_seeds(image, trusted.facts),
                      *discover_added_index_dispatch_seeds(image, trusted.facts)):

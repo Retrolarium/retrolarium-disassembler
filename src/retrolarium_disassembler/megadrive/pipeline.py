@@ -43,6 +43,8 @@ from .m68k_ram_record_dispatch import discover_ram_record_dispatch_seeds
 from .m68k_word_callbacks import discover_word_ram_callback_seeds
 from .m68k_relative_record_callbacks import discover_relative_record_callback_seeds
 from .m68k_cleared_pool_states import discover_cleared_pool_state_seeds
+from .m68k_absolute_ram_callbacks import discover_absolute_ram_callback_seeds
+from .m68k_finite_records import discover_finite_record_callback_seeds
 from .m68k_dispatch_witness import make_dispatch_handler_validator
 from .m68k_probe_requests import M68kProbeRequests
 from .m68k_fallthrough_repair import M68kFallthroughRepairs
@@ -334,6 +336,31 @@ def _discover_cleared_states(image, trusted_facts, facts, artifacts, context=Non
     )
 
 
+def _discover_absolute_callbacks(image, trusted_facts, facts, artifacts, context=None, *,
+                                 decode_request=None, inline_data=None):
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
+    origin = image.header.rom_start
+    protected = tuple((origin + start, origin + end) for start, end in context.protected)
+    protected += tuple((start, start + size) for start, size in (inline_data or {}).items())
+    return discover_absolute_ram_callback_seeds(
+        image, trusted_facts, context.decoded, protected_ranges=protected,
+        decode_request=decode_request,
+    )
+
+
+def _discover_finite_callbacks(image, trusted_facts, facts, artifacts, context=None, *,
+                               decode_request=None, inline_data=None):
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
+    origin = image.header.rom_start
+    protected = tuple((origin + start, origin + end) for start, end in context.protected)
+    protected += tuple((start, start + size) for start, size in (inline_data or {}).items())
+    return discover_finite_record_callback_seeds(
+        image, context.decoded, execution_facts=trusted_facts, protected_ranges=protected,
+        forbidden_reads=tuple((origin + start, origin + end) for start, end in context.z80_ranges),
+        render_instruction=_asm_instruction, decode_request=decode_request,
+    )
+
+
 def analyze_megadrive(
     rom: Path, output: Path, ghidra_home: Path
 ) -> dict[str, object]:
@@ -453,6 +480,12 @@ def analyze_megadrive(
             decode_request=probe_requests.request, inline_data=inline_data))
         dispatch_seeds.extend(_discover_cleared_states(
             image, trusted_facts, facts, artifacts, probe_context, inline_data=inline_data))
+        dispatch_seeds.extend(_discover_absolute_callbacks(
+            image, trusted_facts, facts, artifacts, probe_context,
+            decode_request=probe_requests.request, inline_data=inline_data))
+        dispatch_seeds.extend(_discover_finite_callbacks(
+            image, trusted_facts, facts, artifacts, probe_context,
+            decode_request=probe_requests.request, inline_data=inline_data))
         dispatch_seeds.extend(discover_ram_record_dispatch_seeds(image, trusted_facts))
         dispatch_seeds.extend(discover_word_ram_callback_seeds(
             image, facts, execution_facts=trusted_facts))

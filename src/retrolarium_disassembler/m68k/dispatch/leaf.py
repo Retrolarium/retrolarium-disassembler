@@ -221,7 +221,7 @@ def discover_leaf_word_dispatch_seeds(
                         f'{body[0].cpu_address:06X} doubles word index and jumps via '
                         f'{mode} word in {ar}')
             if target not in starts:
-                evidence += f'; handler {target:06X} has a complete bounded CFG connected to rooted code'
+                evidence += f'; handler {target:06X} has a complete bounded CFG witness'
             if masks:
                 evidence += f'; word index restricted by incoming ANDI.W masks {sorted(masks)}'
             result[target] = DecoderSeed(target, 'inline_word_dispatch' if inline else 'leaf_word_dispatch',

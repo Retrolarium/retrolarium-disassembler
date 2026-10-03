@@ -25,9 +25,11 @@ def make_dispatch_handler_validator(
 ) -> Callable[[int], bool]:
     """Return a cached predicate; this never promotes probe facts to code.
 
-    A witness must have a complete bounded CFG, a return or known tail exit,
-    and a direct connection to rooted code. Data reads, operand overlaps,
-    missing decodes and unresolved transfers invalidate the hypothesis.
+    A witness needs a complete bounded CFG and a connection to rooted code,
+    or a substantial closed leaf with multiple RTS exits and a genuine branch.
+    The latter is a high-confidence code heuristic for structural dispatch
+    consumers, not proof of reachable table indices. Data reads, overlaps,
+    missing decodes and unresolved transfers invalidate either hypothesis.
     """
     known = {f.cpu_address: f for f in known.values()}
     decoded = {f.cpu_address: f for f in decoded.values()}
@@ -46,9 +48,10 @@ def make_dispatch_handler_validator(
         for address, call in inline_traps.items() if address in known)
     checked: dict[int, bool] = {}
     closure_validator = None
+    closed_leaf_validator = None
 
     def validate(address: int) -> bool:
-        nonlocal closure_validator
+        nonlocal closure_validator, closed_leaf_validator
         if address in checked:
             return checked[address]
         index = bisect_right(starts, address)
@@ -81,6 +84,16 @@ def make_dispatch_handler_validator(
             checked[address] = not closure_validator.has_conflict(body)
         else:
             checked[address] = closure_validator(address)
+        # Keep the existing witness and its conflict rules first. The optional
+        # leaf criterion must not affect other closure users or reject handlers
+        # that already passed the established rooted-code witness.
+        if not checked[address]:
+            if closed_leaf_validator is None:
+                closed_leaf_validator = make_dispatch_closure_validator(
+                    image, known, decoded, protected_ranges=protected_ranges,
+                    render_instruction=render_instruction, decode_request=decode_request,
+                    inline_traps=inline_traps, allow_closed_leaves=True)
+            checked[address] = closed_leaf_validator(address)
         return checked[address]
 
     return validate

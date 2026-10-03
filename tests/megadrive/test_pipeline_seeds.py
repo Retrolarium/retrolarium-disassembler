@@ -38,6 +38,10 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         states = patch.object(pipeline, "_discover_cleared_states", return_value=())
         states.start()
         self.addCleanup(states.stop)
+        for name in ("_discover_absolute_callbacks", "_discover_finite_callbacks"):
+            callbacks = patch.object(pipeline, name, return_value=())
+            callbacks.start()
+            self.addCleanup(callbacks.stop)
         probe = patch.object(pipeline, "_discover_unused_code", return_value=((), ()))
         probe.start()
         self.addCleanup(probe.stop)

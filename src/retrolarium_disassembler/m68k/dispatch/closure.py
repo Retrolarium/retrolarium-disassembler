@@ -1,8 +1,9 @@
 """Bounded, independent CFG witnesses for speculative dispatch handlers.
 
-Unknown direct callees and tail targets are checked recursively. Every root
-needs its own connection to rooted code; another table entry never supplies
-that connection. This is a code heuristic, not proof that a branch executes.
+Unknown direct callees and tail targets are checked recursively. By default,
+every root needs its own connection to rooted code; another table entry never
+supplies that connection. Dispatch consumers can opt into a separate large,
+closed leaf heuristic. Neither witness proves that a branch executes.
 """
 from bisect import bisect_left, bisect_right
 from collections import deque
@@ -117,12 +118,59 @@ def _balanced_body(body, entry, exits, inline_traps):
     return not pending
 
 
+def _strong_closed_leaf(body):
+    """Recognize substantial independent leaf code after complete CFG checks.
+
+    These thresholds guard a high-confidence code heuristic, not reachability
+    or a calling convention proof. Every successor stays within the body and
+    every terminal is RTS. Calls are excluded by raw opcode as well as backend
+    metadata, so recursive callees cannot lend their complexity to the witness.
+    """
+    if (len(body) < 24
+            or len({f.mnemonic.upper().split('.')[0] for f in body.values()}) < 8
+            or sum(f.raw == b'\x4e\x75' for f in body.values()) < 2
+            or sum('(' in f.operands
+                   and f.mnemonic.upper().split('.')[0] not in {'LEA', 'JMP', 'JSR', 'PEA'}
+                   for f in body.values()) < 8):
+        return False
+    has_conditional = False
+    for address, fact in body.items():
+        if not set(fact.flows) <= body.keys():
+            return False
+        if fact.raw == b'\x4e\x75':
+            continue
+        base = fact.mnemonic.upper().split('.')[0]
+        flow = fact.flow_type.upper()
+        opcode = int.from_bytes(fact.raw[:2], 'big')
+        if (opcode & 0xffc0 == 0x4e80 or opcode & 0xff00 == 0x6100
+                or base in {'JSR', 'BSR', 'TRAP', 'TRAPV', 'RTE', 'RTR', 'STOP', 'RESET', 'ILLEGAL'}
+                or flow in {'COMPUTED_CALL', 'COMPUTED_JUMP'}):
+            return False
+        following = address + fact.length
+        if base in {'JMP', 'BRA'}:
+            if not fact.flows:
+                return False
+        elif flow == 'CONDITIONAL_JUMP':
+            if not fact.flows or not {*fact.flows, following} <= body.keys():
+                return False
+            has_conditional |= any(target != following for target in fact.flows)
+        elif flow == 'FALL_THROUGH':
+            if following not in body:
+                return False
+        else:
+            return False
+    return has_conditional
+
+
 def make_dispatch_closure_validator(image, known, decoded, *, protected_ranges=(),
-                                    render_instruction, decode_request=None, inline_traps=None):
+                                    render_instruction, decode_request=None, inline_traps=None,
+                                    allow_closed_leaves=False):
     """Return a facts-scoped predicate; protected ranges use logical addresses.
 
     An optional observer requests missing speculative decodes. Requests never
     qualify code, enter this factory's caches, or alter supplied facts.
+    The closed-leaf option is reserved for structural dispatch consumers; it
+    does not relax the default rooted-connection or callee/frame ABI contracts.
     """
     known = {f.cpu_address: f for f in known.values()}
     decoded = {f.cpu_address: f for f in decoded.values()}
@@ -205,7 +253,8 @@ def make_dispatch_closure_validator(image, known, decoded, *, protected_ranges=(
         return bool(
             body and len(body) >= 4 and not decoded[entry].mnemonic.upper().startswith('ORI.')
             and len({f.mnemonic.upper().split('.')[0] for f in body.values()}) >= 3
-            and any(set(f.flows) & known.keys() for f in body.values()))
+            and (any(set(f.flows) & known.keys() for f in body.values())
+                 or allow_closed_leaves and _strong_closed_leaf(body)))
 
     class Validator:
         def has_conflict(self, body):

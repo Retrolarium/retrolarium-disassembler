@@ -82,6 +82,29 @@ class PassProbeContextTests(unittest.TestCase):
         self.assertIs(discover.call_args.args[2], decoded)
         self.assertEqual(((0x400, 0x408), (0x800, 0x806)), discover.call_args.kwargs['protected_ranges'])
 
+    def test_absolute_and_finite_callbacks_separate_rooted_facts_and_logical_protection(self):
+        image = SimpleNamespace(header=SimpleNamespace(rom_start=0x1000))
+        trusted, decoded = {0x1200: object()}, {0x1202: object()}
+        context = SimpleNamespace(protected=((0x400, 0x408), (0x600, 0x608)),
+                                  z80_ranges=((0x600, 0x608),), decoded=decoded)
+        observer = object()
+        with patch.object(pipeline, 'discover_absolute_ram_callback_seeds', return_value=()) as discover:
+            pipeline._discover_absolute_callbacks(image, trusted, {}, object(), context,
+                                                   decode_request=observer, inline_data={0x1800: 6})
+        self.assertIs(discover.call_args.args[1], trusted)
+        self.assertIs(discover.call_args.args[2], decoded)
+        self.assertIs(discover.call_args.kwargs['decode_request'], observer)
+        expected = ((0x1400, 0x1408), (0x1600, 0x1608), (0x1800, 0x1806))
+        self.assertEqual(expected, discover.call_args.kwargs['protected_ranges'])
+        with patch.object(pipeline, 'discover_finite_record_callback_seeds', return_value=()) as discover:
+            pipeline._discover_finite_callbacks(image, trusted, {}, object(), context,
+                                                 decode_request=observer, inline_data={0x1800: 6})
+        self.assertIs(discover.call_args.args[1], decoded)
+        self.assertIs(discover.call_args.kwargs['execution_facts'], trusted)
+        self.assertIs(discover.call_args.kwargs['decode_request'], observer)
+        self.assertEqual(expected, discover.call_args.kwargs['protected_ranges'])
+        self.assertEqual(((0x1600, 0x1608),), discover.call_args.kwargs['forbidden_reads'])
+
     def test_cursor_callbacks_receive_logical_protection_and_only_trusted_consumers(self):
         image = SimpleNamespace(header=SimpleNamespace(rom_start=0x1000))
         trusted, decoded = {0x200: object()}, {0x202: object()}
