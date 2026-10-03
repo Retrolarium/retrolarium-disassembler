@@ -192,7 +192,9 @@ class _M68kHarness:
             raise _StopAfterLoop
         return []
 
-    def object_handlers(self, image, facts):
+    def object_handlers(self, image, facts, *, execution_facts=None):
+        if execution_facts is not None:
+            assert execution_facts is self._trusted_facts
         if facts is not self._last_facts:
             return []
         return list(self._current().get("raw_callbacks", ()))

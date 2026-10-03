@@ -399,10 +399,12 @@ def analyze_megadrive(
                 ))
         # A callback writer may sit in a backend-decoded island before its
         # caller has been reached. The terminal immediately before its ROM
-        # target and the executed object slot prove a useful entrypoint; hand
-        # it to the next decoder pass so its own outgoing edges are explored.
+        # target and the executed object slot prove a useful entrypoint. A
+        # second proof links an allocator and executor through their RAM list;
+        # that path must use rooted facts to avoid self-confirming an island.
         raw_callback_candidates = tuple(
-            candidate for candidate in discover_object_field_handler_candidates(image, facts)
+            candidate for candidate in discover_object_field_handler_candidates(
+                image, facts, execution_facts=trusted_facts)
             if candidate.confidence == "proven"
         )
         raw_callback_targets = {

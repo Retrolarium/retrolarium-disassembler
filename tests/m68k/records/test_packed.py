@@ -181,8 +181,9 @@ class PackedClosureTests(unittest.TestCase):
             0x206: instruction(0x206, "7202", "MOVEQ", "0x2|D1"),
             0x208: instruction(0x208, "4ef900000b00", "JMP", "0xb00.l", "UNCONDITIONAL_JUMP", (0xB00,)),
         }
-        # MOVEA.L #$202,A0 passes the bytes as a data argument.
+        # MOVEA.L #$202,A0 / MOVE.W (A0)+,D0 reads the bytes as data.
         self.known[0xA00] = instruction(0xA00, "207c00000202", "MOVEA.L", "#0x202|A0")
+        self.known[0xA06] = instruction(0xA06, "3018", "MOVE.W", "(A0)+|D0w")
         data = bytearray(cartridge(size=0xC00))
         for fact in (*self.known.values(), *self.decoded.values()):
             data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
@@ -190,7 +191,7 @@ class PackedClosureTests(unittest.TestCase):
         self.assertNotIn(0x202, [candidate.address for candidate in discover_packed_orphan_closure(
             image, self.known, self.decoded, render_instruction=_asm_instruction)])
 
-    def test_immediate_code_pointer_reaching_indirect_jump_is_not_data(self):
+    def test_only_addresses_read_through_their_register_are_data(self):
         from retrolarium_kit.m68k_abstract import immediate_rom_addresses
         image = parse_megadrive(cartridge(size=0x800))
         known = {
@@ -198,9 +199,15 @@ class PackedClosureTests(unittest.TestCase):
             0x306: instruction(0x306, "d6fc000a", "ADDA.W", "#0xa|A3"),
             0x30A: instruction(0x30A, "4ed3", "JMP", "(A3)", "COMPUTED_JUMP"),
             0x310: instruction(0x310, "207c00000500", "MOVEA.L", "#0x500|A0"),
-            0x316: instruction(0x316, "4eb900000600", "JSR", "0x600.l", "UNCONDITIONAL_CALL", (0x600,)),
-            0x31C: instruction(0x31C, "4e75", "RTS", flow="TERMINATOR"),
+            0x316: instruction(0x316, "32d8", "MOVE.W", "(A0)+|(A1)+"),
+            0x318: instruction(0x318, "227c00000580", "MOVEA.L", "#0x580|A1"),
+            0x31E: instruction(0x31E, "23c900ff8000", "MOVE.L", "A1|(0x00ff8000).l"),
+            0x324: instruction(0x324, "207c00000600", "MOVEA.L", "#0x600|A0"),
+            0x32A: instruction(0x32A, "4eb900000700", "JSR", "0x700.l", "UNCONDITIONAL_CALL", (0x700,)),
+            0x330: instruction(0x330, "4e75", "RTS", flow="TERMINATOR"),
         }
+        # Only the copy source is data: a stored or passed pointer may be a
+        # callback and a jumped-through one is code.
         self.assertEqual({0x500}, immediate_rom_addresses(known, image))
 
     def test_signature_after_local_data_requires_full_function_and_known_callee(self):

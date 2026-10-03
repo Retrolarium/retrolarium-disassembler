@@ -40,21 +40,29 @@ def _body(by_address, address):
 
 
 def _schema(body):
-    """Exact leaf semantics: object word index * 2, then signed or absolute word."""
-    absolute = len(body) == 6
-    if len(body) not in {4, 6}:
+    """Prove the word's extension and its addition to the unchanged table base."""
+    zeroed = len(body) == 6
+    if len(body) not in {3, 4, 6}:
         return None
-    index = 1 if absolute else 0
-    read = body[index]
-    match = re.fullmatch(r'\((-?0x[0-9a-f]+),(A[0-6])\)\|(D[0-7])w', read.operands, re.I)
-    if read.mnemonic.upper() != 'MOVE.W' or match is None:
-        return None
-    dr = match[3].upper()
-    if absolute and (body[0].mnemonic.upper() != 'MOVEQ'
+    index = 1 if zeroed else 0
+    if len(body) == 3:
+        # A second entry point may receive the index directly from the caller.
+        match = re.fullmatch(r'(D[0-7])w\|\1w', body[0].operands, re.I)
+        if match is None:
+            return None
+        dr = match[1].upper()
+    else:
+        read = body[index]
+        match = re.fullmatch(r'\((-?0x[0-9a-f]+),(A[0-6])\)\|(D[0-7])w', read.operands, re.I)
+        if read.mnemonic.upper() != 'MOVE.W' or match is None:
+            return None
+        dr = match[3].upper()
+        index += 1
+    if zeroed and (body[0].mnemonic.upper() != 'MOVEQ'
                      or body[0].operands.upper() not in {f'0X0|{dr}', f'#0X0|{dr}'}):
         return None
-    add = body[index + 1]
-    load = body[index + 2]
+    add = body[index]
+    load = body[index + 1]
     if add.mnemonic.upper() != 'ADD.W' or add.operands.upper() != f'{dr}W|{dr}W':
         return None
     pointer = re.fullmatch(r'\(0x0,(A[0-6]),' + dr + r'w\*0x1\)\|(A[0-6]|' + dr + r'w)', load.operands, re.I)
@@ -62,17 +70,51 @@ def _schema(body):
         return None
     ar = pointer[1].upper()
     # The table argument must survive the index read and multiplication.
-    if absolute:
+    mode = 'signed table-relative'
+    if zeroed:
         convert = body[4]
         if (load.mnemonic.upper() != 'MOVE.W' or pointer[2].upper() != dr + 'W'
-                or convert.mnemonic.upper() != 'MOVEA.L'
+                or convert.mnemonic.upper() not in {'MOVEA.L', 'ADDA.L'}
                 or convert.operands.upper() != f'{dr}|{ar}'):
             return None
-    elif load.mnemonic.upper() != 'ADDA.W' or pointer[2].upper() != ar:
+        # MOVE.W preserves Dn's high half. MOVEQ #0 above is required before
+        # interpreting ADDA.L as addition of an unsigned table-relative word.
+        mode = ('zero-extended absolute' if convert.mnemonic.upper() == 'MOVEA.L'
+                else 'zero-extended table-relative')
+        jump_operand = f'({ar})'
+    elif load.mnemonic.upper() == 'ADDA.W' and pointer[2].upper() == ar:
+        jump_operand = f'({ar})'
+    elif load.mnemonic.upper() == 'MOVE.W' and pointer[2].upper() == dr + 'W':
+        # The .W index in the effective address is sign-extended by the CPU;
+        # the remaining high half of Dn cannot affect this jump.
+        jump_operand = f'(0X0,{ar},{dr}W*0X1)'
+    else:
         return None
-    if body[-1].operands.upper() != f'({ar})':
+    if body[-1].operands.upper() != jump_operand:
         return None
-    return ar, absolute
+    return ar, mode
+
+
+def _inline_body(by_address, ends, lea):
+    """Collect an adjacent scale / word reader / computed transfer only."""
+    following = by_address.get(lea.cpu_address + lea.length)
+    if following is None:
+        return []
+    if following.mnemonic.upper() == 'ADD.W':
+        scale = following
+        load = by_address.get(scale.cpu_address + scale.length)
+    elif following.mnemonic.upper() == 'ADDA.W':
+        # Existing spelling puts ADD.W before LEA, which preserves Dn.
+        scale, load = ends.get(lea.cpu_address), following
+    else:
+        return []
+    call = by_address.get(load.cpu_address + load.length) if load else None
+    if (scale is None or load is None or call is None
+            or any(f.flow_type.upper() != 'FALL_THROUGH' for f in (scale, load))
+            or call.mnemonic.upper() not in {'JMP', 'JSR'}
+            or call.flow_type.upper() not in {'COMPUTED_JUMP', 'COMPUTED_CALL'}):
+        return []
+    return [scale, load, call]
 
 
 def discover_leaf_word_dispatch_seeds(
@@ -105,24 +147,14 @@ def discover_leaf_word_dispatch_seeds(
             schema, body = schemas[address]
             if schema is None:
                 continue
-            ar, absolute = schema
+            ar, mode = schema
         else:
-            # Inline variant: index was doubled immediately before LEA,
-            # then ADDA.W (base,index),base / JMP or JSR (base).
-            pointer = re.fullmatch(r'\(0x0,(A[0-6]),(D[0-7])w\*0x1\)\|\1',
-                                   caller.operands, re.I) if caller else None
-            previous = ends.get(lea.cpu_address)
-            call = by_address.get(caller.cpu_address + caller.length) if caller else None
-            if (pointer is None or caller.mnemonic.upper() != 'ADDA.W'
-                    or caller.flow_type.upper() != 'FALL_THROUGH'
-                    or previous is None or previous.mnemonic.upper() != 'ADD.W'
-                    or previous.flow_type.upper() != 'FALL_THROUGH'
-                    or previous.operands.upper() != f'{pointer[2].upper()}W|{pointer[2].upper()}W'
-                    or call is None or call.mnemonic.upper() not in {'JMP','JSR'}
-                    or call.operands.upper() != f'({pointer[1].upper()})'
-                    or call.flow_type.upper() not in {'COMPUTED_JUMP','COMPUTED_CALL'}):
+            body = _inline_body(by_address, ends, lea)
+            schema = _schema(body)
+            if schema is None:
                 continue
-            ar, absolute, inline = pointer[1].upper(), False, True
+            ar, mode = schema
+            inline = True
         if lea.operands.rsplit('|', 1)[-1].upper() != ar:
             continue
         table = pc_displacement_target(lea)
@@ -141,8 +173,8 @@ def discover_leaf_word_dispatch_seeds(
         while 0x200 <= at and at + 2 <= limit and not at & 1:
             if slots and origin + at in boundaries:
                 break
-            value = int.from_bytes(data[at:at + 2], 'big', signed=not absolute)
-            target = value if absolute else table + value
+            value = int.from_bytes(data[at:at + 2], 'big', signed=mode == 'signed table-relative')
+            target = value if mode == 'zero-extended absolute' else table + value
             physical = target - origin
             if (target & 1 or not 0x200 <= physical <= len(data) - 2
                     or start <= physical < at + 2
@@ -161,11 +193,12 @@ def discover_leaf_word_dispatch_seeds(
         if slots < 2 or not (bounded_by_handler or set(targets) & starts or witness is not None):
             continue
         for target in targets:
-            evidence = (f'LEA table {table:06X}; word index doubled at {previous.cpu_address:06X}; '
-                        f'ADDA.W indexed table word to {ar} and call {call.cpu_address:06X}' if inline else
+            evidence = (f'LEA table {table:06X}; word index doubled at {body[0].cpu_address:06X}; '
+                        f'{body[1].mnemonic} indexed table word and {mode} '
+                        f'{body[-1].mnemonic} at {body[-1].cpu_address:06X}' if inline else
                         f'LEA table {table:06X}; transfer {caller.cpu_address:06X} to leaf '
-                        f'{body[0].cpu_address:06X} doubles object word index and jumps via '
-                        f'{"zero-extended absolute" if absolute else "signed table-relative"} word in {ar}')
+                        f'{body[0].cpu_address:06X} doubles word index and jumps via '
+                        f'{mode} word in {ar}')
             if witness is not None:
                 evidence += f'; handler {witness:06X} has a complete bounded CFG connected to rooted code'
             result[target] = DecoderSeed(target, 'inline_word_dispatch' if inline else 'leaf_word_dispatch',

@@ -62,6 +62,77 @@ class LeafDispatchTests(unittest.TestCase):
         self.items[2] = replace(self.items[2], operands='0x1|D0')
         self.assertFalse(self.seeds())
 
+    def unsigned_relative_items(self):
+        return self.items[:2] + [
+            fact(0x300, 'MOVEQ', '0x0|D0'),
+            fact(0x302, 'MOVE.W', '(0x2,A0)|D0w'),
+            fact(0x304, 'ADD.W', 'D0w|D0w'),
+            fact(0x306, 'MOVE.W', '(0x0,A1,D0w*0x1)|D0w'),
+            fact(0x308, 'ADDA.L', 'D0|A1'),
+            replace(fact(0x30A, 'JMP', '(A1)'), flow_type='COMPUTED_JUMP'),
+            fact(0x408, 'RTS', '')]
+
+    def test_unsigned_relative_words_keep_high_bit_positive(self):
+        self.data = bytearray(cartridge(size=0x10000))
+        self.targets = (0x408, 0x8420, 0x8440, 0x8460)
+        self.write_table()
+        self.items = self.unsigned_relative_items()
+        seeds = self.seeds()
+        self.assertEqual(list(self.targets), [s.address for s in seeds])
+        self.assertTrue(all('zero-extended table-relative' in s.evidence for s in seeds))
+
+    def test_unsigned_relative_requires_zero_high_half_and_unchanged_base(self):
+        self.items = self.unsigned_relative_items()
+        for index, changes in ((2, {'operands': '0x0|D1'}),
+                               (2, {'mnemonic': 'CLR.W', 'operands': 'D0w'}),
+                               (2, {'operands': '0x1|D0'}),
+                               (3, {'mnemonic': 'MOVE.L', 'operands': '(0x2,A0)|D0'}),
+                               (4, {'mnemonic': 'ADD.L', 'operands': 'D0|D0'}),
+                               (5, {'operands': '(0x0,A2,D0w*0x1)|D0w'}),
+                               (6, {'operands': 'D0|A2'}),
+                               (7, {'operands': '(A2)'})):
+            with self.subTest(index=index, changes=changes):
+                old = self.items[index]
+                self.items[index] = replace(old, **changes)
+                self.assertFalse(self.seeds())
+                self.items[index] = old
+        # Entering after MOVEQ leaves the previous high half unknown.
+        self.items[1] = replace(self.items[1], flows=(0x302,))
+        self.assertFalse(self.seeds())
+
+    def test_indexed_jump_sign_extends_the_loaded_word(self):
+        self.targets = (0x380, 0x420, 0x440, 0x460)
+        self.write_table()
+        self.items[4] = replace(self.items[4], mnemonic='MOVE.W', operands='(0x0,A1,D0w*0x1)|D0w')
+        self.items[5] = replace(self.items[5], operands='(0x0,A1,D0w*0x1)')
+        self.items.append(fact(0x380, 'RTS', ''))
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
+        for index, operand in ((4, '(0x0,A1,D0w*0x1)|D1w'),
+                               (5, '(0x0,A2,D0w*0x1)'),
+                               (5, '(0x0,A1,D0l*0x1)'),
+                               (5, '(0x2,A1,D0w*0x1)')):
+            with self.subTest(index=index, operand=operand):
+                old = self.items[index]
+                self.items[index] = replace(old, operands=operand)
+                self.assertFalse(self.seeds())
+                self.items[index] = old
+
+    def test_indexed_jump_second_entry_accepts_caller_supplied_index(self):
+        self.items[1] = replace(self.items[1], flows=(0x302,))
+        self.items[4] = replace(self.items[4], mnemonic='MOVE.W', operands='(0x0,A1,D0w*0x1)|D0w')
+        self.items[5] = replace(self.items[5], operands='(0x0,A1,D0w*0x1)')
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
+        self.items[3] = replace(self.items[3], mnemonic='LSL.W', operands='#0x2|D0w')
+        self.assertFalse(self.seeds())
+
+    def test_new_leaf_shapes_still_require_bounds_or_handler_witness(self):
+        self.items = self.unsigned_relative_items()[:-1]
+        self.targets = (0x420, 0x440, 0x460, 0x480)
+        self.write_table()
+        self.assertFalse(self.seeds(handler_validator=lambda target: False))
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds(
+            handler_validator=lambda target: target == 0x440)])
+
     def test_no_table_decode_conflicts_and_signed_backward_target(self):
         self.targets = (0x380, 0x420, 0x440, 0x460)
         self.write_table()
@@ -126,6 +197,66 @@ class LeafDispatchTests(unittest.TestCase):
             self.items[index] = replace(old, operands=operand)
             self.assertFalse(self.seeds())
             self.items[index] = old
+
+    def inline_indexed_items(self, operation='JMP'):
+        return [self.items[0],
+                fact(0x202, 'ADD.W', 'D2w|D2w'),
+                fact(0x204, 'MOVE.W', '(0x0,A1,D2w*0x1)|D2w'),
+                replace(fact(0x206, operation, '(0x0,A1,D2w*0x1)'),
+                        flow_type='COMPUTED_CALL' if operation == 'JSR' else 'COMPUTED_JUMP'),
+                self.items[-1]]
+
+    def test_inline_scaled_word_load_and_indexed_jump_or_call(self):
+        initial = self.items
+        for operation in ('JMP', 'JSR'):
+            with self.subTest(operation=operation):
+                self.items = initial
+                self.items = self.inline_indexed_items(operation)
+                seeds = self.seeds()
+                self.assertEqual(list(self.targets), [s.address for s in seeds])
+                self.assertTrue(all(s.kind == 'inline_word_dispatch' for s in seeds))
+                self.assertTrue(all(s.source_address == 0x200 for s in seeds))
+
+    def test_inline_indexed_word_sign_and_bounds(self):
+        self.targets = (0x380, 0x420, 0x440, 0x460)
+        self.write_table()
+        self.items = self.inline_indexed_items()[:-1] + [fact(0x380, 'RTS', '')]
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
+        self.items.pop()
+        self.assertFalse(self.seeds(handler_validator=lambda target: False))
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds(
+            handler_validator=lambda target: target == 0x440)])
+
+    def test_inline_indexed_form_rejects_unproven_arithmetic_and_bases(self):
+        self.items = self.inline_indexed_items()
+        for index, changes in ((0, {'operands': '(0x400).l|A2'}),
+                               (1, {'operands': 'D1w|D1w'}),
+                               (1, {'mnemonic': 'ADD.L', 'operands': 'D2|D2'}),
+                               (1, {'flow_type': 'CONDITIONAL_JUMP'}),
+                               (2, {'operands': '(0x0,A1,D2w*0x1)|D3w'}),
+                               (2, {'operands': '(0x0,A2,D2w*0x1)|D2w'}),
+                               (2, {'mnemonic': 'MOVE.L'}),
+                               (3, {'operands': '(0x0,A2,D2w*0x1)'}),
+                               (3, {'operands': '(0x0,A1,D2l*0x1)'}),
+                               (3, {'flow_type': 'UNCONDITIONAL_CALL'})):
+            with self.subTest(index=index, changes=changes):
+                old = self.items[index]
+                self.items[index] = replace(old, **changes)
+                self.assertFalse(self.seeds())
+                self.items[index] = old
+
+    def test_inline_indexed_form_does_not_cross_a_conditional_base_selection(self):
+        self.items = [self.items[0],
+                      replace(fact(0x202, 'BEQ.B', '0x208', flows=(0x208,)),
+                              flow_type='CONDITIONAL_JUMP'),
+                      fact(0x204, 'LEA', '(0x500).l|A1'),
+                      fact(0x206, 'ADD.W', 'D2w|D2w'),
+                      fact(0x208, 'MOVE.W', '(0x0,A1,D2w*0x1)|D2w'),
+                      replace(fact(0x20A, 'JMP', '(0x0,A1,D2w*0x1)'), flow_type='COMPUTED_JUMP'),
+                      self.items[-1]]
+        # Neither base has a proven complete table for its path. In particular,
+        # the table at 0x400 must not be attached to the second LEA's reader.
+        self.assertFalse(self.seeds())
 
 
 if __name__ == '__main__':

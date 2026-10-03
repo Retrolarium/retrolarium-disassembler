@@ -1,11 +1,11 @@
 """Continuations passed as a hand-made return address before a branch.
 
-Runtime libraries without JSR save a link in a register or on the stack:
-``LEA d16(PC),An`` or ``PEA d16(PC)`` immediately followed by an
-unconditional ``BRA``/``JMP``. The callee resumes with ``JMP (An)`` or
-``RTS``. When the PC-relative address is exactly the instruction after that
-branch, it is the architectural continuation of a call and therefore code.
-A non-adjacent address is commonly a data argument and is not accepted.
+Runtime libraries without JSR save a link in a register: ``LEA d16(PC),An``
+immediately followed by an unconditional ``BRA``/``JMP`` whose callee
+resumes with ``JMP (An)``. When the PC-relative address is exactly the
+instruction after that branch, it is the architectural continuation of a
+call and therefore code. Without the callee's JMP through the same register
+an adjacent address is commonly a data argument and is not accepted.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from .facts import InstructionFact
 from .megadrive import MegaDriveImage
 from .megadrive_symbols import pc_displacement_target
 from .m68k_seeds import DecoderSeed
+from .m68k_abstract import _register_use
 
 
 def discover_link_continuation_seeds(
@@ -22,8 +23,8 @@ def discover_link_continuation_seeds(
     seeds = []
     for link in by_address.values():
         opcode = int.from_bytes(link.raw[:2], "big")
-        # LEA d16(PC),An = 0100 rrr1 1111 1010; PEA d16(PC) = 0x487A.
-        if not (opcode & 0xF1FF == 0x41FA or opcode == 0x487A) or len(link.raw) != 4:
+        # LEA d16(PC),An = 0100 rrr1 1111 1010.
+        if opcode & 0xF1FF != 0x41FA or len(link.raw) != 4:
             continue
         branch = by_address.get(link.cpu_address + link.length)
         if branch is None or branch.flow_type.upper() != "UNCONDITIONAL_JUMP":
@@ -32,12 +33,17 @@ def discover_link_continuation_seeds(
         if not (branch_opcode & 0xFF00 == 0x6000 or branch_opcode & 0xFFC0 == 0x4EC0):
             continue
         continuation = branch.cpu_address + branch.length
-        if pc_displacement_target(link) != continuation:
+        if pc_displacement_target(link) != continuation or not branch.flows:
+            continue
+        # The callee must resume through the same register; an adjacent
+        # literal passed to an ordinary routine is data.
+        register = link.operands.upper().rsplit("|", 1)[-1]
+        if _register_use(by_address, branch.flows[0] & 0xFFFFFF, register) != "code":
             continue
         seeds.append(DecoderSeed(
             continuation, "link_continuation", "proven",
-            f"{'LEA' if opcode != 0x487A else 'PEA'} d16(PC) at {link.cpu_address:06X} "
-            f"names the instruction after the branch at {branch.cpu_address:06X}",
+            f"LEA d16(PC) at {link.cpu_address:06X} names the instruction after the "
+            f"branch at {branch.cpu_address:06X}; the callee jumps through {register}",
             link.cpu_address,
         ))
     return tuple(seeds)

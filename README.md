@@ -371,10 +371,14 @@ Compiler switches that double a long index (`ADD.L Dn,Dn`,
 `megadrive.s16be.target-table_base` tables. Ghidra's element references from
 the inferred index no longer split such tables, and backend switch flows of
 both PC-relative and `MOVEA.W`/`ADDA.L`/`JMP (An)` word tables are bounded
-by the structural table so over-read entries cannot become trusted code.
-Speculative packed-gap decoding treats ROM addresses loaded by
-`MOVEA.L #addr,An`, `LEA addr.l,An` or `PEA addr.l` as data arguments. `LEA`/`PEA d16(PC)` naming the instruction right after an unconditional
-branch is a hand-made return address and seeds that continuation. Packed
+by the structural table when decoded code starts right after it, so
+over-read entries cannot become trusted code. Speculative packed-gap
+decoding treats an address loaded by `MOVEA.L #addr,An` or `LEA addr.l,An`
+as data when memory is read through that register, locally or in a direct
+callee; stored or jumped-through pointers may be callbacks and are not
+counted. `LEA d16(PC),An` naming the instruction right after an
+unconditional branch, whose callee jumps through the same register, is a
+hand-made return address and seeds that continuation. Packed
 orphan entries skip longword alignment padding or a NUL-terminated literal
 only when a `LINK` or `MOVEM.L ...,-(SP)` prologue follows.
 

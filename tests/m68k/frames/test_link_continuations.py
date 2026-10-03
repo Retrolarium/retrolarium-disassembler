@@ -9,6 +9,14 @@ from test_megadrive import cartridge
 from test_m68k_unused import instruction
 
 
+LEA = instruction(0x200, "41fa0004", "LEA", "(0x4,PC)|A0")
+BRA = instruction(0x204, "60fa", "BRA.B", "0x300", "UNCONDITIONAL_JUMP", (0x300,))
+CALLEE_JUMPS_THROUGH_A0 = (
+    instruction(0x300, "7001", "MOVEQ", "0x1|D0"),
+    instruction(0x302, "4ed0", "JMP", "(A0)", "COMPUTED_JUMP"),
+)
+
+
 class LinkContinuationTests(unittest.TestCase):
     def setUp(self):
         self.image = parse_megadrive(cartridge(size=0x800))
@@ -19,26 +27,23 @@ class LinkContinuationTests(unittest.TestCase):
                     self.image, {fact.cpu_address: fact for fact in facts})]
 
     def test_lea_naming_the_instruction_after_bra_is_a_continuation(self):
-        self.assertEqual([(0x206, 0x200)], self.seeds(
-            instruction(0x200, "41fa0004", "LEA", "(0x4,PC)|A0"),
-            instruction(0x204, "60fa", "BRA.B", "0x300", "UNCONDITIONAL_JUMP", (0x300,)),
-        ))
+        self.assertEqual([(0x206, 0x200)], self.seeds(LEA, BRA, *CALLEE_JUMPS_THROUGH_A0))
 
-    def test_pea_before_jmp_is_a_continuation(self):
-        self.assertEqual([(0x20A, 0x200)], self.seeds(
-            instruction(0x200, "487a0008", "PEA", "(0x8,PC)"),
-            instruction(0x204, "4ef900000300", "JMP", "0x300.l", "UNCONDITIONAL_JUMP", (0x300,)),
-        ))
+    def test_callee_must_resume_through_the_same_register(self):
+        self.assertEqual([], self.seeds(
+            LEA, BRA, instruction(0x300, "4e75", "RTS", flow="TERMINATOR")))
+        self.assertEqual([], self.seeds(
+            LEA, BRA, instruction(0x300, "4ed1", "JMP", "(A1)", "COMPUTED_JUMP")))
+        self.assertEqual([], self.seeds(
+            LEA, BRA, instruction(0x300, "207c00000400", "MOVEA.L", "#0x400|A0"),
+            instruction(0x306, "4ed0", "JMP", "(A0)", "COMPUTED_JUMP")))
 
     def test_non_adjacent_address_or_call_is_a_data_argument(self):
         self.assertEqual([], self.seeds(
-            instruction(0x200, "41fa0010", "LEA", "(0x10,PC)|A0"),
-            instruction(0x204, "60fa", "BRA.B", "0x300", "UNCONDITIONAL_JUMP", (0x300,)),
-        ))
+            instruction(0x200, "41fa0010", "LEA", "(0x10,PC)|A0"), BRA, *CALLEE_JUMPS_THROUGH_A0))
         self.assertEqual([], self.seeds(
-            instruction(0x200, "487a0008", "PEA", "(0x8,PC)"),
-            instruction(0x204, "4eb900000300", "JSR", "0x300.l", "UNCONDITIONAL_CALL", (0x300,)),
-        ))
+            LEA, instruction(0x204, "4eb900000300", "JSR", "0x300.l", "UNCONDITIONAL_CALL", (0x300,)),
+            *CALLEE_JUMPS_THROUGH_A0))
 
 
 if __name__ == "__main__":

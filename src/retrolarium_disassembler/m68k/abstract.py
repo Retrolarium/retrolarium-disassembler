@@ -648,16 +648,257 @@ def discover_ram_handler_candidates(
     return tuple(candidates[address] for address in sorted(candidates))
 
 
+_LIST_FIELD = re.compile(r"\((?:(-?0x[0-9a-f]+),)?(A[0-6])\)", re.I)
+_LIST_ABSOLUTE = re.compile(r"\((-?0x[0-9a-f]+)\)\.[wl]", re.I)
+
+
+def _list_field(operand):
+    match = _LIST_FIELD.fullmatch(operand)
+    return (int(match[1] or "0", 0), match[2].lower()) if match else None
+
+
+def _list_pointer_step(image, fact, values):
+    """Track list heads, their next nodes and RAM-loaded allocation pointers.
+
+    Partial writes, register exchange, updates through addressing modes and
+    MOVEM restores discard provenance. Only a longword next-link load at
+    offset zero preserves a list's identity.
+    """
+    result = dict(values)
+    operands = fact.operands.split("|")
+    source, destination = operands[0], operands[-1]
+    register = _register_name(destination)
+    mnemonic = fact.mnemonic.upper()
+    base = mnemonic.split(".", 1)[0]
+    if base in {"CMP", "CMPA", "CMPI", "TST", "BTST"}:
+        for operand in operands:
+            for updated in re.findall(r"\((A[0-6])\)\+|-\((A[0-6])\)", operand, re.I):
+                result.pop((updated[0] or updated[1]).lower(), None)
+        return result
+    if base.startswith("DB") or base in {"LINK", "UNLK"}:
+        result.pop(_register_name(source), None)
+    value = None
+    if mnemonic == "LEA" and register:
+        absolute = _LIST_ABSOLUTE.fullmatch(source)
+        if absolute:
+            address = int(absolute[1], 0) & 0xFFFFFF
+            if image.header.ram_start <= address <= image.header.ram_end - 3:
+                value = ("head", address)
+    elif mnemonic in {"MOVE.L", "MOVEA.L"} and register:
+        field = _list_field(source)
+        absolute = _LIST_ABSOLUTE.fullmatch(source)
+        if _register_name(source):
+            value = result.get(_register_name(source))
+        elif field and field[0] == 0:
+            pointer = result.get(field[1])
+            if pointer and pointer[0] in {"head", "node"}:
+                value = ("node", pointer[1])
+        elif absolute:
+            address = int(absolute[1], 0) & 0xFFFFFF
+            if image.header.ram_start <= address <= image.header.ram_end - 3:
+                value = ("allocation", fact.cpu_address)
+    if register:
+        result.pop(register, None)
+        if value is not None:
+            result[register] = value
+    if base == "EXG":
+        for operand in operands:
+            result.pop(_register_name(operand), None)
+    if base == "MOVEM" and operands[0].strip().startswith("("):
+        for modified in _register_list(destination):
+            result.pop(modified, None)
+    for operand in operands:
+        for updated in re.findall(r"\((A[0-6])\)\+|-\((A[0-6])\)", operand, re.I):
+            result.pop((updated[0] or updated[1]).lower(), None)
+    return result
+
+
+def _list_successors(fact):
+    base = fact.mnemonic.upper().split(".", 1)[0]
+    flow = fact.flow_type.upper()
+    if base in {"JSR", "BSR", "TRAP", "TRAPV", "RESET", "STOP", "ILLEGAL", "RTE", "RTR"}:
+        return ()
+    if flow == "FALL_THROUGH":
+        return (fact.cpu_address + fact.length,)
+    if flow == "CONDITIONAL_JUMP":
+        return (*fact.flows, fact.cpu_address + fact.length) if fact.flows else ()
+    if base in {"BRA", "JMP"} and flow not in {"COMPUTED_JUMP", "COMPUTED_CALL"}:
+        return fact.flows if len(fact.flows) == 1 else ()
+    return ()
+
+
+def _linked_list_stack_executors(image, facts):
+    """Associate push/RTS fields with the RAM list head supplying their base."""
+    executors = {}
+    for lea in facts.values():
+        if lea.mnemonic.upper() != "LEA":
+            continue
+        initial = _list_pointer_step(image, lea, {})
+        if not initial:
+            continue
+        pending = deque([(lea.cpu_address + lea.length, tuple(sorted(initial.items())))])
+        visited = set()
+        while pending and len(visited) < 256:
+            address, state = pending.popleft()
+            if (address, state) in visited:
+                continue
+            visited.add((address, state))
+            fact = facts.get(address)
+            if fact is None:
+                continue
+            values = dict(state)
+            operands = fact.operands.split("|")
+            field = _list_field(operands[0])
+            following = facts.get(address + fact.length)
+            if (fact.mnemonic.upper() == "MOVE.L" and operands[-1].upper() == "-(SP)"
+                    and field and field[0] >= 4 and field[0] % 2 == 0
+                    and following and following.raw == b"\x4e\x75"):
+                pointer = values.get(field[1])
+                if pointer and pointer[0] == "node":
+                    executors[(pointer[1], field[0])] = address
+            after = _list_pointer_step(image, fact, values)
+            if any(value[0] in {"head", "node"} for value in after.values()):
+                pending.extend((target, tuple(sorted(after.items()))) for target in _list_successors(fact))
+    return executors
+
+
+def _linked_list_allocator_roots(image, facts, entry, returned_register):
+    """Prove every decoded allocator return inserts the returned RAM pointer.
+
+    A list insertion must copy old next into new.next, then store new into
+    old.next. The predecessor must derive from the same absolute RAM head as
+    the executor. A matching displacement alone never establishes identity.
+    """
+    pending = deque([(entry, (), (), (), ())])
+    visited, returns = set(), set()
+    while pending and len(visited) < 512:
+        node = pending.popleft()
+        if node in visited:
+            continue
+        visited.add(node)
+        address, state, copied_state, inserted_state, stack = node
+        fact = facts.get(address)
+        if fact is None:
+            return ()
+        values, copied, inserted = dict(state), dict(copied_state), dict(inserted_state)
+        operands = fact.operands.split("|")
+        source, destination = operands[0], operands[-1]
+        mnemonic = fact.mnemonic.upper()
+        if mnemonic.split(".", 1)[0] in {"PEA", "LINK", "UNLK"}:
+            return ()  # Implicit SP writes lie outside this bounded MOVEM ABI.
+        if fact.raw == b"\x4e\x75":
+            pointer = values.get(returned_register)
+            if stack or pointer is None or pointer not in inserted:
+                return ()
+            returns.add(inserted[pointer])
+            continue
+        source_field, destination_field = _list_field(source), _list_field(destination)
+        base = mnemonic.split(".", 1)[0]
+        writes_memory = ("(" in destination and base not in {
+            "CMP", "CMPA", "CMPI", "TST", "BTST", "LEA", "PEA", "JMP", "JSR"})
+        roots = {value[1] for value in values.values() if value[0] in {"head", "node"}}
+        absolute_destination = _LIST_ABSOLUTE.fullmatch(destination)
+        if writes_memory and absolute_destination:
+            address_written = int(absolute_destination[1], 0) & 0xFFFFFF
+            width = {"B": 1, "W": 2, "L": 4}.get(mnemonic[-1], 4)
+            if any(address_written < root + 4 and root < address_written + width for root in roots):
+                return ()  # A saved predecessor may now be detached from its head.
+        if writes_memory and destination_field and -3 <= destination_field[0] < 4:
+            predecessor = values.get(destination_field[1])
+            allocation = values.get(_register_name(source))
+            if predecessor and predecessor[0] in {"head", "node"} and not (
+                    mnemonic == "MOVE.L" and destination_field[0] == 0
+                    and allocation and allocation[0] == "allocation"
+                    and copied.get(allocation) == predecessor[1]):
+                return ()  # Only the validated insertion may replace a next link.
+        # After insertion the bounded epilogue may only restore registers and
+        # return. An arbitrary later store could unlink the newly added node.
+        if inserted and writes_memory:
+            return ()
+        if writes_memory and destination_field and -3 <= destination_field[0] < 4:
+            pointer = values.get(destination_field[1])
+            if pointer is not None:
+                copied.pop(pointer, None)
+        if mnemonic == "MOVE.L" and destination_field and destination_field[0] == 0:
+            destination_pointer = values.get(destination_field[1])
+            source_pointer = values.get(_register_name(source))
+            if source_field and source_field[0] == 0 and destination_pointer and destination_pointer[0] == "allocation":
+                predecessor = values.get(source_field[1])
+                copied.pop(destination_pointer, None)
+                if predecessor and predecessor[0] in {"head", "node"}:
+                    copied[destination_pointer] = predecessor[1]
+            elif (source_pointer and source_pointer[0] == "allocation" and destination_pointer
+                  and destination_pointer[0] in {"head", "node"}
+                  and copied.get(source_pointer) == destination_pointer[1]):
+                inserted[source_pointer] = destination_pointer[1]
+            elif inserted and destination_pointer and destination_pointer[0] in {"head", "node", "allocation"}:
+                return ()  # Do not prove an insertion subsequently overwritten.
+        after = _list_pointer_step(image, fact, values)
+        if mnemonic == "MOVEM.L" and destination.upper() == "-(SP)":
+            registers = _register_list(source)
+            stack += ((registers, tuple((r, values.get(r)) for r in registers)),)
+        elif mnemonic == "MOVEM.L" and source.upper() == "(SP)+":
+            registers = _register_list(destination)
+            if not stack or set(registers) != set(stack[-1][0]):
+                return ()
+            for register, value in stack[-1][1]:
+                if value is None:
+                    after.pop(register, None)
+                else:
+                    after[register] = value
+            stack = stack[:-1]
+        elif re.search(r"(?<![A-Z0-9])(?:SP|A7)[BWL]?(?![A-Z0-9])", fact.operands.upper()):
+            return ()
+        successors = _list_successors(fact)
+        if not successors:
+            return ()
+        pending.extend((target, tuple(sorted(after.items())), tuple(sorted(copied.items())),
+                        tuple(sorted(inserted.items())), stack) for target in successors)
+    return tuple(returns) if not pending and len(returns) == 1 else ()
+
+
+def _linked_list_callback_assignments(image, facts):
+    executors = _linked_list_stack_executors(image, facts)
+    if not executors:
+        return {}
+    ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
+    summaries, result = {}, {}
+    for store in facts.values():
+        match = _IMMEDIATE_TO_FIELD.fullmatch(store.operands)
+        call = ends.get(store.cpu_address)
+        if store.mnemonic.upper() != "MOVE.L" or match is None or call is None:
+            continue
+        if (call.mnemonic.upper().split(".", 1)[0] not in {"JSR", "BSR"}
+                or call.flow_type.upper() == "COMPUTED_CALL" or len(call.flows) != 1):
+            continue
+        register = match[3].lower()
+        key = (call.flows[0], register)
+        if key not in summaries:
+            summaries[key] = _linked_list_allocator_roots(image, facts, *key)
+        for root in summaries[key]:
+            reader = executors.get((root, int(match[2], 0)))
+            if reader is not None:
+                result[store.cpu_address] = (root, reader, key[0])
+    return result
+
+
 def discover_object_field_handler_candidates(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
+    image: MegaDriveImage, facts: dict[int, InstructionFact], *, execution_facts=None,
 ) -> tuple[EntryPointCandidate, ...]:
     """Find callbacks stored in a struct field and invoked through that field.
 
-    Require the target to begin exactly after known terminating code. This
-    separates callbacks from asset pointers stored in overloaded fields.
+    Require a terminal boundary, or a rooted allocator/list-executor proof.
+    The latter connects the allocated object to its executor through their
+    RAM list head, so overloaded offsets in unrelated structures do not match.
     """
     from .m68k_record_dispatch import executed_stack_fields
+    from .megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
     stack_fields = executed_stack_fields(facts)
+    _, interiors, _ = _instruction_sets(facts)
+    data_addresses = _absolute_referenced_addresses(execution_facts or {})
+    linked = _linked_list_callback_assignments(image, {
+        fact.cpu_address: fact for fact in execution_facts.values()
+    }) if execution_facts is not None else {}
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
     executed_object_slots = _executed_ram_callback_slots(facts)
@@ -694,19 +935,28 @@ def discover_object_field_handler_candidates(
         if not 0x200 <= target < len(image.data) - 1 or target & 1:
             continue
         preceding = ends.get(target)
-        if (preceding is None or preceding.flow_type.upper() not in {
+        list_proof = linked.get(store.cpu_address)
+        if list_proof is not None and (target - image.header.rom_start in interiors
+                                       or target in data_addresses):
+            continue
+        if list_proof is None and (preceding is None or preceding.flow_type.upper() not in {
                 "TERMINATOR", "UNCONDITIONAL_JUMP", "CALL_TERMINATOR"}):
             continue
         first_word = int.from_bytes(image.data[target:target + 2], "big")
         if first_word in {0, 0xFFFF}:
             continue
+        if list_proof is not None:
+            root, executor, allocator = list_proof
+            proof = (f"rooted allocator {allocator:06X} inserts returned {field[1]} "
+                     f"into RAM list {root:06X}; same list field executed at {executor:06X}")
+        else:
+            proof += f"; begins after terminal at {preceding.cpu_address:06X}"
         candidates[target] = EntryPointCandidate(
             address=target,
             source_address=store.cpu_address,
             storage_address=field[0],
             confidence="proven",
-            evidence=(f"ROM callback stored in {field[0]:X}({field[1]}); {proof}; "
-                      f"begins after terminal at {preceding.cpu_address:06X}"),
+            evidence=f"ROM callback stored in {field[0]:X}({field[1]}); {proof}",
         )
     return tuple(candidates[address] for address in sorted(candidates))
 
@@ -716,12 +966,16 @@ _ADDRESS_IMMEDIATE = re.compile(
 _ADDRESS_ADJUST = ("ADDA.", "SUBA.", "ADDQ.", "SUBQ.")
 
 
-def _reaches_indirect_transfer(by_address, start, register, limit=64):
-    """Whether ``register`` reaches JMP/JSR through it before being replaced.
+def _register_use(by_address, start, register, *, follow_jumps=True, limit=64):
+    """Classify how a loaded address register is used before it is replaced.
 
-    Offsets added to the register keep it a code pointer, as in
-    LEA handler,A3 / ADDA.W #10,A3 / JMP (A3).
+    Returns ``"code"`` when it reaches JMP/JSR through the register (offsets
+    added on the way keep it a code pointer, as in LEA handler,A3 /
+    ADDA.W #10,A3 / JMP (A3)), ``"data"`` when memory is read through it,
+    and ``None`` when it is only stored, passed on or left unused.
     """
+    indirect = re.compile(
+        r"-?\((?:-?0X[0-9A-F]+,)?" + register + r"(?:,[DA][0-7][WL]?\*0X[1248])?\)\+?")
     pending, seen = [start], set()
     while pending and len(seen) < limit:
         address = pending.pop()
@@ -731,45 +985,47 @@ def _reaches_indirect_transfer(by_address, start, register, limit=64):
         seen.add(address)
         mnemonic = fact.mnemonic.upper()
         operands = fact.operands.upper().split("|")
-        if mnemonic in {"JMP", "JSR"} and re.fullmatch(
-                r"\((?:-?0X[0-9A-F]+,)?" + register + r"\)", operands[0]):
-            return True
+        if mnemonic in {"JMP", "JSR"} and indirect.fullmatch(operands[0]):
+            return "code"
+        if mnemonic not in {"LEA", "PEA"} and operands and indirect.fullmatch(operands[0]):
+            return "data"
         if operands[-1] == register and not mnemonic.startswith(_ADDRESS_ADJUST):
             continue
         flow = fact.flow_type.upper()
         if flow in {"TERMINATOR", "COMPUTED_JUMP", "CALL_TERMINATOR"}:
             continue
-        pending.extend(target & 0xFFFFFF for target in fact.flows
-                       if flow != "UNCONDITIONAL_CALL")
+        if flow == "UNCONDITIONAL_JUMP" and not follow_jumps:
+            continue
+        # A direct callee receives the register; its own reads count too.
+        pending.extend(target & 0xFFFFFF for target in fact.flows)
         if flow != "UNCONDITIONAL_JUMP":
             pending.append(address + fact.length)
-    return False
+    return None
 
 
 def immediate_rom_addresses(known: dict[int, InstructionFact], image: MegaDriveImage) -> set[int]:
-    """ROM addresses that rooted code passes as data arguments.
+    """ROM addresses that rooted code reads as data through a register.
 
-    MOVEA.L #addr,An, LEA addr.l,An and PEA addr.l usually pass a data
-    argument; the backend often records no reference for them. Speculative
-    decoding must not claim those bytes. A register that later reaches
-    JMP/JSR (An) holds a code pointer instead and is not counted.
+    MOVEA.L #addr,An and LEA addr.l,An followed by a read through An, such
+    as a copy loop's source, name data; the backend often records no
+    reference for them, so speculative decoding must not claim those bytes.
+    A pointer that is stored, passed to a call or reaches JMP/JSR (An) may
+    be a callback and is not counted.
     """
     by_address = {fact.cpu_address: fact for fact in known.values()}
     addresses = set()
     for fact in known.values():
-        if fact.mnemonic.upper() not in {"MOVEA.L", "LEA", "PEA"}:
+        if fact.mnemonic.upper() not in {"MOVEA.L", "LEA"}:
             continue
         match = _ADDRESS_IMMEDIATE.search(fact.operands)
         if match is None:
             continue
         address = int(match[1] or match[3], 16) & 0xFFFFFF
         register = (match[2] or match[4] or "").upper()
-        if not 0x200 <= address < len(image.data):
-            continue
-        if register and _reaches_indirect_transfer(
-                by_address, fact.cpu_address + fact.length, register):
-            continue
-        addresses.add(address)
+        if register and 0x200 <= address < len(image.data) and _register_use(
+                by_address, fact.cpu_address + fact.length, register,
+                follow_jumps=False) == "data":
+            addresses.add(address)
     return addresses
 
 
@@ -1660,13 +1916,18 @@ def bounded_word_dispatch_targets(
 
     Ghidra sizes such tables from the index mask and can read past their
     end into following code or data. The structural reader stops at the
-    first entry that reaches a target, so its entries bound the real table.
+    first entry that reaches a target, so a table followed directly by
+    decoded code bounds the real targets.
     """
     from .megadrive_pointers import _pc_word_dispatch_tables, _word_dispatch_tables
+    starts = {fact.cpu_address for fact in facts.values()}
+    # Only a table that ends where decoded code begins is known complete;
+    # a reader stopped by an implausible entry may still be too short.
     return {
         table.call_address: frozenset(entry.target for entry in table.candidate.entries)
         for table in (*_word_dispatch_tables(image, facts), *_pc_word_dispatch_tables(image, facts))
         if table.call_mnemonic == "JMP"
+        and table.candidate.logical_start + 2 * len(table.candidate.entries) in starts
     }
 
 

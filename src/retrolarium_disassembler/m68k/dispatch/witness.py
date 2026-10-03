@@ -7,6 +7,8 @@ from typing import Callable
 from .facts import InstructionFact
 from .m68k_abstract import OrphanCandidate
 from .m68k_packed import _complete_cfg
+from .m68k_ram_dispatch import discover_inline_trap_calls
+from .m68k_call_frame import make_trap_call_frame_validator
 from .megadrive import MegaDriveImage
 from .megadrive_pointers import _absolute_referenced_addresses
 
@@ -29,6 +31,15 @@ def make_dispatch_handler_validator(
     decoded = {f.cpu_address: f for f in decoded.values()}
     starts = sorted(known)
     data = tuple(sorted(_absolute_referenced_addresses(known)))
+    # Only trap sites may come from speculative decoding. Every instruction
+    # proving the exception handler's inline-argument ABI must be rooted.
+    trap_sites = {a: f for a, f in decoded.items() if f.mnemonic.upper() == "TRAP"}
+    preserves_frame = make_trap_call_frame_validator(known)
+    inline_traps = {call.call_address: call for call in discover_inline_trap_calls(
+        image, {**trap_sites, **known}) if call.handler in known and preserves_frame(call.handler)}
+    protected_ranges = protected_ranges + tuple(
+        (call.data_address, call.continuation)
+        for address, call in inline_traps.items() if address in known)
     checked: dict[int, bool] = {}
 
     def validate(address: int) -> bool:
@@ -45,14 +56,15 @@ def make_dispatch_handler_validator(
         candidate = OrphanCandidate(address, address, end, end - address,
                                     "high", "complete bounded dispatch handler CFG")
         body = _complete_cfg(image, candidate, known, decoded, protected_ranges,
-                             render_instruction, data)
+                             render_instruction, data, inline_traps)
         first = body.get(address)
         checked[address] = bool(
             len(body) >= 4 and first and not first.mnemonic.upper().startswith("ORI.")
             and len({f.mnemonic.upper().split(".", 1)[0] for f in body.values()}) >= 3
             and any(set(f.flows) & known.keys() for f in body.values())
             and not any(f.flow_type.upper() in {"COMPUTED_CALL", "COMPUTED_JUMP"}
-                        or f.mnemonic.upper() in {"RTE", "RTR", "TRAP", "ILLEGAL", "STOP", "RESET"}
+                        or f.mnemonic.upper() in {"RTE", "RTR", "ILLEGAL", "STOP", "RESET"}
+                        or f.mnemonic.upper() == "TRAP" and f.cpu_address not in inline_traps
                         for f in body.values()))
         return checked[address]
 

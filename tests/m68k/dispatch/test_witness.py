@@ -75,5 +75,74 @@ class DispatchWitnessTests(unittest.TestCase):
         self.assertFalse(self.validate())
 
 
+class InlineTrapWitnessTests(unittest.TestCase):
+    def setUp(self):
+        self.handler = {
+            0x200: instruction(0x200, '48e7fffe', 'MOVEM.L', 'D0-A6|-(SP)'),
+            0x204: instruction(0x204, '2c6f003e', 'MOVEA.L', '(0x3e,SP)|A6'),
+            0x208: instruction(0x208, '54af003e', 'ADDQ.L', '0x2|(0x3e,SP)'),
+            0x20C: instruction(0x20C, '301e', 'MOVE.W', '(A6)+|D0w'),
+            0x20E: instruction(0x20E, '4cdf7fff', 'MOVEM.L', '(SP)+|D0-A6'),
+            0x212: instruction(0x212, '4e73', 'RTE', flow='TERMINATOR'),
+        }
+        self.known = {**self.handler, 0x500: instruction(0x500, '4e75', 'RTS', flow='TERMINATOR')}
+        self.decoded = {
+            0x400: instruction(0x400, '4e45', 'TRAP', '0x5', 'CALL_TERMINATOR'),
+            # $402 is an inline word, deliberately also a plausible NOP.
+            0x402: instruction(0x402, '4e71', 'NOP'),
+            0x404: instruction(0x404, '7001', 'MOVEQ', '0x1|D0'),
+            0x406: instruction(0x406, '4a40', 'TST.W', 'D0w'),
+            0x408: instruction(0x408, '4eb900000500', 'JSR', '0x500.l', 'UNCONDITIONAL_CALL', (0x500,)),
+            0x40E: instruction(0x40E, '4e75', 'RTS', flow='TERMINATOR'),
+        }
+
+    def validate(self, address=0x400, **kwargs):
+        data = bytearray(cartridge(size=0x800))
+        data[(32 + 5)*4:(33 + 5)*4] = (0x200).to_bytes(4, 'big')
+        for fact in (*self.handler.values(), *self.known.values(), *self.decoded.values()):
+            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+        return make_dispatch_handler_validator(
+            parse_megadrive(bytes(data)), self.known, self.decoded,
+            render_instruction=_asm_instruction, **kwargs)(address)
+
+    def test_rooted_inline_trap_allows_complete_handler(self):
+        self.assertTrue(self.validate())
+
+    def test_speculative_or_incomplete_exception_handler_does_not_prove_abi(self):
+        self.decoded.update(self.handler)
+        self.known = {0x500: self.known[0x500]}
+        self.assertFalse(self.validate())
+        self.known.update(self.handler)
+        self.known.pop(0x20E)
+        self.assertFalse(self.validate())
+
+    def test_unproven_trap_number_and_protected_code_rejected(self):
+        self.decoded[0x400] = instruction(0x400, '4e46', 'TRAP', '0x6', 'CALL_TERMINATOR')
+        self.assertFalse(self.validate())
+        self.decoded[0x400] = instruction(0x400, '4e45', 'TRAP', '0x5', 'CALL_TERMINATOR')
+        self.assertFalse(self.validate(protected_ranges=((0x404, 0x408),)))
+
+    def test_branch_into_inline_word_rejected(self):
+        self.decoded[0x40E] = instruction(0x40E, '66f2', 'BNE.B', '0x402', 'CONDITIONAL_JUMP', (0x402,))
+        self.decoded[0x410] = instruction(0x410, '4e75', 'RTS', flow='TERMINATOR')
+        self.assertFalse(self.validate())
+
+    def test_rooted_trap_argument_cannot_be_another_handler(self):
+        self.known[0x400] = self.decoded[0x400]
+        self.assertFalse(self.validate(address=0x402))
+
+    def test_inline_continuation_can_join_rooted_tail(self):
+        # The fourth candidate instruction is a TRAP immediately before a
+        # rooted continuation, so its consumed data must not be decoded.
+        self.decoded = {
+            0x400: instruction(0x400, '7001', 'MOVEQ', '0x1|D0'),
+            0x402: instruction(0x402, '4a40', 'TST.W', 'D0w'),
+            0x404: instruction(0x404, '4eb900000500', 'JSR', '0x500.l', 'UNCONDITIONAL_CALL', (0x500,)),
+            0x40A: instruction(0x40A, '4e45', 'TRAP', '0x5', 'CALL_TERMINATOR'),
+        }
+        self.known[0x40E] = instruction(0x40E, '4e75', 'RTS', flow='TERMINATOR')
+        self.assertTrue(self.validate())
+
+
 if __name__ == '__main__':
     unittest.main()

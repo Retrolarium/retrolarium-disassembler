@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from array import array
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+import sys
 from typing import Callable
 
 from .facts import InstructionFact
@@ -294,40 +297,77 @@ def _relative_candidates(
     referenced = _referenced_addresses(facts)
     indexed_word_reads = _indexed_word_read_addresses(facts)
     candidates: list[PointerCandidate] = []
+    origin = image.header.rom_start
+    rom_end = image.actual_rom_end
+    words = array("h", image.data[:len(image.data) & ~1])
+    if sys.byteorder != "big":
+        words.byteswap()
+    code_starts = sorted(instruction_starts)
+    schema_id = f"megadrive.s16be.target-{base_policy}"
+    entry_relative = base_policy != "table_base"
+    if entry_relative:
+        # These targets depend on the entry address, not on the table start.
+        # Index the valid run and instruction-hit count once, so overlapping
+        # 64-word windows do not decode or allocate the same words repeatedly.
+        next_stop = array("I", [len(words)]) * (len(words) + 1)
+        suffix_hits = array("I", [0]) * (len(words) + 1)
+        for index in range(len(words) - 1, -1, -1):
+            offset = index * 2
+            target = origin + offset + words[index]
+            valid = (offset not in occupied and offset + 1 not in occupied
+                     and origin <= target <= rom_end and not target & 1)
+            next_stop[index] = next_stop[index + 1] if valid else index
+            suffix_hits[index] = suffix_hits[index + 1] + (target in instruction_starts)
+        reference_offsets = sorted(address - origin for address in referenced
+                                   if not (address - origin) & 1)
     for start in range(0x200, max(0x200, len(image.data) - 5), 2):
-        entries: list[PointerEntry] = []
-        offset = start
-        while offset + 2 <= len(image.data) and len(entries) < MAX_ENTRIES:
-            if offset in occupied or offset + 1 in occupied:
-                break
-            if entries and image.header.rom_start + offset in referenced:
-                break
-            raw = int.from_bytes(image.data[offset:offset + 2], "big")
-            signed = int.from_bytes(image.data[offset:offset + 2], "big", signed=True)
-            if base_policy == "table_base":
-                base = image.header.rom_start + start
-            else:
-                base = image.header.rom_start + offset
-            target = base + signed
-            if not _mapped(image, target):
-                break
-            entries.append(
-                PointerEntry(
-                    physical_offset=offset,
-                    logical_address=image.header.rom_start + offset,
-                    raw_value=raw,
-                    target=target,
-                    base_address=base,
-                )
-            )
-            offset += 2
-        if len(entries) < MIN_ENTRIES:
+        logical_start = origin + start
+        is_referenced = logical_start in referenced
+        if not is_referenced:
+            # _evaluate drops an unreferenced window without >=75% code
+            # targets. No signed word can reach outside this inclusive range.
+            rightmost = logical_start + 0x7FFF
+            if entry_relative:
+                rightmost += 2 * (MAX_ENTRIES - 1)
+            nearest = bisect_left(code_starts, logical_start - 0x8000)
+            if nearest == len(code_starts) or code_starts[nearest] > rightmost:
+                continue
+        first = start // 2
+        if entry_relative:
+            last = min(first + MAX_ENTRIES, next_stop[first])
+            boundary = bisect_right(reference_offsets, start)
+            if boundary < len(reference_offsets):
+                last = min(last, reference_offsets[boundary] // 2)
+            target_hits = suffix_hits[first] - suffix_hits[last]
+        else:
+            last = first
+            target_hits = 0
+            while last < min(first + MAX_ENTRIES, len(words)):
+                offset = last * 2
+                if offset in occupied or offset + 1 in occupied:
+                    break
+                if last != first and origin + offset in referenced:
+                    break
+                target = logical_start + words[last]
+                if not origin <= target <= rom_end or target & 1:
+                    break
+                target_hits += target in instruction_starts
+                last += 1
+        count = last - first
+        if count < MIN_ENTRIES or not is_referenced and target_hits * 4 < count * 3:
             continue
-        schema_id = f"megadrive.s16be.target-{base_policy}"
+        # Materialize only windows which survive _evaluate's existing filter.
+        entries = tuple(PointerEntry(
+            physical_offset=index * 2,
+            logical_address=origin + index * 2,
+            raw_value=words[index] & 0xFFFF,
+            target=(origin + index * 2 if entry_relative else logical_start) + words[index],
+            base_address=origin + index * 2 if entry_relative else logical_start,
+        ) for index in range(first, last))
         candidate = _evaluate(
             image,
             schema_id,
-            tuple(entries),
+            entries,
             2,
             interiors,
             instruction_starts,
@@ -707,6 +747,7 @@ class _DispatchTable:
     call_mnemonic: str
     seed_kind: str = "indexed_pointer_table_target"
     seed_confidence: str = "high"
+    excluded_targets: frozenset[int] = frozenset()
 
 
 _ADDRESS_REGISTER = re.compile(r"\b(?:A[0-7]|SP)\b", re.I)
@@ -759,6 +800,28 @@ def _absolute_referenced_addresses(
                 continue
             addresses.add(reference.address)
     return addresses
+
+
+def _weak_absolute_lea_boundaries(facts: dict[int, InstructionFact]) -> set[int]:
+    """Boundaries named only by LEA values without a proved data read.
+
+    These remain boundaries globally. A PC word dispatcher may supersede one
+    only after independently proving its complete table and a handler CFG.
+    """
+    from .m68k_abstract import _register_use
+
+    by_address = {fact.cpu_address: fact for fact in facts.values()}
+    strong = {}
+    for key, fact in facts.items():
+        operands = fact.operands.split("|")
+        if (fact.mnemonic.upper() == "LEA" and len(operands) == 2
+                and re.fullmatch(r"\(-?0x[0-9a-f]+\)\.[wl]", operands[0], re.I)
+                and re.fullmatch(r"A[0-6]", operands[1], re.I)
+                and _register_use(by_address, fact.cpu_address + fact.length,
+                                  operands[1].upper()) != "data"):
+            continue
+        strong[key] = fact
+    return _absolute_referenced_addresses(facts) - _absolute_referenced_addresses(strong)
 
 
 def _index_register_from_data_register(
@@ -1025,7 +1088,8 @@ def discover_dispatch_table_seeds(
              *discover_lea_indexed_call_seeds(image, facts),
              *discover_trap_relative_dispatch_seeds(image, facts)]
     for table in (*_dispatch_tables(image, facts), *_word_dispatch_tables(image, facts),
-                  *_pc_word_dispatch_tables(image, facts),
+                  *_pc_word_dispatch_tables(image, facts, handler_validator=handler_validator,
+                                            skip_conflicting_targets=True),
                   *_object_callback_tables(image, facts)):
         candidate = table.candidate
         evidence = (
@@ -1034,6 +1098,8 @@ def discover_dispatch_table_seeds(
             f"0x{table.load_address:06X} and {table.call_mnemonic} at "
             f"0x{table.call_address:06X}"
         )
+        evidence += "".join(f"; {item}" for item in candidate.evidence
+                            if item.startswith("complete_cfg_witness_at_"))
         seeds.extend(
             DecoderSeed(
                 address=entry.target,
@@ -1043,6 +1109,7 @@ def discover_dispatch_table_seeds(
                 source_address=table.load_address,
             )
             for entry in candidate.entries
+            if entry.target not in table.excluded_targets
         )
     # These readers are also used by CD overlays. Cartridge analysis must
     # receive the same proven register-index and nested-table discoveries.
@@ -1291,13 +1358,16 @@ def _word_dispatch_tables(
 
 
 def _pc_word_dispatch_tables(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
+    image: MegaDriveImage, facts: dict[int, InstructionFact],
+    *, handler_validator: Callable[[int], bool] | None = None,
+    skip_conflicting_targets: bool = False,
 ) -> tuple[_DispatchTable, ...]:
     """Recover signed offsets loaded from a table then used by PC-indexed JMP/JSR."""
     from .m68k_abstract import _register_list
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     boundaries = _absolute_referenced_addresses(facts)
+    weak_boundaries = None
     rom_start, data = image.header.rom_start, image.data
     tables = {}
     for load in facts.values():
@@ -1343,23 +1413,76 @@ def _pc_word_dispatch_tables(
                 or start + 2 * MIN_DISPATCH_ENTRIES > len(data)):
             continue
         entries = []
+        strict_entries = None
+        before_conflict = None
+        excluded_targets = set()
+        witness = None
+        suffix_witnesses = ()
         forward_code_start = min(len(data), start + 2 * MAX_DISPATCH_ENTRIES)
         for offset in range(start, forward_code_start - 1, 2):
             if (offset + 2 > forward_code_start
-                    or offset in occupied or offset + 1 in occupied
-                    or entries and rom_start + offset in boundaries):
+                    or offset in occupied or offset + 1 in occupied):
                 break
+            if entries and rom_start + offset in boundaries:
+                if handler_validator is None:
+                    break
+                if weak_boundaries is None:
+                    weak_boundaries = _weak_absolute_lea_boundaries(facts)
+                if rom_start + offset not in weak_boundaries:
+                    break
+                if strict_entries is None:
+                    strict_entries = list(entries)
             raw = int.from_bytes(data[offset:offset + 2], "big")
             target = (table + (raw - 0x10000 if raw & 0x8000 else raw)) & 0xFFFFFF
             physical = target - rom_start
             if (not _mapped(image, target) or physical < 0x200
-                    or physical + 2 > len(data) or physical in interiors
+                    or physical + 2 > len(data)
                     or start <= physical < offset + 2
                     or data[physical:physical + 2] in {b"\x00\x00", b"\xff\xff"}):
                 break
+            if physical in interiors:
+                if not skip_conflicting_targets:
+                    break
+                if before_conflict is None:
+                    before_conflict = list(entries)
+                excluded_targets.add(target)
             entries.append(PointerEntry(offset, rom_start + offset, raw, target, table))
             if physical >= start:
                 forward_code_start = min(forward_code_start, physical)
+        if strict_entries is not None:
+            # A weak LEA annotation is not negative evidence of a pointer.
+            # Supersede it only locally: the table must finish exactly at its
+            # first forward handler, and a rooted-code-connected complete CFG
+            # must independently establish at least one speculative handler.
+            end = start + 2 * len(entries)
+            if (end == forward_code_start
+                    and rom_start + end in {entry.target for entry in entries}):
+                witness = next((entry.target for entry in entries
+                                if handler_validator(entry.target)), None)
+            if witness is None:
+                entries = strict_entries
+        if before_conflict is not None:
+            end = start + 2 * len(entries)
+            # A conflict at one handler must not silently shorten a bounded
+            # array. Keep its slot for geometry, but never seed that address.
+            # A decoded forward handler bounds the scan, but adjacent data can
+            # still imitate offsets before it. Require an independent complete
+            # CFG for each new suffix target; a valid neighbour is not proof.
+            if not (end == forward_code_start and rom_start + end in instruction_starts
+                    and rom_start + end in {entry.target for entry in entries}):
+                entries = before_conflict if len(before_conflict) < len(entries) else entries
+                excluded_targets.clear()
+            else:
+                suffix_targets = ({entry.target for entry in entries}
+                                  - {entry.target for entry in before_conflict}
+                                  - excluded_targets)
+                suffix_witnesses = tuple(sorted(target for target in suffix_targets
+                    if handler_validator is not None and handler_validator(target)))
+                if suffix_witnesses:
+                    excluded_targets.update(suffix_targets - set(suffix_witnesses))
+                else:
+                    entries = before_conflict if len(before_conflict) < len(entries) else entries
+                    excluded_targets.clear()
         if len(entries) < MIN_DISPATCH_ENTRIES:
             continue
         decoded = sum(entry.target in instruction_starts for entry in entries)
@@ -1375,12 +1498,15 @@ def _pc_word_dispatch_tables(
                 evidence=(f"indexed_move_w_at_{load.cpu_address:06X}",
                           f"{call.mnemonic.lower()}_pc_indexed_at_{call.cpu_address:06X}",
                           "same_pc_relative_table_base_and_offset_register",
-                          f"entry_count={len(entries)}", f"instruction_targets={decoded}"),
+                          f"entry_count={len(entries)}", f"instruction_targets={decoded}")
+                         + ((f"complete_cfg_witness_at_{witness:06X}",) if witness is not None else ())
+                         + tuple(f"complete_cfg_witness_at_{target:06X}" for target in suffix_witnesses),
                 contradictions=(),
             ),
             load_address=load.cpu_address, call_address=call.cpu_address,
             call_mnemonic=call.mnemonic.upper(),
             seed_kind="pc_word_dispatch", seed_confidence="proven",
+            excluded_targets=frozenset(excluded_targets),
         )
     return tuple(tables[address] for address in sorted(tables))
 

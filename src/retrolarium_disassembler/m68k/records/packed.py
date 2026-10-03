@@ -135,7 +135,10 @@ def _complete_cfg(
             if argument_bytes & occupied:
                 return {}
             occupied.update(argument_bytes)
-            edges.add(inline.continuation)
+            if inline.continuation in known:
+                exits.add(address)
+            else:
+                edges.add(inline.continuation)
         elif fact.mnemonic.upper() in {"RTS", "RTE", "RTR"}:
             exits.add(address)
         elif flow in {"UNCONDITIONAL_JUMP", "CONDITIONAL_JUMP"}:
