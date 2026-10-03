@@ -86,13 +86,15 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
         for edge in trusted.interpretation.indirect_edges:
             if edge.confidence == "proven":
                 candidates[edge.target_address] = edge.evidence
-        for seed in (*discover_dispatch_table_seeds(image, trusted.facts, handler_validator=handler_validator),
+        for seed in (*discover_dispatch_table_seeds(image, trusted.facts, handler_validator=handler_validator,
+                                                    entrypoints=trusted.roots),
                      *discover_register_indexed_dispatch_seeds(image, trusted.facts),
                      *discover_nested_word_dispatch_seeds(image, trusted.facts),
                      *discover_added_index_dispatch_seeds(image, trusted.facts)):
             candidates[seed.address] = seed.evidence
         tables = {}
-        for seed in discover_dispatch_table_seeds(image, facts, handler_validator=handler_validator):
+        for seed in discover_dispatch_table_seeds(image, facts, handler_validator=handler_validator,
+                                                  entrypoints=trusted.roots):
             tables.setdefault(seed.source_address, []).append(seed)
         for site, seeds in tables.items():
             if site not in trusted.facts and can_bootstrap_dispatch_seeds(seeds, facts.keys()):

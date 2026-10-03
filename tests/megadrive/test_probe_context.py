@@ -42,6 +42,8 @@ class PassProbeContextTests(unittest.TestCase):
             self.assertFalse(validator(0x300))
             self.assertFalse(validator(0x302))
             self.assertEqual((1, 1, 1), (load.call_count, detect.call_count, z80.call_count))
+            self.assertEqual(((0x600, 0x608),), context.z80_ranges)
+            self.assertEqual(1, z80.call_count)
             self.assertEqual(3, len(calls))
             self.assertTrue(all(facts is context.decoded for facts, _ in calls))
             self.assertIs(context.decoded[0x202], decoded[0x202])
@@ -53,6 +55,26 @@ class PassProbeContextTests(unittest.TestCase):
             pipeline._discover_unused_code(image, later.trusted_facts, decoded, artifacts, later)
             self.assertEqual((2, 2, 2), (load.call_count, detect.call_count, z80.call_count))
             self.assertIsNot(context.decoded, later.decoded)
+
+    def test_cursor_callbacks_receive_logical_protection_and_only_trusted_consumers(self):
+        image = SimpleNamespace(header=SimpleNamespace(rom_start=0x1000))
+        trusted, decoded = {0x200: object()}, {0x202: object()}
+        context = SimpleNamespace(protected=((0x400, 0x408), (0x600, 0x608)),
+                                  z80_ranges=((0x600, 0x608),))
+        with patch.object(pipeline, 'discover_bytecode_cursor_seeds', return_value=()) as discover:
+            pipeline._discover_cursor_callbacks(image, trusted, decoded, object(), context)
+        self.assertIs(discover.call_args.args[1], decoded)
+        self.assertIs(discover.call_args.kwargs['execution_facts'], trusted)
+        self.assertEqual(((0x1400, 0x1408), (0x1600, 0x1608)),
+                         discover.call_args.kwargs['protected_ranges'])
+        self.assertEqual(((0x1600, 0x1608),),
+                         discover.call_args.kwargs['protected_stream_ranges'])
+        with patch.object(pipeline, 'discover_tail_allocator_callback_seeds', return_value=()) as discover:
+            pipeline._discover_tail_callbacks(image, trusted, decoded, object(), context)
+        self.assertIs(discover.call_args.args[1], decoded)
+        self.assertIs(discover.call_args.kwargs['execution_facts'], trusted)
+        self.assertEqual(((0x1400, 0x1408), (0x1600, 0x1608)),
+                         discover.call_args.kwargs['protected_ranges'])
 
 
 if __name__ == '__main__':

@@ -26,6 +26,12 @@ class _StopAfterAbstractAnalysis(Exception):
 
 class MegaDrivePipelineSeedTests(unittest.TestCase):
     def setUp(self):
+        cursor = patch.object(pipeline, "_discover_cursor_callbacks", return_value=())
+        cursor.start()
+        self.addCleanup(cursor.stop)
+        tail = patch.object(pipeline, "_discover_tail_callbacks", return_value=())
+        tail.start()
+        self.addCleanup(tail.stop)
         probe = patch.object(pipeline, "_discover_unused_code", return_value=((), ()))
         probe.start()
         self.addCleanup(probe.stop)

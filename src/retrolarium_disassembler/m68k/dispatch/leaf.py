@@ -119,19 +119,22 @@ def _inline_body(by_address, ends, lea):
 
 def discover_leaf_word_dispatch_seeds(
     image: MegaDriveImage, facts: dict[int, InstructionFact],
-    *, handler_validator: Callable[[int], bool] | None = None,
+    *, handler_validator: Callable[[int], bool] | None = None, entrypoints=(),
 ) -> tuple[DecoderSeed, ...]:
     """LEA / direct transfer to a proven shared table dispatcher.
 
     The executed leaf proves slots are data, even if the backend decoded them.
     Targets cannot overlap instructions. Arrays stop at explicit data references
-    or the first forward handler. An array ending exactly at its first handler
-    is bounded by that handler; other layouts need an existing code witness.
+    or the first forward handler. Those bounds only constrain the scan: adjacent
+    data can still look like offsets, so every unknown target needs its own CFG
+    witness rather than inheriting validity from one decoded neighbour.
     """
     by_address = {f.cpu_address: f for f in facts.values()}
     ends = {f.cpu_address + f.length: f for f in facts.values()}
     origin, data = image.header.rom_start, image.data
     metadata = None
+    masks_before = None
+    validated = {}
     schemas = {}
     result = {}
     for lea in facts.values():
@@ -163,16 +166,33 @@ def discover_leaf_word_dispatch_seeds(
             table = int(match[1], 0) & 0xFFFFFF
         if table is None:
             continue
+        masks = None
+        if len(body) == 3:
+            if masks_before is None:
+                from .m68k_reaching_dispatch import make_word_index_mask_reader
+                masks_before = make_word_index_mask_reader(facts, entrypoints=(
+                    *entrypoints, *(vector.address for vector in image.vector_table[1:])))
+            register = body[0].operands.split('|')[0][:-1].lower()
+            # This leaf entry consumes the caller's index directly. For a
+            # shared dispatcher inspect its caller, not every unrelated caller
+            # of that same leaf. Longer schemas replace Dn with a memory read.
+            masks = masks_before(body[0].cpu_address if inline else caller.cpu_address, register)
         if metadata is None:
             _, interiors, starts = _instruction_sets(facts)
             metadata = interiors, starts, _absolute_referenced_addresses(facts)
         interiors, starts, boundaries = metadata
         start, at = table - origin, table - origin
         limit = min(len(data), start + 512)
+        if masks:
+            limit = min(limit, start + 2 * (max(masks) + 1))
         targets, slots = [], 0
         while 0x200 <= at and at + 2 <= limit and not at & 1:
-            if slots and origin + at in boundaries:
+            if (slots and origin + at in boundaries) or origin + at + 1 in boundaries:
                 break
+            index = (at - start) // 2
+            if masks and not any(index & ~mask == 0 for mask in masks):
+                at += 2
+                continue
             value = int.from_bytes(data[at:at + 2], 'big', signed=mode == 'signed table-relative')
             target = value if mode == 'zero-extended absolute' else table + value
             physical = target - origin
@@ -186,21 +206,24 @@ def discover_leaf_word_dispatch_seeds(
             if physical > at:
                 limit = min(limit, physical)
             at += 2
-        bounded_by_handler = at == limit and origin + limit in targets
-        witness = None
-        if slots >= 2 and not (bounded_by_handler or set(targets) & starts) and handler_validator:
-            witness = next((target for target in targets if handler_validator(target)), None)
-        if slots < 2 or not (bounded_by_handler or set(targets) & starts or witness is not None):
+        if slots < 2:
             continue
         for target in targets:
+            if target not in starts:
+                if target not in validated:
+                    validated[target] = bool(handler_validator and handler_validator(target))
+                if not validated[target]:
+                    continue
             evidence = (f'LEA table {table:06X}; word index doubled at {body[0].cpu_address:06X}; '
                         f'{body[1].mnemonic} indexed table word and {mode} '
                         f'{body[-1].mnemonic} at {body[-1].cpu_address:06X}' if inline else
                         f'LEA table {table:06X}; transfer {caller.cpu_address:06X} to leaf '
                         f'{body[0].cpu_address:06X} doubles word index and jumps via '
                         f'{mode} word in {ar}')
-            if witness is not None:
-                evidence += f'; handler {witness:06X} has a complete bounded CFG connected to rooted code'
+            if target not in starts:
+                evidence += f'; handler {target:06X} has a complete bounded CFG connected to rooted code'
+            if masks:
+                evidence += f'; word index restricted by incoming ANDI.W masks {sorted(masks)}'
             result[target] = DecoderSeed(target, 'inline_word_dispatch' if inline else 'leaf_word_dispatch',
                                         'proven', evidence, lea.cpu_address)
     return tuple(result[key] for key in sorted(result))

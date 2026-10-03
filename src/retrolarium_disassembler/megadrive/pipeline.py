@@ -29,7 +29,11 @@ from .m68k_packed import discover_packed_orphan_closure
 from .m68k_returns import discover_returning_call_seeds
 from .m68k_register_callbacks import discover_register_callback_seeds
 from .m68k_callback_abi import discover_callback_abi_seeds
-from .m68k_constructor_records import discover_constructor_record_seeds
+from .m68k_constructor_records import (
+    discover_constructor_record_seeds, discover_tail_allocator_callback_seeds,
+)
+from .m68k_reaching_dispatch import discover_reaching_word_dispatch_seeds
+from .m68k_bytecode_cursor import discover_bytecode_cursor_seeds
 from .m68k_ram_dispatch import discover_inline_trap_calls
 from .m68k_inline_calls import discover_inline_subroutine_calls
 from .m68k_inline_operands import InlineOperandProver, discover_inline_operand_calls
@@ -196,7 +200,7 @@ class _PassProbeContext:
     def __init__(self, image, trusted_facts, facts, artifacts):
         self.image, self.trusted_facts = image, trusted_facts
         self.facts, self.artifacts = facts, artifacts
-        self._decoded = self._protected = None
+        self._decoded = self._protected = self._z80_ranges = None
 
     @property
     def decoded(self):
@@ -207,14 +211,20 @@ class _PassProbeContext:
         return self._decoded
 
     @property
+    def z80_ranges(self):
+        if self._z80_ranges is None:
+            self._z80_ranges = tuple((copy.source_start, copy.source_end + 1)
+                                    for copy in detect_z80_copies(self.image, self.trusted_facts))
+        return self._z80_ranges
+
+    @property
     def protected(self):
         if self._protected is None:
             self._protected = tuple(
                 (p.physical_start, p.physical_end)
                 for p in detect_pointer_candidates(self.image, self.trusted_facts)
                 if p.status == "accepted"
-            ) + tuple((p.source_start, p.source_end + 1)
-                      for p in detect_z80_copies(self.image, self.trusted_facts))
+            ) + self.z80_ranges
         return self._protected
 
 
@@ -255,6 +265,28 @@ def _dispatch_handler_validator(image, trusted_facts, facts, artifacts, context=
         return validator(address)
 
     return validate
+
+
+def _discover_cursor_callbacks(image, trusted_facts, facts, artifacts, context=None):
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
+    origin = image.header.rom_start
+    return discover_bytecode_cursor_seeds(
+        image, facts, execution_facts=trusted_facts,
+        protected_ranges=tuple((origin + start, origin + end)
+                               for start, end in context.protected),
+        protected_stream_ranges=tuple((origin + start, origin + end)
+                                      for start, end in context.z80_ranges),
+    )
+
+
+def _discover_tail_callbacks(image, trusted_facts, facts, artifacts, context=None):
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
+    origin = image.header.rom_start
+    return discover_tail_allocator_callback_seeds(
+        image, facts, execution_facts=trusted_facts,
+        protected_ranges=tuple((origin + start, origin + end)
+                               for start, end in context.protected),
+    )
 
 
 def analyze_megadrive(
@@ -350,7 +382,14 @@ def analyze_megadrive(
             unused_candidates.setdefault(candidate.address, candidate)
         handler_validator = _dispatch_handler_validator(image, trusted_facts, facts, artifacts, probe_context)
         dispatch_seeds = list(discover_dispatch_table_seeds(
-            image, trusted_facts, handler_validator=handler_validator))
+            image, trusted_facts, handler_validator=handler_validator, entrypoints=trusted.roots))
+        # Reaching definitions and interpreter models require an executed
+        # consumer; backend islands cannot bootstrap these two recognizers.
+        dispatch_seeds.extend(discover_reaching_word_dispatch_seeds(
+            image, trusted_facts, entrypoints=trusted.roots,
+            handler_validator=handler_validator))
+        dispatch_seeds.extend(_discover_cursor_callbacks(
+            image, trusted_facts, facts, artifacts, probe_context))
         dispatch_seeds.extend(discover_ram_record_dispatch_seeds(image, trusted_facts))
         dispatch_seeds.extend(discover_word_ram_callback_seeds(
             image, facts, execution_facts=trusted_facts))
@@ -383,7 +422,8 @@ def analyze_megadrive(
         # A structurally proven dispatcher can itself be an unreachable code
         # island. Bootstrap only strong tables from backend facts, then make
         # the dispatcher a planned root on the next decoder pass.
-        raw_dispatch = discover_dispatch_table_seeds(image, facts, handler_validator=handler_validator)
+        raw_dispatch = discover_dispatch_table_seeds(
+            image, facts, handler_validator=handler_validator, entrypoints=trusted.roots)
         # Unused object code can pass a callback to a decoded allocator. Its
         # ABI is structural proof, unlike an abstract edge from unknown state;
         # the field executor must already belong to the trusted CFG.
@@ -391,6 +431,8 @@ def analyze_megadrive(
             image, facts, execution_facts=trusted_facts))
         dispatch_seeds.extend(discover_constructor_record_seeds(
             image, facts, execution_facts=trusted_facts))
+        dispatch_seeds.extend(_discover_tail_callbacks(
+            image, trusted_facts, facts, artifacts, probe_context))
         decoded_starts = {fact.cpu_address for fact in facts.values()}
         trusted_starts = {fact.cpu_address for fact in trusted_facts.values()}
         by_dispatch: dict[int, list[DecoderSeed]] = {}

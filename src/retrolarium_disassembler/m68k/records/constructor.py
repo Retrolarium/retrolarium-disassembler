@@ -21,6 +21,29 @@ from .megadrive_pointers import _absolute_referenced_addresses, _instruction_set
 from .megadrive_symbols import pc_displacement_target
 
 
+def _nonzero_immediate_word_division(fact):
+    """Recognize the exact 68000 DIV{U,S}.W #nonzero,Dn encoding.
+
+    M68000PRM 4-92/4-96: only a zero divisor raises the divide exception;
+    quotient overflow sets V and leaves the operands unchanged. Validate
+    decoded operands too, since register preservation uses their names.
+    """
+    mnemonic = fact.mnemonic.upper()
+    if mnemonic not in {'DIVU.W', 'DIVS.W'} or fact.length != 4 or len(fact.raw) != 4:
+        return False
+    opcode = int.from_bytes(fact.raw[:2], 'big')
+    expected = 0x80fc if mnemonic == 'DIVU.W' else 0x81fc
+    divisor = int.from_bytes(fact.raw[2:], 'big')
+    if opcode & 0xf1ff != expected or divisor == 0:
+        return False
+    match = re.fullmatch(r'#?(-?0X[0-9A-F]+)\|D([0-7])[WL]?', fact.operands.upper())
+    if match is None:
+        return False
+    immediate = int(match[1], 0)
+    return (-0x8000 <= immediate <= 0xffff and immediate & 0xffff == divisor
+            and int(match[2]) == (opcode >> 9) & 7)
+
+
 def _unsupported_frame_or_exception(fact):
     """Reject unsummarized exceptions and changes to the active stack bank.
 
@@ -30,8 +53,10 @@ def _unsupported_frame_or_exception(fact):
     """
     base = fact.mnemonic.upper().split('.')[0]
     operands = fact.operands.upper().split('|')
+    if base in {'DIVU', 'DIVS', 'DIVUL', 'DIVSL'}:
+        return not _nonzero_immediate_word_division(fact)
     if base in {'PEA', 'LINK', 'UNLK', 'TRAP', 'TRAPV', 'STOP', 'RESET',
-                'ILLEGAL', 'RTE', 'RTR', 'DIVU', 'DIVS', 'CHK', 'CHK2'}:
+                'ILLEGAL', 'RTE', 'RTR', 'CHK', 'CHK2'}:
         return True
     if any(re.search(r'(?<![A-Z0-9])USP(?![A-Z0-9])', operand) for operand in operands):
         return True
@@ -470,4 +495,85 @@ def discover_constructor_record_seeds(
         for target in table.targets:
             seeds.setdefault(target, DecoderSeed(target, 'constructor_record_callback',
                                                 'proven', evidence, table.read))
+    return tuple(seeds[address] for address in sorted(seeds))
+
+
+def discover_tail_allocator_callback_seeds(
+    image: MegaDriveImage, facts: dict[int, InstructionFact], *, execution_facts=None,
+    protected_ranges=(),
+) -> tuple[DecoderSeed, ...]:
+    """Follow a rooted LEA parameter through a direct allocator tail transfer.
+
+    The parameter must be stored unchanged into the exact counted RAM pool
+    and field consumed by a rooted indirect executor. No fall-through or
+    ordinary-return assumption is made for the tail transfer. Protected
+    callback ranges use logical CPU addresses.
+    """
+    if execution_facts is None:
+        return ()
+    rooted = {f.cpu_address: f for f in execution_facts.values()}
+    pools = _callback_pools(image, rooted)
+    if not pools:
+        return ()
+    fields = {field for _, field in pools}
+    # The LEA that names the callback is address construction, not a data
+    # read. Other absolute data uses still prevent promotion of the target.
+    data = _absolute_referenced_addresses({a: f for a, f in rooted.items()
+                                          if f.mnemonic.upper() != 'LEA'})
+    _, interiors, _ = _instruction_sets(facts)
+    stores_cache, pool_cache, seeds = {}, {}, {}
+    for lea in rooted.values():
+        if lea.mnemonic.upper() != 'LEA' or lea.flow_type.upper() != 'FALL_THROUGH':
+            continue
+        args = lea.operands.upper().split('|')
+        if len(args) != 2 or not re.fullmatch(r'A[0-6]', args[1]):
+            continue
+        target = pc_displacement_target(lea)
+        absolute = re.fullmatch(r'\((-?0X[0-9A-F]+)\)\.([WL])', args[0])
+        if target is None and absolute:
+            target = int(absolute[1], 0)
+            if absolute[2] == 'W':
+                target &= 0xffff
+                target = target - 0x10000 if target & 0x8000 else target
+            target &= 0xffffff
+        tail = rooted.get(lea.cpu_address + lea.length)
+        if target is None or tail is None or len(tail.flows) != 1:
+            continue
+        opcode = int.from_bytes(tail.raw[:2], 'big')
+        direct_tail = (opcode & 0xff00 == 0x6000
+                       or opcode & 0xffc0 == 0x4ec0 and opcode & 0x3f in {0x38, 0x39, 0x3a})
+        if not direct_tail or tail.flow_type.upper() not in {'UNCONDITIONAL_JUMP', 'CALL_TERMINATOR'}:
+            continue
+        physical = target - image.header.rom_start
+        if (target & 1 or physical in interiors or target in data
+                or not 0x200 <= physical <= len(image.data) - 2
+                or image.data[physical:physical+2] in {b'\x00\x00', b'\xff\xff'}
+                or any(a < target + 2 and target < b for a, b in protected_ranges)):
+            continue
+        callee = tail.flows[0] & 0xffffff
+        key = callee, args[1]
+        if key not in stores_cache:
+            stores_cache[key] = _callback_parameter_stores(rooted, callee, args[1], fields)
+        evidence = []
+        for store_address in sorted(stores_cache[key]):
+            store = rooted[store_address]
+            match = re.fullmatch(r'A[0-6]\|\((?:(-?0x[0-9a-f]+),)?(A[0-6])\)',
+                                 store.operands, re.I)
+            if match is None:
+                continue
+            field = int(match[1] or '0', 0)
+            pool_key = store_address, match[2].lower()
+            if pool_key not in pool_cache:
+                pool_cache[pool_key] = _fixed_pool_at(image, rooted, *pool_key)
+            for pool in sorted(pool_cache[pool_key]):
+                executor = pools.get((pool, field))
+                if executor is not None:
+                    evidence.append(
+                        f'unchanged {args[1]} stored at {store_address:06X}; '
+                        f'RAM pool {pool[0]:06X}, {pool[1]} slots, stride {pool[2]}, field +{field}; '
+                        f'indirect executor {executor:06X}')
+        if evidence:
+            seeds.setdefault(target, DecoderSeed(target, 'tail_allocator_callback', 'proven',
+                f'rooted LEA at {lea.cpu_address:06X}; direct tail transfer {tail.cpu_address:06X} '
+                f'to allocator {callee:06X}; ' + '; '.join(evidence), lea.cpu_address))
     return tuple(seeds[address] for address in sorted(seeds))

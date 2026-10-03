@@ -7,6 +7,8 @@ from retrolarium_kit.m68k_constructor_records import (
     discover_constructor_record_tables as discover,
     discover_constructor_record_seeds,
     _preserved_registers as preserved_registers,
+    _nonzero_immediate_word_division,
+    _unsupported_frame_or_exception,
 )
 from test_megadrive_z80 import fact
 from test_megadrive import cartridge
@@ -263,5 +265,79 @@ class ConstructorRecordTests(unittest.TestCase):
             self.assertIn('indirect executor 000416', seed.evidence)
             self.assertIn('stored at 000380', seed.evidence)
         self.assertEqual((), discover_constructor_record_seeds(image, facts))
+
+
+class ImmediateWordDivisionTests(unittest.TestCase):
+    def division(self, address=0x200, *, signed=False, register=1, divisor=8):
+        opcode = (0x81fc if signed else 0x80fc) | register << 9
+        return replace(instruction(address, 'DIVS.W' if signed else 'DIVU.W',
+                                   f'#0x{divisor:x}|D{register}', length=4),
+                       raw=opcode.to_bytes(2, 'big') + divisor.to_bytes(2, 'big'))
+
+    def test_nonzero_immediate_word_division_is_nonexceptional_for_each_destination(self):
+        for signed in (False, True):
+            for register in range(8):
+                for divisor in (1, 8, 0x7fff, 0x8000, 0xffff):
+                    item = self.division(signed=signed, register=register, divisor=divisor)
+                    with self.subTest(signed=signed, register=register, divisor=divisor):
+                        self.assertTrue(_nonzero_immediate_word_division(item))
+                        self.assertFalse(_unsupported_frame_or_exception(item))
+        negative = replace(self.division(signed=True, divisor=0xffff), operands='#-0x1|D1')
+        self.assertTrue(_nonzero_immediate_word_division(negative))
+
+    def test_zero_variable_extended_or_mismatched_encoding_remains_exceptional(self):
+        item = self.division()
+        variants = (
+            self.division(divisor=0), self.division(signed=True, divisor=0),
+            replace(item, raw=bytes.fromhex('82fc0000')),  # Text must not hide a zero divisor.
+            replace(item, operands='#0x0|D1'),
+            replace(item, operands='#0x9|D1'),
+            replace(item, operands='#0x10008|D1'),
+            replace(item, operands='#0x8|D0'),  # Preservation must clobber the encoded D1.
+            replace(item, operands='D0w|D1'),
+            replace(item, raw=bytes.fromhex('82c0'), length=2, operands='D0w|D1'),
+            replace(item, raw=bytes.fromhex('82d0'), length=2, operands='(A0)|D1'),
+            replace(item, raw=bytes.fromhex('82d00008')),
+            replace(item, mnemonic='DIVS.W'),
+            replace(item, mnemonic='DIVU.L'),
+            replace(item, mnemonic='DIVUL.L'),
+            replace(item, mnemonic='DIVSL.L'),
+            replace(item, raw=bytes.fromhex('82fc00080000'), length=6),
+            replace(item, raw=bytes.fromhex('82fc')),
+            replace(item, length=2),
+        )
+        for changed in variants:
+            with self.subTest(raw=changed.raw.hex(), mnemonic=changed.mnemonic, operands=changed.operands):
+                self.assertFalse(_nonzero_immediate_word_division(changed))
+                self.assertTrue(_unsupported_frame_or_exception(changed))
+
+    def test_destination_is_clobbered_but_unrelated_registers_and_balanced_saves_survive(self):
+        for signed in (False, True):
+            operation = self.division(signed=signed)
+            facts = {0x200: operation, 0x204: instruction(0x204, 'RTS', flow='TERMINATOR')}
+            self.assertEqual(frozenset({'a0', 'a1', 'd0'}),
+                             preserved_registers(facts, 0x200, {'a0', 'a1', 'd0', 'd1'}))
+            # Even when quotient overflow is possible, D1 is not assumed to
+            # retain its input. An explicit balanced save can preserve it.
+            saved = {
+                0x200: instruction(0x200, 'MOVEM.L', 'D1|-(SP)', length=4),
+                0x204: self.division(0x204, signed=signed),
+                0x208: instruction(0x208, 'MOVEM.L', '(SP)+|D1', length=4),
+                0x20c: instruction(0x20c, 'RTS', flow='TERMINATOR'),
+            }
+            self.assertEqual(frozenset({'a0', 'd1'}), preserved_registers(saved, 0x200, {'a0', 'd1'}))
+            facts[0x200] = replace(operation, raw=operation.raw[:2] + b'\x00\x00')
+            self.assertIsNone(preserved_registers(facts, 0x200, {'a0', 'd1'}))
+
+    def test_valid_immediate_division_can_be_crossed_by_each_constructor_walk(self):
+        image, original = fixture()
+        for address in (0x35e, 0x38a, 0x40a, 0x216):
+            facts = dict(original)
+            facts[address] = self.division(address, register=7)
+            if address == 0x38a:
+                facts[0x38e] = instruction(0x38e, 'RTS', flow='TERMINATOR')
+            with self.subTest(address=hex(address)):
+                self.assertEqual(3, len(discover_constructor_record_seeds(image, facts, execution_facts=facts)))
+
 if __name__ == '__main__':
     unittest.main()

@@ -1067,7 +1067,7 @@ def can_bootstrap_dispatch_seeds(seeds, decoded_starts) -> bool:
 
 def discover_dispatch_table_seeds(
     image: MegaDriveImage, facts: dict[int, InstructionFact],
-    *, handler_validator: Callable[[int], bool] | None = None,
+    *, handler_validator: Callable[[int], bool] | None = None, entrypoints=(),
 ) -> tuple[DecoderSeed, ...]:
     """Turn instruction-proven absolute and relative dispatch tables into seeds."""
     from .m68k_record_dispatch import discover_record_callback_seeds
@@ -1084,7 +1084,8 @@ def discover_dispatch_table_seeds(
              *discover_callback_abi_seeds(image, facts),
              *discover_ram_stub_dispatch_seeds(image, facts),
              *discover_nested_word_resolver_seeds(image, facts),
-             *discover_leaf_word_dispatch_seeds(image, facts, handler_validator=handler_validator),
+             *discover_leaf_word_dispatch_seeds(image, facts, handler_validator=handler_validator,
+                                                 entrypoints=entrypoints),
              *discover_lea_indexed_call_seeds(image, facts),
              *discover_trap_relative_dispatch_seeds(image, facts)]
     for table in (*_dispatch_tables(image, facts), *_word_dispatch_tables(image, facts),

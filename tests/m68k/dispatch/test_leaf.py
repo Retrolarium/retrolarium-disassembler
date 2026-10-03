@@ -32,6 +32,7 @@ class LeafDispatchTests(unittest.TestCase):
             self.data[target:target+2] = bytes.fromhex('4e75')
 
     def seeds(self, **kwargs):
+        kwargs.setdefault('handler_validator', lambda target: target in self.targets)
         return discover_leaf_word_dispatch_seeds(parse_megadrive(bytes(self.data)),
             {f.cpu_address: f for f in self.items}, **kwargs)
 
@@ -130,7 +131,7 @@ class LeafDispatchTests(unittest.TestCase):
         self.targets = (0x420, 0x440, 0x460, 0x480)
         self.write_table()
         self.assertFalse(self.seeds(handler_validator=lambda target: False))
-        self.assertEqual(list(self.targets), [s.address for s in self.seeds(
+        self.assertEqual([0x440], [s.address for s in self.seeds(
             handler_validator=lambda target: target == 0x440)])
 
     def test_no_table_decode_conflicts_and_signed_backward_target(self):
@@ -153,14 +154,15 @@ class LeafDispatchTests(unittest.TestCase):
             self.assertFalse(self.seeds())
             self.items[index] = old
 
-    def test_adjacent_handler_bounds_unseen_code_but_gapped_table_needs_witness(self):
+    def test_adjacent_and_gapped_tables_both_need_per_target_witnesses(self):
         self.items.pop()
+        self.assertFalse(self.seeds(handler_validator=None))
         self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
         self.targets = (0x420, 0x440, 0x460, 0x480)
         self.write_table()
-        self.assertFalse(self.seeds())
+        self.assertFalse(self.seeds(handler_validator=None))
         self.items.append(fact(0x420, 'RTS', ''))
-        self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
+        self.assertEqual([0x420], [s.address for s in self.seeds(handler_validator=None)])
 
     def test_minimum_two_entries_and_complete_bounds_required(self):
         self.data[0x402:0x404] = bytes.fromhex('ffff')
@@ -172,14 +174,12 @@ class LeafDispatchTests(unittest.TestCase):
         self.write_table()
         self.assertFalse(self.seeds(handler_validator=lambda target: False))
         seeds = self.seeds(handler_validator=lambda target: target == 0x440)
-        self.assertEqual(list(self.targets), [s.address for s in seeds])
+        self.assertEqual([0x440], [s.address for s in seeds])
         self.assertTrue(all('handler 000440 has a complete bounded CFG' in s.evidence for s in seeds))
 
-    def test_adjacent_table_does_not_request_a_speculative_handler(self):
-        def unnecessary(target):
-            self.fail('adjacent handler is already a boundary witness')
+    def test_adjacent_table_does_not_prove_an_unknown_handler(self):
         self.items.pop()
-        self.assertEqual(4, len(self.seeds(handler_validator=unnecessary)))
+        self.assertFalse(self.seeds(handler_validator=lambda target: False))
 
     def test_conditional_transfer_not_a_leaf_dispatch_call(self):
         self.items[1] = replace(self.items[1], mnemonic='BNE', flow_type='CONDITIONAL_JUMP')
@@ -224,8 +224,61 @@ class LeafDispatchTests(unittest.TestCase):
         self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
         self.items.pop()
         self.assertFalse(self.seeds(handler_validator=lambda target: False))
-        self.assertEqual(list(self.targets), [s.address for s in self.seeds(
+        self.assertEqual([0x440], [s.address for s in self.seeds(
             handler_validator=lambda target: target == 0x440)])
+
+    def test_first_forward_handler_does_not_prove_adjacent_data_offsets(self):
+        self.targets = (0x406, 0x420, 0x440)
+        self.write_table()
+        self.items = self.items[:-1]
+        # Only the first two words belong to the real table. The third is
+        # adjacent data before the earliest handler, so exact geometry alone
+        # must not seed it even when another target is independently valid.
+        seeds = self.seeds(handler_validator=lambda target: target in {0x406, 0x420})
+        self.assertEqual([0x406, 0x420], [s.address for s in seeds])
+
+    def test_boundary_inside_word_prevents_cross_object_slot(self):
+        from retrolarium_kit.facts import InstructionReference
+        self.items.append(replace(fact(0x500, 'LEA', '(0x403).l|A2'),
+            references=(InstructionReference(0x403, 'DATA', 0),)))
+        self.assertFalse(self.seeds())
+
+    def masked_inline_items(self, mask):
+        return [replace(fact(0x200, 'ANDI.W', f'#0x{mask:x}|D2w'), length=4),
+                replace(fact(0x204, 'LEA', '(0x400).l|A1'), length=6),
+                fact(0x20A, 'ADD.W', 'D2w|D2w'),
+                replace(fact(0x20C, 'MOVE.W', '(0x0,A1,D2w*0x1)|D2w'), length=4),
+                replace(fact(0x210, 'JMP', '(0x0,A1,D2w*0x1)'), length=4,
+                        flow_type='COMPUTED_JUMP')]
+
+    def test_mask_caps_table_even_when_adjacent_targets_have_valid_cfgs(self):
+        self.items = self.masked_inline_items(1)
+        self.assertEqual(list(self.targets[:2]), [s.address for s in self.seeds()])
+
+    def test_noncontiguous_mask_skips_unreachable_slots(self):
+        self.items = self.masked_inline_items(2)
+        self.assertEqual([self.targets[0], self.targets[2]], [s.address for s in self.seeds()])
+
+    def test_entry_bypassing_mask_cannot_reuse_its_bound(self):
+        self.items = self.masked_inline_items(1)
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds(entrypoints=(0x204,))])
+        self.items.append(replace(fact(0x240, 'BRA.W', '0x204', flows=(0x204,)),
+                                  flow_type='UNCONDITIONAL_JUMP'))
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
+
+    def test_shared_leaf_uses_call_site_mask_for_caller_supplied_index(self):
+        self.items = self.masked_inline_items(1)[:2] + [
+            replace(fact(0x20A, 'JMP', '0x300', flows=(0x300,)), flow_type='UNCONDITIONAL_JUMP'),
+            fact(0x300, 'ADD.W', 'D2w|D2w'),
+            fact(0x302, 'MOVE.W', '(0x0,A1,D2w*0x1)|D2w'),
+            replace(fact(0x304, 'JMP', '(0x0,A1,D2w*0x1)'), flow_type='COMPUTED_JUMP')]
+        self.assertEqual(list(self.targets[:2]), [s.address for s in self.seeds()])
+
+    def test_leaf_memory_read_replaces_call_site_masked_index(self):
+        body = self.items[2:]
+        self.items = [replace(fact(0x1FC, 'ANDI.W', '#0x1|D0w'), length=4),
+                      *self.items[:2], *body]
+        self.assertEqual(list(self.targets), [s.address for s in self.seeds()])
 
     def test_inline_indexed_form_rejects_unproven_arithmetic_and_bases(self):
         self.items = self.inline_indexed_items()
