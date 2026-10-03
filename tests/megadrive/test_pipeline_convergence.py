@@ -127,6 +127,8 @@ class _M68kHarness:
         self.initial_seeds = tuple(initial_seeds)
         self.stop_after_loop = stop_after_loop
         self.plans_seen: list[str] = []
+        self.probe_plans_seen: list[str] = []
+        self.repair_plans_seen: list[str] = []
         # Entrypoints handed to the trusted interpreter on each decoder pass.
         self.interpreter_entrypoints: list[set[int]] = []
         self.trusted_calls = 0
@@ -140,10 +142,13 @@ class _M68kHarness:
         return self.passes[min(index, len(self.passes) - 1)]
 
     def run_megadrive_analysis(
-        self, analysis_input, program_root, ghidra_home, scripts, *, seed_plan, probe_orphans=False
+        self, analysis_input, program_root, ghidra_home, scripts, *, seed_plan, probe_orphans=False,
+        probe_requests=None, fallthrough_repairs=None,
     ):
         # Snapshot what the decoder would read at invocation time.
         self.plans_seen.append(seed_plan.read_text(encoding="ascii"))
+        self.probe_plans_seen.append(probe_requests.read_text(encoding="ascii") if probe_requests else "")
+        self.repair_plans_seen.append(fallthrough_repairs.read_text(encoding="ascii") if fallthrough_repairs else "")
         return _artifacts(program_root)
 
     def interpret_trusted_cfg(self, image, facts, *, entrypoints):
@@ -252,6 +257,7 @@ class _M68kHarness:
             "discover_ram_record_dispatch_seeds": lambda *args: (),
             "discover_word_ram_callback_seeds": self.word_callbacks,
             "_discover_packed_code": lambda *args: (),
+            "_discover_fallthrough_repairs": lambda *args: (),
             "_discover_unused_code": lambda *args: (tuple(self._current().get("unused", ())), ()),
             "load_megadrive": lambda rom: _image(),
             "toolchain_status": lambda home: None,

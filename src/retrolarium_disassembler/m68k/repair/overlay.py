@@ -3,8 +3,9 @@
 The address-indexed view is internal to the existing abstract interpreter;
 only the original module bytes are imported into the decoder or emitted.
 """
-from dataclasses import replace
+from dataclasses import asdict, replace
 import csv
+import hashlib
 import json
 from pathlib import Path
 
@@ -20,6 +21,8 @@ from .megadrive_pointers import (discover_dispatch_table_seeds, can_bootstrap_di
                                 detect_pointer_candidates)
 from .m68k_unused import discover_validated_unused_candidates
 from .m68k_dispatch_witness import make_dispatch_handler_validator
+from .m68k_probe_requests import M68kProbeRequests
+from .m68k_fallthrough_repair import M68kFallthroughRepairs
 from .megadrive_emit import _asm_instruction
 from .m68k_seeds import discover_dense_branch_table_seeds, discover_indexed_branch_table_seeds
 from .m68k_indexed_dispatch import (discover_register_indexed_dispatch_seeds,
@@ -45,11 +48,34 @@ def address_view(data: bytes, base: int, entries: tuple[int, ...]) -> MegaDriveI
                        M68kVector(i + 1, "overlay_entry", e, e) for i, e in enumerate(entries)))
 
 
+def _normalize_bus_targets(facts):
+    """Raw and pseudo decoders may sign-extend absolute .w operands."""
+    return {a: replace(f, flows=tuple(t & 0xFFFFFF for t in f.flows),
+                       references=tuple(replace(r, address=r.address & 0xFFFFFF)
+                                        for r in f.references)) for a, f in facts.items()}
+
+
 def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Path,
                     *, base_address: int, entry_addresses: tuple[int, ...],
                     max_passes: int = 32) -> GhidraArtifacts:
     data = path.read_bytes()
     image = address_view(data, base_address, entry_addresses)
+    workspace.mkdir(parents=True, exist_ok=True)
+    probe_plan = workspace / "decode-probe-requests.tsv"
+    probe_plan.write_text("", encoding="ascii")
+    probe_requests = M68kProbeRequests(image, minimum_address=base_address)
+    fallthrough_repairs = M68kFallthroughRepairs(image, minimum_address=base_address)
+    repair_plan = workspace / "fallthrough-repairs.tsv"
+    repair_plan.write_text("", encoding="ascii")
+    seen_probe_facts: set[int] = set()
+
+    def request_decode(address, source_address=None, reason="structural handler decode"):
+        # The internal image has an FF prefix; only real module bytes may be
+        # requested from Ghidra's CD_MODULE block.
+        if not isinstance(address, int) or not base_address <= address < base_address + len(data) - 1:
+            return False
+        return probe_requests.request(address, source_address, reason)
+
     planned = set(entry_addresses)
     planned.update(s.address for s in (
         *discover_dense_branch_table_seeds(image, scan_start=base_address),
@@ -60,23 +86,32 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
     for index in range(max_passes):
         artifacts = run_m68k_overlay_analysis(
             path, workspace, ghidra_home, scripts, base_address=base_address,
-            entry_addresses=tuple(sorted(planned)), probe_orphans=True)
+            entry_addresses=tuple(sorted(planned)), probe_orphans=True,
+            probe_requests=probe_plan, fallthrough_repairs=repair_plan)
         raw = _load_ghidra_facts(artifacts.facts, image.data, lambda a: a,
                                bank=0, address_label="overlay", expected_block="CD_MODULE")
         # The 68000 exposes only 24 address bits, including absolute .w targets.
-        facts = {a: replace(f, flows=tuple(t & 0xFFFFFF for t in f.flows),
-                            references=tuple(replace(r, address=r.address & 0xFFFFFF)
-                                             for r in f.references)) for a, f in raw.items()}
+        facts = _normalize_bus_targets(raw)
         trusted = interpret_trusted_cfg(image, facts, entrypoints=planned)
+        probe_requests.update_known(trusted.facts)
+        previous_requests = set(probe_requests.requests)
         probes = _load_ghidra_facts(artifacts.orphan_facts, image.data, lambda a: a,
                                   bank=0, address_label="overlay", expected_block="CD_MODULE",
                                   allow_empty=True, allow_overlaps=True)
-        handler_validator = make_dispatch_handler_validator(
-            image, trusted.facts, {**probes, **facts},
-            protected_ranges=tuple((p.physical_start, p.physical_end)
-                                   for p in detect_pointer_candidates(image, trusted.facts)
-                                   if p.status == "accepted"),
-            render_instruction=_asm_instruction)
+        probes = _normalize_bus_targets(probes)
+        protected_ranges = tuple((p.physical_start, p.physical_end)
+                                 for p in detect_pointer_candidates(image, trusted.facts)
+                                 if p.status == "accepted")
+        validate_handler = make_dispatch_handler_validator(
+            image, trusted.facts, {**probes, **facts}, protected_ranges=protected_ranges,
+            render_instruction=_asm_instruction, decode_request=request_decode)
+
+        def handler_validator(address):
+            accepted = validate_handler(address)
+            if not accepted:
+                request_decode(address, address, "structural handler hypothesis")
+            return accepted
+
         candidates: dict[int, str] = {}
         for fact in trusted.facts.values():
             if fact.flow_type.upper() in {"COMPUTED_JUMP", "COMPUTED_CALL"} and len(fact.flows) > MAX_BACKEND_COMPUTED_FLOW_TARGETS:
@@ -113,12 +148,46 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
         discovered = {a: why for a, why in candidates.items()
                       if base_address <= a < base_address + len(data) - 1 and not a & 1
                       and a not in planned and a not in trusted.facts}
+        new_repairs = fallthrough_repairs.discover(
+            facts, trusted.facts, {**probes, **facts}, protected_ranges=protected_ranges,
+            planned_roots=planned | set(discovered), decode_request=request_decode)
+        repair_plan.write_text(fallthrough_repairs.plan_text(), encoding="ascii", newline="\n")
+        (workspace / "fallthrough-repairs.json").write_text(json.dumps({
+            "schema": "retrolarium.m68k.fallthrough-repairs", "schema_version": 1,
+            "input_sha256": hashlib.sha256(data).hexdigest(), "load_base": base_address,
+            "candidate_repair_complete": not fallthrough_repairs.deferred,
+            "repairs": [asdict(repair) for _, repair in sorted(fallthrough_repairs.repairs.items())],
+            "deferred_addresses": sorted(fallthrough_repairs.deferred),
+        }, indent=2) + "\n", encoding="utf-8", newline="\n")
+        new_requests = sorted(set(probe_requests.requests) - previous_requests)
+        probe_addresses = set(probes) - set(facts)
+        new_probe_fact_count = len(probe_addresses - seen_probe_facts)
+        seen_probe_facts.update(probe_addresses)
+        converged = not (discovered or new_requests or new_repairs)
+        probe_plan.write_text(probe_requests.plan_text(), encoding="ascii", newline="\n")
+        (workspace / "decode-probe-requests.json").write_text(json.dumps({
+            "schema": "retrolarium.m68k.decode-probe-requests", "schema_version": 1,
+            "input_sha256": hashlib.sha256(data).hexdigest(), "load_base": base_address,
+            "candidate_probing_complete": not probe_requests.deferred,
+            "max_requests": probe_requests.max_requests, "max_bytes": probe_requests.max_bytes,
+            "requests": [asdict(request) for _, request in sorted(probe_requests.requests.items())],
+            "deferred_addresses": sorted(probe_requests.deferred),
+        }, indent=2) + "\n", encoding="utf-8", newline="\n")
         passes.append({"pass": index + 1, "decoded": len(facts), "trusted": len(trusted.facts),
-                       "new_seeds": discovered})
+                       "new_seeds": discovered, "new_probe_request_addresses": new_requests,
+                       "probe_request_count": len(probe_requests.requests),
+                       "deferred_probe_request_count": len(probe_requests.deferred),
+                       "new_fallthrough_repair_addresses": [repair.address for repair in new_repairs],
+                       "fallthrough_repair_count": len(fallthrough_repairs.repairs),
+                       "deferred_fallthrough_repair_count": len(fallthrough_repairs.deferred),
+                       "new_probe_fact_count": new_probe_fact_count})
         (workspace / "decoder-passes.json").write_text(
-            json.dumps({"passes": passes, "converged": not discovered}, indent=2) + "\n")
-        print(f"  overlay pass {index + 1}: {len(trusted.facts)} trusted, {len(discovered)} new seeds", flush=True)
-        if not discovered:
+            json.dumps({"passes": passes, "converged": converged,
+                        "candidate_repair_complete": not fallthrough_repairs.deferred,
+                        "candidate_probing_complete": not probe_requests.deferred}, indent=2) + "\n")
+        print(f"  overlay pass {index + 1}: {len(trusted.facts)} trusted, "
+              f"{len(discovered)} new seeds, {len(new_requests)} new probe requests", flush=True)
+        if converged:
             # Emission and comparison consume only instructions in the trusted CFG.
             with artifacts.facts.open(encoding="utf-8", newline="") as stream:
                 reader = csv.DictReader(stream, delimiter="\t")

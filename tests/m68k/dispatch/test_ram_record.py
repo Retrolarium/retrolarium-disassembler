@@ -83,6 +83,12 @@ class RamRecordDispatchTests(unittest.TestCase):
         self.facts[0x22E] = replace(self.facts[0x22E], operands="(A0)+|D7w")
         self.assertFalse(self.discover())
 
+    def test_stack_alias_invalidates_normal_return_of_record_base(self):
+        self.facts[0x244] = instruction(0x244, "344f", "MOVEA.W", "A7w|A2")
+        self.facts[0x246] = instruction(0x246, "5892", "ADDQ.L", "0x4|(A2)")
+        self.facts[0x248] = instruction(0x248, "4e75", "RTS", flow="TERMINATOR")
+        self.assertFalse(self.discover())
+
 
 if __name__ == "__main__":
     unittest.main()

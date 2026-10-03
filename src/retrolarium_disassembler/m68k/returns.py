@@ -9,6 +9,7 @@ from collections import deque
 
 from .m68k_abstract import _register_list, AbstractState, TruthValue, transfer_instruction, _branch_outcome
 from .m68k_seeds import DecoderSeed
+from .m68k_call_frame import _STACK
 
 
 def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_roots=frozenset()):
@@ -44,12 +45,15 @@ def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_root
                 continue
             operands = fact.operands.upper().split("|")
             mnemonic = fact.mnemonic.upper()
-            if any("SP" in operand for operand in operands):
+            if any(_STACK.search(operand) for operand in operands):
                 # Saved registers are supported; reading/modifying the return
                 # PC, taking the stack address, LINK/UNLK, and unknown stack
                 # arithmetic do not establish this normal-return witness.
                 if mnemonic in {"MOVEM.L", "MOVEM.W"} and len(operands) == 2:
                     size = 4 if mnemonic.endswith(".L") else 2
+                    if (operands[1] == "-(SP)" and "a7" in _register_list(operands[0])
+                            or operands[0] == "(SP)+" and "a7" in _register_list(operands[1])):
+                        continue
                     if operands[1] == "-(SP)":
                         stack += size * len(_register_list(operands[0]))
                     elif operands[0] == "(SP)+":
@@ -58,9 +62,9 @@ def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_root
                         continue
                 elif mnemonic in {"MOVE.L", "MOVE.W", "MOVE.B", "MOVE", "MOVEA.L", "MOVEA.W"} and len(operands) == 2:
                     size = 4 if mnemonic.endswith(".L") else 2
-                    if operands[1] == "-(SP)" and "SP" not in operands[0]:
+                    if operands[1] == "-(SP)" and not _STACK.search(operands[0]):
                         stack += size
-                    elif operands[0] == "(SP)+" and "SP" not in operands[1]:
+                    elif operands[0] == "(SP)+" and not _STACK.search(operands[1]):
                         stack -= size
                     else:
                         continue

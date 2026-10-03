@@ -58,9 +58,13 @@ def run_megadrive_analysis(
     *,
     seed_plan: Path,
     probe_orphans: bool = False,
+    probe_requests: Path | None = None,
+    fallthrough_repairs: Path | None = None,
 ) -> GhidraArtifacts:
     if not seed_plan.is_file():
         raise GhidraError(f"Mega Drive decoder seed plan not found: {seed_plan}")
+    if fallthrough_repairs is not None and not fallthrough_repairs.is_file():
+        raise GhidraError(f"M68K fallthrough repair plan not found: {fallthrough_repairs}")
     return _run_analysis(
         image,
         workspace,
@@ -83,11 +87,14 @@ def run_megadrive_analysis(
         seed_arguments=(str(seed_plan.resolve()),),
         export_block="ROM",
         probe_m68k_orphans=probe_orphans,
+        probe_requests=probe_requests,
         post_analysis_scripts=(
             (("-postScript", "RestoreM68kReturningCalls.java",
              str(seed_plan.with_name("normal-return-calls.txt").resolve()))
              if seed_plan.with_name("normal-return-calls.txt").is_file() else ())
             + ("-postScript", "RestoreM68kPlannedSeeds.java", str(seed_plan.resolve()))
+            + (("-postScript", "RestoreM68kFallthrough.java", str(fallthrough_repairs.resolve()))
+               if fallthrough_repairs is not None else ())
         ),
     )
 
@@ -101,12 +108,16 @@ def run_m68k_overlay_analysis(
     base_address: int,
     entry_addresses: tuple[int, ...],
     probe_orphans: bool = False,
+    probe_requests: Path | None = None,
+    fallthrough_repairs: Path | None = None,
 ) -> GhidraArtifacts:
     """Analyze a standalone 68000 overlay at its real load address."""
     if not 0 <= base_address <= 0xFFFFFFFF:
         raise GhidraError("overlay base is outside the 32-bit address space")
     if not entry_addresses:
         raise GhidraError("overlay needs at least one entry address")
+    if fallthrough_repairs is not None and not fallthrough_repairs.is_file():
+        raise GhidraError(f"M68K fallthrough repair plan not found: {fallthrough_repairs}")
     seed_plan = workspace / "overlay-seeds.txt"
     workspace.mkdir(parents=True, exist_ok=True)
     seed_plan.write_text(
@@ -131,6 +142,9 @@ def run_m68k_overlay_analysis(
         seed_arguments=(str(seed_plan.resolve()),),
         export_block="CD_MODULE",
         probe_m68k_orphans=probe_orphans,
+        probe_requests=probe_requests,
+        post_analysis_scripts=(("-postScript", "RestoreM68kFallthrough.java", str(fallthrough_repairs.resolve()))
+                               if fallthrough_repairs is not None else ()),
     )
 
 
@@ -266,6 +280,7 @@ def _run_analysis(
     export_block: str | None,
     seed_arguments: tuple[str, ...] = (),
     probe_m68k_orphans: bool = False,
+    probe_requests: Path | None = None,
     post_analysis_scripts: tuple[str, ...] = (),
 ) -> GhidraArtifacts:
     image = image.resolve()
@@ -275,6 +290,8 @@ def _run_analysis(
     script_directory = script_directory.resolve()
     if not script_directory.is_dir():
         raise GhidraError(f"Ghidra scripts not found: {script_directory}")
+    if probe_requests is not None and (not probe_m68k_orphans or not probe_requests.is_file()):
+        raise GhidraError("M68K probe requests require an existing plan and speculative probing")
 
     workspace.mkdir(parents=True, exist_ok=True)
     facts = workspace / "instructions.tsv"
@@ -310,6 +327,7 @@ def _run_analysis(
             "ExportInstructionFacts.java",
             *export_arguments,
             *(["-postScript", "ProbeM68kUnusedCode.java", str(orphan_facts.resolve())]
+              + ([str(probe_requests.resolve())] if probe_requests is not None else [])
               if orphan_facts is not None else []),
             "-deleteProject",
         ]

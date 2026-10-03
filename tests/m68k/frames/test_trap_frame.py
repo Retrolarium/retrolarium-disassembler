@@ -80,6 +80,22 @@ class TrapFrameTests(unittest.TestCase):
         self.facts[0x21C] = instruction(0x21C, "4e73", "RTE", flow="TERMINATOR")
         self.assertFalse(self.discover())
 
+    def test_width_qualified_stack_alias_cannot_hide_an_extra_pc_adjustment(self):
+        for address in tuple(self.facts):
+            if 0x20e <= address < 0x300:
+                self.facts.pop(address)
+        self.facts.update({f.cpu_address: f for f in (
+            instruction(0x20e, '304f', 'MOVEA.W', 'A7w|A0'),
+            instruction(0x210, '58a8003e', 'ADDQ.L', '0x4|(0x3e,A0)'),
+            instruction(0x214, '4cdf7fff', 'MOVEM.L', '(SP)+|D0-A6'),
+            instruction(0x218, '4e73', 'RTE', flow='TERMINATOR'))})
+        self.assertFalse(self.discover())
+
+    def test_exception_pc_cannot_replace_the_active_stack_pointer(self):
+        self.facts[0x204] = instruction(0x204, '2e6f003e', 'MOVEA.L', '(0x3e,SP)|SP')
+        self.facts[0x20c] = instruction(0x20c, '301f', 'MOVE.W', '(SP)+|D0w')
+        self.assertFalse(self.discover())
+
 
 if __name__ == "__main__":
     unittest.main()

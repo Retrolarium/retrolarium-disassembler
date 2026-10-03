@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import deque
 from bisect import bisect_left, bisect_right
+import re
 from typing import Callable
 
 from .facts import InstructionFact
@@ -88,6 +89,7 @@ def _complete_cfg(
     render: Callable[[InstructionFact], str | None],
     data: tuple[int, ...],
     inline_traps: dict | None = None,
+    decode_request: Callable[[int, int, str], None] | None = None,
 ) -> dict[int, InstructionFact]:
     start, end = candidate.address, candidate.following_address
     pending = deque([start])
@@ -100,6 +102,8 @@ def _complete_cfg(
         if address in body:
             continue
         fact = decoded.get(address)
+        if fact is None and start <= address < end and decode_request is not None:
+            decode_request(address, start, "missing dispatch CFG instruction")
         data_index = bisect_left(data, address)
         if (fact is None or not start <= address < end or fact.length < 2
                 or fact.length & 1 or address + fact.length > end
@@ -119,6 +123,22 @@ def _complete_cfg(
             opcode = int.from_bytes(fact.raw[:2], "big")
             if opcode & 0xFFC0 == 0x4E80 or opcode & 0xFF00 == 0x6100:
                 flow = "UNCONDITIONAL_CALL"
+            elif opcode & 0xFF00 == 0x6000:
+                # Ghidra may inherit a callee's no-return annotation for a
+                # tail BRA. Its encoded displacement still defines a jump;
+                # inconsistent speculative metadata must not qualify a CFG.
+                short = bool(opcode & 0xFF)
+                length = 2 if short else 4
+                if fact.length != length or len(fact.raw) != length:
+                    return {}
+                displacement = int.from_bytes(fact.raw[1:] if short else fact.raw[2:],
+                                              "big", signed=True)
+                target = (address + 2 + displacement) & 0xFFFFFF
+                operand = re.fullmatch(r"0x[0-9a-f]+", fact.operands.strip(), re.I)
+                if (target & 1 or operand is None or int(operand[0], 16) & 0xFFFFFF != target
+                        or {point & 0xFFFFFF for point in fact.flows} != {target}):
+                    return {}
+                flow = "UNCONDITIONAL_JUMP"
             elif opcode & 0xFFC0 == 0x4EC0:
                 flow = "UNCONDITIONAL_JUMP"
         following = address + fact.length

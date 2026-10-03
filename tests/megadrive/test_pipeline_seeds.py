@@ -38,6 +38,11 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         packed = patch.object(pipeline, "_discover_packed_code", return_value=())
         packed.start()
         self.addCleanup(packed.stop)
+        # These tests stop at pointer analysis and supply no pseudo backend.
+        # Repair feedback has its own convergence and real decoder tests.
+        repairs = patch.object(pipeline, "_discover_fallthrough_repairs", return_value=())
+        repairs.start()
+        self.addCleanup(repairs.stop)
         inline = patch.object(pipeline, "discover_inline_trap_calls", return_value=())
         inline.start()
         self.addCleanup(inline.stop)

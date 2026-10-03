@@ -77,6 +77,22 @@ class VariableTrapTests(unittest.TestCase):
         self.items[0x214] = replace(self.items[0x214], raw=bytes.fromhex("4efb1002"))
         self.assertFalse(self.discover())
 
+    def test_width_qualified_stack_alias_invalidates_only_affected_selector(self):
+        for address in tuple(self.items):
+            if 0x300 <= address < 0x400:
+                self.items.pop(address)
+        self.items.update({f.cpu_address: f for f in (
+            instruction(0x300, '304f', 'MOVEA.W', 'A7w|A0'),
+            instruction(0x302, '58a8003e', 'ADDQ.L', '0x4|(0x3e,A0)'),
+            instruction(0x306, '4cdf7fff', 'MOVEM.L', '(SP)+|D0-A6'),
+            instruction(0x30a, '4e73', 'RTE', flow='TERMINATOR'))})
+        self.assertEqual([0x510], [c.call_address for c in self.discover()])
+
+    def test_exception_pc_cannot_replace_the_active_stack_pointer(self):
+        self.items[0x204] = instruction(0x204, '2e6f003e', 'MOVEA.L', '(0x3e,SP)|SP')
+        self.items[0x208] = instruction(0x208, '301f', 'MOVE.W', '(SP)+|D0w')
+        self.assertFalse(self.discover())
+
 
 if __name__ == "__main__":
     unittest.main()

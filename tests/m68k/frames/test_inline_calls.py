@@ -60,6 +60,11 @@ class InlineCallTests(unittest.TestCase):
         self.facts[0x30E] = instruction(0x30E, '54af0008', 'ADDQ.L', '0x2|(0x8,SP)')
         self.assertFalse(self.discover())
 
+    def test_indirect_pc_edit_through_width_qualified_stack_alias_rejects(self):
+        self.facts[0x30E] = instruction(0x30E, '324f', 'MOVEA.W', 'A7w|A1')
+        self.facts[0x310] = instruction(0x310, '58a90008', 'ADDQ.L', '0x4|(0x8,A1)')
+        self.assertFalse(self.discover())
+
     def test_incomplete_restore_or_missing_rts_reject(self):
         self.facts[0x314] = replace(self.facts[0x314], operands='(SP)+|D0')
         self.assertFalse(self.discover())

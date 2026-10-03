@@ -67,6 +67,18 @@ class NormalReturnTests(unittest.TestCase):
         self.facts[0x300] = instruction(0x300, "3f08", "MOVE.W", "A0w|-(SP)")
         self.assertFalse(self.discover())
 
+    def test_width_qualified_stack_alias_cannot_prove_normal_return(self):
+        self.facts[0x300] = instruction(0x300, "304f", "MOVEA.W", "A7w|A0")
+        self.facts[0x302] = instruction(0x302, "5890", "ADDQ.L", "0x4|(A0)")
+        self.facts[0x304] = instruction(0x304, "4e75", "RTS", flow="TERMINATOR")
+        self.assertFalse(self.discover())
+
+    def test_movem_restoring_stack_register_is_not_a_balanced_frame_witness(self):
+        self.facts[0x300] = instruction(0x300, "48e7ffff", "MOVEM.L", "D0-A7|-(SP)")
+        self.facts[0x304] = instruction(0x304, "4cdfffff", "MOVEM.L", "(SP)+|D0-A7")
+        self.facts[0x308] = instruction(0x308, "4e75", "RTS", flow="TERMINATOR")
+        self.assertFalse(self.discover())
+
 
 if __name__ == "__main__":
     unittest.main()

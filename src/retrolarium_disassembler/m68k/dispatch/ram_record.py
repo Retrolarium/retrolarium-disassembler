@@ -3,6 +3,7 @@ from collections import deque
 import re
 
 from .m68k_seeds import DecoderSeed
+from .m68k_call_frame import _STACK
 from .megadrive_symbols import pc_displacement_target
 from .megadrive_pointers import _instruction_sets, _absolute_referenced_addresses
 
@@ -77,7 +78,7 @@ def _returned_bases(image, facts, entry, register, occupied):
             if not offsets or operands[0] != offsets[0] or bases != (offsets[1],):
                 return ()
             bases, offsets = offsets[2], None
-        elif (any("SP" in operand for operand in operands)
+        elif (_STACK.search(fact.operands)
               or mnemonic in {"EXG", "SWAP", "MOVEM.L", "MOVEM.W"}
               or any(re.search(r"(?<![A-Z0-9])" + register + r"(?![A-Z0-9])", operand)
                      for operand in operands) and not mnemonic.startswith(("CMP", "TST", "BTST"))):

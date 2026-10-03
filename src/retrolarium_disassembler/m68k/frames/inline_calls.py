@@ -2,6 +2,7 @@
 import re
 
 from .m68k_abstract import _register_list
+from .m68k_call_frame import _STACK
 from .m68k_ram_dispatch import InlineTrapCall
 
 
@@ -46,7 +47,7 @@ def _consumes_word(facts, start):
                 return False
             following = facts.get(cursor + fact.length)
             return following is not None and following.raw == b"\x4e\x75"
-        if any("SP" in operand for operand in operands):
+        if _STACK.search(fact.operands):
             return False
         opcode = int.from_bytes(fact.raw[:2], "big")
         call = opcode & 0xFFC0 == 0x4E80 or opcode & 0xFF00 == 0x6100

@@ -3,6 +3,7 @@ from collections import deque
 import re
 
 from .m68k_abstract import _register_list
+from .m68k_call_frame import _STACK
 
 
 def _handler_consumes_word(facts, handler):
@@ -27,6 +28,8 @@ def _handler_consumes_word(facts, handler):
         mnemonic = fact.mnemonic.upper()
         if mnemonic == "MOVEA.L" and operands.startswith(slot + "|"):
             pc_register = operands.split("|", 1)[1]
+            if not re.fullmatch(r"A[0-6]", pc_register):
+                return False
         elif mnemonic == "ADDQ.L" and operands.lstrip("#") == "0X2|" + slot:
             if advanced:
                 return False
@@ -34,7 +37,7 @@ def _handler_consumes_word(facts, handler):
         elif mnemonic == "MOVE.W" and pc_register and re.fullmatch(
                 r"\(" + pc_register + r"\)\+?\|D[0-7]W", operands):
             consumed = True
-        elif "SP" in operands or pc_register and operands.split("|")[-1] == pc_register:
+        elif _STACK.search(operands) or pc_register and operands.split("|")[-1] == pc_register:
             return False
         prefix.add(cursor)
         cursor += fact.length
@@ -73,7 +76,7 @@ def _handler_consumes_word(facts, handler):
             if restored or set(_register_list(operands[-1])) != saved:
                 return False
             restored = True
-        elif any("SP" in operand for operand in operands):
+        elif any(_STACK.search(operand) for operand in operands):
             return False
         following = address + fact.length
         flow = fact.flow_type.upper()

@@ -19,6 +19,44 @@ import java.util.TreeMap;
 
 public class ProbeM68kUnusedCode extends GhidraScript {
     private static final int MAX_GAP = 2048;
+    private static final int MAX_REQUESTS = 4096;
+
+    private void probeRequested(PseudoDisassembler decoder, long start, long end,
+            MemoryBlock rom, TreeMap<Long, String> rows,
+            TreeMap<Long, Instruction> cache) throws Exception {
+        ArrayDeque<Long> pending = new ArrayDeque<>();
+        HashSet<Long> visited = new HashSet<>();
+        pending.add(start);
+        while (!pending.isEmpty() && visited.size() < MAX_GAP / 2) {
+            long cursor = pending.removeFirst();
+            if (cursor < start || cursor >= end || (cursor & 1) != 0 || !visited.add(cursor)) continue;
+            monitor.checkCancelled();
+            Instruction instruction = cache.get(cursor);
+            if (instruction == null) {
+                try {
+                    instruction = decoder.disassemble(rom.getStart().getAddressSpace().getAddress(cursor));
+                } catch (ghidra.program.model.lang.InsufficientBytesException
+                        | ghidra.program.model.lang.UnknownInstructionException
+                        | ghidra.program.model.lang.UnknownContextException exception) {
+                    continue;
+                }
+                if (instruction != null) cache.put(cursor, instruction);
+            }
+            if (instruction == null || instruction.getLength() < 2
+                    || cursor + instruction.getLength() > end) continue;
+            rows.putIfAbsent(cursor, row(instruction, rom.getName()));
+            // A callee outside this interval needs its own bounded request.
+            // No speculative call target becomes a listing instruction/root.
+            if (!instruction.getFlowType().isCall() && !instruction.getFlowType().isComputed()) {
+                for (Address flow : instruction.getFlows()) {
+                    if (flow.getAddressSpace().equals(rom.getStart().getAddressSpace()))
+                        pending.add(flow.getOffset());
+                }
+            }
+            if (instruction.getFlowType().hasFallthrough())
+                pending.add(cursor + instruction.getLength());
+        }
+    }
 
     private boolean hasTrapHandler(MemoryBlock rom, int opcode) throws Exception {
         if ((opcode & 0xfff0) != 0x4e40) return false;
@@ -115,10 +153,12 @@ public class ProbeM68kUnusedCode extends GhidraScript {
 
     @Override
     protected void run() throws Exception {
-        if (getScriptArgs().length != 1) throw new IllegalArgumentException("expected output TSV");
+        if (getScriptArgs().length < 1 || getScriptArgs().length > 2)
+            throw new IllegalArgumentException("expected output TSV and optional probe-request TSV");
         MemoryBlock rom = currentProgram.getMemory().getBlock("ROM");
         if (rom == null) rom = currentProgram.getMemory().getBlock("CD_MODULE");
         if (rom == null) throw new IllegalStateException("ROM block missing");
+        long listingBefore = currentProgram.getListing().getNumInstructions();
         List<Instruction> known = new ArrayList<>();
         InstructionIterator iterator = currentProgram.getListing().getInstructions(rom.getStart(), true);
         while (iterator.hasNext()) {
@@ -160,12 +200,36 @@ public class ProbeM68kUnusedCode extends GhidraScript {
                 if (functionSignature(candidateOpcode)) probe(decoder, candidate, end, rom, rows);
             }
         }
+        int requests = 0;
+        if (getScriptArgs().length == 2) {
+            TreeMap<Long, Instruction> cache = new TreeMap<>();
+            HashSet<Long> seenRequests = new HashSet<>();
+            // Standalone CD modules have no cartridge vector/header area.
+            long requestStart = rom.getStart().getOffset()
+                + (rom.getName().equals("ROM") ? 0x200 : 0);
+            for (String line : Files.readAllLines(Path.of(getScriptArgs()[1]))) {
+                if (line.isBlank()) continue;
+                String[] fields = line.trim().split("\\s+");
+                if (fields.length != 2) throw new IllegalArgumentException("invalid probe request: " + line);
+                long start = Long.parseUnsignedLong(fields[0], 16);
+                long end = Long.parseUnsignedLong(fields[1], 16);
+                if (start < requestStart || end > rom.getEnd().getOffset() + 1
+                        || (start & 1) != 0 || end <= start || end - start > MAX_GAP)
+                    throw new IllegalArgumentException("invalid bounded probe request: " + line);
+                if (!seenRequests.add(start)) continue;
+                if (++requests > MAX_REQUESTS) throw new IllegalArgumentException("probe request budget exceeded");
+                probeRequested(decoder, start, end, rom, rows, cache);
+            }
+        }
+        long listingAfter = currentProgram.getListing().getNumInstructions();
+        if (listingBefore != listingAfter) throw new IllegalStateException("pseudo decoding modified listing");
         List<String> lines = new ArrayList<>();
         lines.add("block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\treferences\tflow_type\tsymbol\tfunction");
         lines.addAll(rows.values());
         Path output = Path.of(getScriptArgs()[0]).toAbsolutePath();
         Files.createDirectories(output.getParent());
         Files.write(output, lines, StandardCharsets.UTF_8);
-        println("[OK] exported " + rows.size() + " speculative M68K instructions; listing unchanged");
+        println("[OK] exported " + rows.size() + " speculative M68K instructions; requested=" + requests
+            + "; listing unchanged (" + listingBefore + " -> " + listingAfter + ")");
     }
 }

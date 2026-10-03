@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import asdict
 from pathlib import Path
 import subprocess
 
@@ -41,6 +42,8 @@ from .m68k_link_continuations import discover_link_continuation_seeds
 from .m68k_ram_record_dispatch import discover_ram_record_dispatch_seeds
 from .m68k_word_callbacks import discover_word_ram_callback_seeds
 from .m68k_dispatch_witness import make_dispatch_handler_validator
+from .m68k_probe_requests import M68kProbeRequests
+from .m68k_fallthrough_repair import M68kFallthroughRepairs
 from .megadrive_emit import EmitResult, MegaDriveEmitError, emit_project, _asm_instruction
 from .megadrive_pointers import (
     detect_pointer_candidates,
@@ -250,7 +253,18 @@ def _discover_packed_code(image, trusted_facts, facts, artifacts, context=None):
     )
 
 
-def _dispatch_handler_validator(image, trusted_facts, facts, artifacts, context=None):
+def _discover_fallthrough_repairs(repairs, image, trusted_facts, facts, artifacts,
+                                  inline_data, planned_roots, decode_request, context=None):
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
+    origin = image.header.rom_start
+    protected = tuple((origin + start, origin + end) for start, end in context.protected)
+    protected += tuple((start, start + size) for start, size in inline_data.items())
+    return repairs.discover(facts, trusted_facts, context.decoded,
+                            protected_ranges=protected, planned_roots=planned_roots,
+                            decode_request=decode_request)
+
+
+def _dispatch_handler_validator(image, trusted_facts, facts, artifacts, context=None, *, decode_request=None):
     # Most arrays already have a decoded handler or an adjacent bound.
     # Load and validate speculative facts only for a gapped unknown array.
     validator = None
@@ -261,8 +275,12 @@ def _dispatch_handler_validator(image, trusted_facts, facts, artifacts, context=
         if validator is None:
             validator = make_dispatch_handler_validator(
                 image, trusted_facts, context.decoded,
-                protected_ranges=context.protected, render_instruction=_asm_instruction)
-        return validator(address)
+                protected_ranges=context.protected, render_instruction=_asm_instruction,
+                decode_request=decode_request)
+        accepted = validator(address)
+        if not accepted and decode_request is not None:
+            decode_request(address, address, "structural handler hypothesis")
+        return accepted
 
     return validate
 
@@ -302,6 +320,13 @@ def analyze_megadrive(
     analysis_input.write_bytes(image.data)
     scripts = Path(__file__).resolve().parent / "ghidra_scripts"
     seed_plan = program_root / "python-seeds.txt"
+    probe_requests = M68kProbeRequests(image)
+    probe_plan = program_root / "decode-probe-requests.tsv"
+    probe_plan.write_text("", encoding="ascii")
+    fallthrough_repairs = M68kFallthroughRepairs(image)
+    repair_plan = program_root / "fallthrough-repairs.tsv"
+    repair_plan.write_text("", encoding="ascii")
+    seen_probe_facts = set()
     (program_root / "abstract-entrypoints.json").unlink(missing_ok=True)
     initial_seeds = discover_initial_decoder_seeds(image)
     planned_seeds = {seed.address for seed in initial_seeds}
@@ -338,6 +363,8 @@ def analyze_megadrive(
             scripts,
             seed_plan=seed_plan,
             probe_orphans=True,
+            probe_requests=probe_plan,
+            fallthrough_repairs=repair_plan,
         )
         facts = load_megadrive_ghidra_facts(artifacts.facts, image)
         # Only rooted code is interpreted, so an indirect edge computed in an
@@ -347,6 +374,8 @@ def analyze_megadrive(
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
         # Dispatch sites must themselves be trusted code, never an island.
         trusted_facts = trusted.facts
+        probe_requests.update_known(trusted_facts)
+        previous_probe_requests = set(probe_requests.requests)
         probe_context = _PassProbeContext(image, trusted_facts, facts, artifacts)
         subroutine_calls = (
             *discover_inline_subroutine_calls(image, trusted_facts),
@@ -380,7 +409,9 @@ def analyze_megadrive(
             image, trusted_facts, facts, artifacts, probe_context)
         for candidate in validated_unused:
             unused_candidates.setdefault(candidate.address, candidate)
-        handler_validator = _dispatch_handler_validator(image, trusted_facts, facts, artifacts, probe_context)
+        handler_validator = _dispatch_handler_validator(
+            image, trusted_facts, facts, artifacts, probe_context,
+            decode_request=probe_requests.request)
         dispatch_seeds = list(discover_dispatch_table_seeds(
             image, trusted_facts, handler_validator=handler_validator, entrypoints=trusted.roots))
         # Reaching definitions and interpreter models require an executed
@@ -578,6 +609,31 @@ def analyze_megadrive(
                 seed_sources.setdefault(candidate.address, set()).add(
                     candidate.preceding_address
                 )
+        new_repairs = _discover_fallthrough_repairs(
+            fallthrough_repairs, image, trusted_facts, facts, artifacts, inline_data,
+            (planned_seeds | set(discovered)) - operand_bytes, probe_requests.request, probe_context)
+        repair_plan.write_text(fallthrough_repairs.plan_text(), encoding="ascii", newline="\n")
+        (program_root / "fallthrough-repairs.json").write_text(json.dumps({
+            "schema": "retrolarium.m68k.fallthrough-repairs", "schema_version": 1,
+            "input_sha256": image.sha256,
+            "candidate_repair_complete": not fallthrough_repairs.deferred,
+            "repairs": [asdict(repair) for _, repair in sorted(fallthrough_repairs.repairs.items())],
+            "deferred_addresses": sorted(fallthrough_repairs.deferred),
+        }, indent=2) + "\n", encoding="utf-8", newline="\n")
+        new_probe_requests = sorted(set(probe_requests.requests) - previous_probe_requests)
+        probe_addresses = set(probe_context._decoded or ()) - set(facts)
+        new_probe_fact_count = len(probe_addresses - seen_probe_facts)
+        seen_probe_facts.update(probe_addresses)
+        # Requests are consumed by the next backend pass, separately from roots.
+        # New pseudo facts were already checked by this pass's strict validators.
+        pass_converged = not (discovered or new_inline_data or new_return_calls or new_probe_requests or new_repairs)
+        probe_plan.write_text(probe_requests.plan_text(), encoding="ascii", newline="\n")
+        (program_root / "decode-probe-requests.json").write_text(json.dumps({
+            "schema": "retrolarium.m68k.decode-probe-requests", "schema_version": 1,
+            "input_sha256": image.sha256, "candidate_probing_complete": not probe_requests.deferred,
+            "requests": [asdict(request) for _, request in sorted(probe_requests.requests.items())],
+            "deferred_addresses": sorted(probe_requests.deferred),
+        }, indent=2) + "\n", encoding="utf-8", newline="\n")
         abstract_passes.append({
             "pass": pass_index + 1,
             "decoded_instruction_count": len(facts),
@@ -587,6 +643,13 @@ def analyze_megadrive(
             "new_seed_addresses": discovered,
             "new_inline_data_addresses": sorted(new_inline_data),
             "new_normal_return_calls": sorted(new_return_calls),
+            "new_probe_request_addresses": new_probe_requests,
+            "probe_request_count": len(probe_requests.requests),
+            "deferred_probe_request_count": len(probe_requests.deferred),
+            "new_probe_fact_count": new_probe_fact_count,
+            "new_fallthrough_repair_addresses": [repair.address for repair in new_repairs],
+            "fallthrough_repair_count": len(fallthrough_repairs.repairs),
+            "deferred_fallthrough_repair_count": len(fallthrough_repairs.deferred),
             "new_seed_evidence": [
                 {
                     "address": address,
@@ -599,11 +662,13 @@ def analyze_megadrive(
         (program_root / "decoder-passes.json").write_text(
             json.dumps({
                 "schema": "retrolarium.m68k.decoder-passes", "schema_version": 1,
-                "input_sha256": image.sha256, "converged": not discovered and not new_inline_data and not new_return_calls,
+                "input_sha256": image.sha256, "converged": pass_converged,
+                "candidate_probing_complete": not probe_requests.deferred,
+                "candidate_repair_complete": not fallthrough_repairs.deferred,
                 "passes": abstract_passes,
             }, indent=2) + "\n", encoding="utf-8", newline="\n",
         )
-        if not discovered and not new_inline_data and not new_return_calls:
+        if pass_converged:
             converged = True
             break
         planned_seeds.update(discovered)

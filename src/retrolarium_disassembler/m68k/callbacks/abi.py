@@ -16,6 +16,7 @@ from .megadrive_pointers import _instruction_sets
 from .megadrive_symbols import pc_displacement_target
 from .m68k_record_dispatch import executed_stack_fields
 from .m68k_abstract import _register_list
+from .m68k_call_frame import _STACK
 
 
 _FIELD = r"\((?:(-?0x[0-9a-f]+),)?(A[0-6])\)"
@@ -68,7 +69,7 @@ def _stores_on_path(facts, start, register, fields, *, bookmark=False):
                     stores.add(address)
         if bookmark:
             # Only the untouched top of the caller's stack is a return PC.
-            if "SP" in fact.operands.upper():
+            if _STACK.search(fact.operands):
                 continue
         elif _clobbers(fact, register):
             continue

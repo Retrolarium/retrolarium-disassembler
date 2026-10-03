@@ -15,7 +15,7 @@ public class RestoreM68kReturningCalls extends GhidraScript {
         if (getScriptArgs().length != 1)
             throw new IllegalArgumentException("expected normal-return call plan");
         MemoryBlock rom = currentProgram.getMemory().getBlock("ROM");
-        int restored = 0;
+        int normalized = 0;
         for (String line : Files.readAllLines(Path.of(getScriptArgs()[0]))) {
             monitor.checkCancelled();
             if (line.isBlank()) continue;
@@ -36,9 +36,12 @@ public class RestoreM68kReturningCalls extends GhidraScript {
             // Auto-analysis may infer no-return and erase an explicitly seeded
             // fall-through. Override only this independently proven call site.
             call.setFlowOverride(FlowOverride.CALL);
-            disassemble(rom.getStart().add(following));
-            if (getInstructionAt(rom.getStart().add(following)) != null) restored++;
+            // Continuations are independently planned roots. The subsequent
+            // RestoreM68kPlannedSeeds walk validates every complete instruction
+            // against DATA, defined data and existing instruction spans.
+            // An unrestricted disassemble here would bypass those protections.
+            normalized++;
         }
-        println("[OK] restored " + restored + " proven normal-call continuations");
+        println("[OK] normalized " + normalized + " proven normal-call flow overrides");
     }
 }

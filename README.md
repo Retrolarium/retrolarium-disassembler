@@ -306,22 +306,27 @@ builders. It then
 runs a Python abstract interpreter over the known 68000 control-flow graph. The
 interpreter propagates constants, small value sets, ranges, registers, flags,
 and selected memory writes, then feeds proven indirect branch targets back to
-Ghidra for decoding. Analysis repeats until no new targets are found. A
-twelve-pass safety limit fails the operation instead of emitting a partially
+Ghidra for decoding. Analysis repeats until no new targets, inline-data bounds,
+decode requests or instruction repairs are found. A
+32-pass safety limit fails the operation instead of emitting a partially
 applied seed plan. `analysis/m68k/abstract-analysis.json` records each seed's
 kind, confidence, and evidence together with reached states, indirect edges,
 widening points, unresolved jumps, RAM handler candidates, and packed orphan
-candidates. `analysis/m68k/python-seeds.txt` is the sole decoder entry-point
-plan. The Ghidra pre-script labels cartridge vectors and applies that plan; it
+candidates. `analysis/m68k/python-seeds.txt` is the decoder entry-point
+plan. Speculative decode requests and canonical boundary repairs have separate
+plans and never become independent roots. The Ghidra pre-script labels cartridge vectors and applies the seed plan; it
 does not discover targets. Packed orphan recovery only considers short gaps
 between known instructions after a terminal flow, rejects existing data/read
 targets, and requires either a compact gap or a return opcode before known code
 resumes.
 After convergence, the Kit retains backend-decoded instructions only when they
 are reachable from a cartridge vector, direct call, proven decoder seed,
-proven indirect target, or backend function entry. This removes isolated
+proven indirect target, or an accepted structural code-use hypothesis. A
+backend function label alone is insufficient. This removes isolated
 instruction-shaped data without using reference source. The discarded
 addresses are recorded in `analysis/m68k/abstract-analysis.json`.
+The bounded probe and repair protocols, their protections and audit files are
+documented in [Mega Drive unused-code analysis](docs/Mega_Drive_Unused_Code.md).
 The interpreter updates `X/N/Z/V/C` for modeled move, logical, arithmetic,
 compare, test, and bit-test operations. It records each conditional branch as
 true, false, or unknown in the abstract report while retaining both CFG edges;

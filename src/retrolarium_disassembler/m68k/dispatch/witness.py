@@ -9,6 +9,7 @@ from .m68k_abstract import OrphanCandidate
 from .m68k_packed import _complete_cfg
 from .m68k_ram_dispatch import discover_inline_trap_calls
 from .m68k_call_frame import make_trap_call_frame_validator
+from .m68k_dispatch_closure import logical_image, make_dispatch_closure_validator
 from .megadrive import MegaDriveImage
 from .megadrive_pointers import _absolute_referenced_addresses
 
@@ -20,6 +21,7 @@ def make_dispatch_handler_validator(
     *,
     protected_ranges: tuple[tuple[int, int], ...] = (),
     render_instruction: Callable[[InstructionFact], str | None],
+    decode_request: Callable[[int, int, str], None] | None = None,
 ) -> Callable[[int], bool]:
     """Return a cached predicate; this never promotes probe facts to code.
 
@@ -30,6 +32,8 @@ def make_dispatch_handler_validator(
     known = {f.cpu_address: f for f in known.values()}
     decoded = {f.cpu_address: f for f in decoded.values()}
     starts = sorted(known)
+    origin, rom_end = image.header.rom_start, image.header.rom_start + len(image.data)
+    byte_image = logical_image(image)
     data = tuple(sorted(_absolute_referenced_addresses(known)))
     # Only trap sites may come from speculative decoding. Every instruction
     # proving the exception handler's inline-argument ABI must be rooted.
@@ -37,26 +41,28 @@ def make_dispatch_handler_validator(
     preserves_frame = make_trap_call_frame_validator(known)
     inline_traps = {call.call_address: call for call in discover_inline_trap_calls(
         image, {**trap_sites, **known}) if call.handler in known and preserves_frame(call.handler)}
-    protected_ranges = protected_ranges + tuple(
+    protected_ranges = tuple((origin + start, origin + end) for start, end in protected_ranges) + tuple(
         (call.data_address, call.continuation)
         for address, call in inline_traps.items() if address in known)
     checked: dict[int, bool] = {}
+    closure_validator = None
 
     def validate(address: int) -> bool:
+        nonlocal closure_validator
         if address in checked:
             return checked[address]
         index = bisect_right(starts, address)
         previous = known[starts[index - 1]] if index else None
-        if (address & 1 or address < 0x200 or address in known
+        if (address & 1 or not origin + 0x200 <= address < rom_end or address in known
                 or previous is not None and address < previous.cpu_address + previous.length):
             checked[address] = False
             return False
-        end = min(address + 2048, len(image.data),
-                  starts[index] if index < len(starts) else len(image.data))
+        end = min(address + 2048, rom_end,
+                  starts[index] if index < len(starts) else rom_end)
         candidate = OrphanCandidate(address, address, end, end - address,
                                     "high", "complete bounded dispatch handler CFG")
-        body = _complete_cfg(image, candidate, known, decoded, protected_ranges,
-                             render_instruction, data, inline_traps)
+        body = _complete_cfg(byte_image, candidate, known, decoded, protected_ranges,
+                             render_instruction, data, inline_traps, decode_request=decode_request)
         first = body.get(address)
         checked[address] = bool(
             len(body) >= 4 and first and not first.mnemonic.upper().startswith("ORI.")
@@ -66,6 +72,15 @@ def make_dispatch_handler_validator(
                         or f.mnemonic.upper() in {"RTE", "RTR", "ILLEGAL", "STOP", "RESET"}
                         or f.mnemonic.upper() == "TRAP" and f.cpu_address not in inline_traps
                         for f in body.values()))
+        if closure_validator is None:
+            closure_validator = make_dispatch_closure_validator(
+                image, known, decoded, protected_ranges=protected_ranges,
+                render_instruction=render_instruction, decode_request=decode_request,
+                inline_traps=inline_traps)
+        if checked[address]:
+            checked[address] = not closure_validator.has_conflict(body)
+        else:
+            checked[address] = closure_validator(address)
         return checked[address]
 
     return validate

@@ -63,6 +63,14 @@ class CallbackAbiTests(unittest.TestCase):
         self.facts[0x320] = instruction(0x320, "4cdf7fff", "MOVEM.L", "(SP)+|D0-A6")
         self.assertNotIn(0x400, self.discover())
 
+    def test_stack_alias_cannot_change_saved_callback_return_pc(self):
+        self.facts[0x300] = instruction(0x300, "324f", "MOVEA.W", "A7w|A1")
+        self.facts[0x302] = instruction(0x302, "5891", "ADDQ.L", "0x4|(A1)")
+        self.facts[0x304] = instruction(0x304, "215f0004", "MOVE.L", "(SP)+|(0x4,A0)")
+        self.facts[0x308] = instruction(0x308, "4e75", "RTS", flow="TERMINATOR")
+        self.facts[0x22A] = instruction(0x22A, "7001", "MOVEQ", "0x1|D0")
+        self.assertNotIn(0x22A, self.discover())
+
     def test_multiple_field_assignments_accept_internal_labels_but_need_executor(self):
         self.facts[0x340] = instruction(0x340, "217c000004000004", "MOVE.L", "#0x400|(0x4,A0)")
         self.facts[0x348] = instruction(0x348, "217c000004200004", "MOVE.L", "#0x420|(0x4,A0)")

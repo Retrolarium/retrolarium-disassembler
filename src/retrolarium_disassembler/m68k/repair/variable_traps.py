@@ -3,6 +3,7 @@ from collections import deque
 import re
 
 from .m68k_abstract import _register_list
+from .m68k_call_frame import _STACK
 from .m68k_table_dispatch import _targets
 from .megadrive_symbols import pc_indexed_target
 
@@ -28,6 +29,7 @@ def _dispatch(image, facts, handler):
         if mnemonic == "MOVEA.L" and operands.startswith(slot + "|"):
             if pc_register: return None
             pc_register = operands.split("|", 1)[1]
+            if not re.fullmatch(r"A[0-6]", pc_register): return None
         elif mnemonic == "MOVE.W" and pc_register and re.fullmatch(
                 r"\(" + pc_register + r"\)\+\|D[0-7]W", operands):
             if index_register: return None
@@ -35,7 +37,7 @@ def _dispatch(image, facts, handler):
         elif mnemonic == "ADDQ.L" and operands.lstrip("#") == "0X2|" + slot:
             if advanced: return None
             advanced = True
-        elif "SP" in operands or pc_register and operands.split("|")[-1] == pc_register:
+        elif _STACK.search(operands) or pc_register and operands.split("|")[-1] == pc_register:
             return None
         cursor += fact.length
         if advanced and index_register: break
@@ -87,7 +89,7 @@ def _consumption(facts, start, slot, pc_register, saved, width):
         elif mnemonic in {"MOVE.W", "MOVE.L"} and operands[0] == f"({pc_register})+":
             if restored: return None
             consumed += 4 if mnemonic.endswith(".L") else 2
-        elif (any("SP" in operand for operand in operands)
+        elif (any(_STACK.search(operand) for operand in operands)
               or any(pc_register in operand for operand in operands)):
             return None
         flow = fact.flow_type.upper()
