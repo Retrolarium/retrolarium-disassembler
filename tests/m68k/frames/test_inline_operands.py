@@ -1,11 +1,13 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from retrolarium_kit.m68k_inline_operands import (
-    discover_inline_operand_calls, inline_operand_length,
+    discover_inline_operand_calls, inline_operand_length, InlineOperandProver,
 )
+from retrolarium_kit import m68k_inline_operands as inline_module
 from retrolarium_kit.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_m68k_unused import instruction
@@ -105,6 +107,53 @@ class InlineOperandTests(unittest.TestCase):
             "4e75"      # rts
         ))
         self.assertEqual(2, inline_operand_length(self.image, 0x400, 0x214))
+
+    def test_rom_only_proofs_are_reused_across_passes_with_different_facts(self):
+        self.build()
+        prover = InlineOperandProver(self.image)
+        with (patch.object(inline_module, '_reads_return_stream', wraps=inline_module._reads_return_stream) as probe,
+              patch.object(inline_module, 'inline_operand_length', wraps=inline_operand_length) as length):
+            first = discover_inline_operand_calls(self.image, self.facts, prover=prover)
+            expanded = {**self.facts,
+                        0x20E: instruction(0x20E, '4eb900000400', 'JSR', '0x400.l',
+                                           'UNCONDITIONAL_CALL', (0x400,))}
+            second = discover_inline_operand_calls(self.image, expanded, prover=prover)
+            self.assertEqual(first, second)
+            self.assertEqual(1, probe.call_count)
+            self.assertEqual(2, length.call_count)  # Once for each distinct return PC.
+
+    def test_rejected_length_is_cached_as_well_as_success(self):
+        handler = bytearray(HANDLER)
+        handler[12:14] = bytes.fromhex('1410')
+        self.build(handler=bytes(handler))
+        prover = InlineOperandProver(self.image)
+        with patch.object(inline_module, 'inline_operand_length', wraps=inline_operand_length) as length:
+            self.assertEqual((), discover_inline_operand_calls(self.image, self.facts, prover=prover))
+            self.assertEqual((), discover_inline_operand_calls(self.image, self.facts, prover=prover))
+            self.assertEqual(1, length.call_count)
+            self.assertIn((0x400, 0x206), prover.lengths)
+            self.assertIsNone(prover.lengths[(0x400, 0x206)])
+
+    def test_prover_cannot_leak_results_to_another_rom(self):
+        self.build()
+        prover = InlineOperandProver(self.image)
+        self.assertEqual(2, len(discover_inline_operand_calls(self.image, self.facts, prover=prover)))
+        self.build(handler=bytes.fromhex('70004e75'))
+        with self.assertRaisesRegex(ValueError, 'different image'):
+            discover_inline_operand_calls(self.image, self.facts, prover=prover)
+        self.assertEqual((), discover_inline_operand_calls(self.image, self.facts))
+
+    def test_continuation_walk_recomputes_current_known_boundaries(self):
+        self.build()
+        prover = InlineOperandProver(self.image)
+        barrier = instruction(0x20C, '4e71', 'NOP')
+        known_barrier = {**self.facts, 0x20C: barrier}
+        blocked = discover_inline_operand_calls(self.image, known_barrier, prover=prover)
+        self.assertEqual([0x200], [c.call_address for c in blocked])
+        expanded = discover_inline_operand_calls(self.image, self.facts, prover=prover)
+        self.assertEqual([0x200, 0x20E], [c.call_address for c in expanded])
+        blocked_again = discover_inline_operand_calls(self.image, known_barrier, prover=prover)
+        self.assertEqual(blocked, blocked_again)
 
 
 if __name__ == "__main__":

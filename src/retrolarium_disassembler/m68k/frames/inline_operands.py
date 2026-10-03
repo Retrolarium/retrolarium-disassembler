@@ -929,12 +929,18 @@ def _call_target(emulator, pc):
     return None
 
 
-class _Prover:
-    """Per-pass cache of handler probes and per-site operand lengths."""
+class InlineOperandProver:
+    """Cache ROM-only proofs for one immutable image across decoder passes.
+
+    Both successful lengths and rejected sites depend only on the image,
+    handler address and return address. Facts and continuation-walk boundaries
+    are deliberately not cached: those change when a decoder pass finds code.
+    """
 
     def __init__(self, image):
         self.image = image
         self.handlers: dict[int, bool] = {}
+        self.lengths: dict[tuple[int, int], int | None] = {}
 
     def consumes(self, handler):
         if handler not in self.handlers:
@@ -942,9 +948,11 @@ class _Prover:
         return self.handlers[handler]
 
     def length(self, handler, following):
-        if not self.consumes(handler):
-            return None
-        return inline_operand_length(self.image, handler, following)
+        key = handler, following
+        if key not in self.lengths:
+            self.lengths[key] = (inline_operand_length(self.image, handler, following)
+                                 if self.consumes(handler) else None)
+        return self.lengths[key]
 
 
 def _walk_continuation(image, start, known_starts, prover, budget):
@@ -982,10 +990,14 @@ def _walk_continuation(image, start, known_starts, prover, budget):
 
 
 def discover_inline_operand_calls(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
+    image: MegaDriveImage, facts: dict[int, InstructionFact], *,
+    prover: InlineOperandProver | None = None,
 ) -> tuple[InlineTrapCall, ...]:
     """Calls whose handler provably skips variable-length inline operands."""
-    prover = _Prover(image)
+    if prover is None:
+        prover = InlineOperandProver(image)
+    elif prover.image is not image:
+        raise ValueError("inline operand prover belongs to a different image")
     calls = []
     for fact in sorted(facts.values(), key=lambda item: item.cpu_address):
         opcode = int.from_bytes(fact.raw[:2], "big")

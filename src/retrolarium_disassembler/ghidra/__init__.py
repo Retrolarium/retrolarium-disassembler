@@ -84,9 +84,10 @@ def run_megadrive_analysis(
         export_block="ROM",
         probe_m68k_orphans=probe_orphans,
         post_analysis_scripts=(
-            ("-postScript", "RestoreM68kReturningCalls.java",
+            (("-postScript", "RestoreM68kReturningCalls.java",
              str(seed_plan.with_name("normal-return-calls.txt").resolve()))
-            if seed_plan.with_name("normal-return-calls.txt").is_file() else ()
+             if seed_plan.with_name("normal-return-calls.txt").is_file() else ())
+            + ("-postScript", "RestoreM68kPlannedSeeds.java", str(seed_plan.resolve()))
         ),
     )
 

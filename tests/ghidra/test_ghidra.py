@@ -195,6 +195,9 @@ class GhidraBackendTests(unittest.TestCase):
             )
             facts_index = command.index("ExportInstructionFacts.java")
             self.assertEqual("ROM", command[facts_index + 2])
+            restore_index = command.index("RestoreM68kPlannedSeeds.java")
+            self.assertLess(restore_index, facts_index)
+            self.assertEqual(str(seed_plan.resolve()), command[restore_index + 1])
 
     def test_megadrive_passes_python_seed_plan_to_decoder(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -235,8 +238,11 @@ class GhidraBackendTests(unittest.TestCase):
             command = run.call_args.args[0]
             script_index = command.index("SeedMegaDriveVectors.java")
             repair_index = command.index("RestoreM68kReturningCalls.java")
+            restore_index = command.index("RestoreM68kPlannedSeeds.java")
             self.assertGreater(repair_index, script_index)
-            self.assertLess(repair_index, command.index("ExportInstructionFacts.java"))
+            self.assertLess(repair_index, restore_index)
+            self.assertLess(restore_index, command.index("ExportInstructionFacts.java"))
+            self.assertEqual(str(seed_plan.resolve()), command[restore_index + 1])
             self.assertEqual(str(return_plan.resolve()), command[repair_index + 1])
             self.assertEqual(str(seed_plan.resolve()), command[script_index + 1])
 

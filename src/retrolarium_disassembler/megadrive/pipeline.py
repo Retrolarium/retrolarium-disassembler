@@ -29,9 +29,10 @@ from .m68k_packed import discover_packed_orphan_closure
 from .m68k_returns import discover_returning_call_seeds
 from .m68k_register_callbacks import discover_register_callback_seeds
 from .m68k_callback_abi import discover_callback_abi_seeds
+from .m68k_constructor_records import discover_constructor_record_seeds
 from .m68k_ram_dispatch import discover_inline_trap_calls
 from .m68k_inline_calls import discover_inline_subroutine_calls
-from .m68k_inline_operands import discover_inline_operand_calls
+from .m68k_inline_operands import InlineOperandProver, discover_inline_operand_calls
 from .m68k_link_continuations import discover_link_continuation_seeds
 from .m68k_ram_record_dispatch import discover_ram_record_dispatch_seeds
 from .m68k_word_callbacks import discover_word_ram_callback_seeds
@@ -189,58 +190,68 @@ def _edge_record(
     }
 
 
+class _PassProbeContext:
+    """Share immutable probe inputs among validators in one decoder pass."""
+
+    def __init__(self, image, trusted_facts, facts, artifacts):
+        self.image, self.trusted_facts = image, trusted_facts
+        self.facts, self.artifacts = facts, artifacts
+        self._decoded = self._protected = None
+
+    @property
+    def decoded(self):
+        if self._decoded is None:
+            probes = load_megadrive_ghidra_facts(
+                self.artifacts.orphan_facts, self.image, speculative=True)
+            self._decoded = {**probes, **self.facts}
+        return self._decoded
+
+    @property
+    def protected(self):
+        if self._protected is None:
+            self._protected = tuple(
+                (p.physical_start, p.physical_end)
+                for p in detect_pointer_candidates(self.image, self.trusted_facts)
+                if p.status == "accepted"
+            ) + tuple((p.source_start, p.source_end + 1)
+                      for p in detect_z80_copies(self.image, self.trusted_facts))
+        return self._protected
+
+
 def _discover_unused_code(
     image: MegaDriveImage,
     trusted_facts: dict[int, InstructionFact],
     facts: dict[int, InstructionFact],
     artifacts: GhidraArtifacts,
+    context: _PassProbeContext | None = None,
 ) -> tuple[tuple[UnusedCodeCandidate, ...], tuple[dict[str, object], ...]]:
-    speculative_facts = load_megadrive_ghidra_facts(artifacts.orphan_facts, image, speculative=True)
-    protected_ranges = tuple(
-        (candidate.physical_start, candidate.physical_end)
-        for candidate in detect_pointer_candidates(image, trusted_facts)
-        if candidate.status == "accepted"
-    ) + tuple(
-        (copy.source_start, copy.source_end + 1)
-        for copy in detect_z80_copies(image, trusted_facts)
-    )
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     return discover_validated_unused_candidates(
-        image, trusted_facts, {**speculative_facts, **facts},
-        protected_ranges=protected_ranges, render_instruction=_asm_instruction,
+        image, trusted_facts, context.decoded,
+        protected_ranges=context.protected, render_instruction=_asm_instruction,
     )
 
 
-def _discover_packed_code(image, trusted_facts, facts, artifacts):
-    probe_facts = load_megadrive_ghidra_facts(artifacts.orphan_facts, image, speculative=True)
-    protected = tuple(
-        (item.physical_start, item.physical_end)
-        for item in detect_pointer_candidates(image, trusted_facts)
-        if item.status == "accepted"
-    ) + tuple((copy.source_start, copy.source_end + 1)
-              for copy in detect_z80_copies(image, trusted_facts))
+def _discover_packed_code(image, trusted_facts, facts, artifacts, context=None):
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     return discover_packed_orphan_closure(
-        image, trusted_facts, {**probe_facts, **facts},
-        protected_ranges=protected, render_instruction=_asm_instruction,
+        image, trusted_facts, context.decoded,
+        protected_ranges=context.protected, render_instruction=_asm_instruction,
     )
 
 
-def _dispatch_handler_validator(image, trusted_facts, facts, artifacts):
+def _dispatch_handler_validator(image, trusted_facts, facts, artifacts, context=None):
     # Most arrays already have a decoded handler or an adjacent bound.
     # Load and validate speculative facts only for a gapped unknown array.
     validator = None
+    context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
 
     def validate(address):
         nonlocal validator
         if validator is None:
-            probes = load_megadrive_ghidra_facts(artifacts.orphan_facts, image, speculative=True)
-            protected = tuple(
-                (p.physical_start, p.physical_end)
-                for p in detect_pointer_candidates(image, trusted_facts) if p.status == "accepted"
-            ) + tuple((p.source_start, p.source_end + 1)
-                      for p in detect_z80_copies(image, trusted_facts))
             validator = make_dispatch_handler_validator(
-                image, trusted_facts, {**probes, **facts},
-                protected_ranges=protected, render_instruction=_asm_instruction)
+                image, trusted_facts, context.decoded,
+                protected_ranges=context.protected, render_instruction=_asm_instruction)
         return validator(address)
 
     return validate
@@ -250,6 +261,7 @@ def analyze_megadrive(
     rom: Path, output: Path, ghidra_home: Path
 ) -> dict[str, object]:
     image = load_megadrive(rom)
+    operand_prover = InlineOperandProver(image)
     toolchain_status(ghidra_home)
     output = output.resolve()
     program_root = output / "m68k"
@@ -303,9 +315,10 @@ def analyze_megadrive(
         orphan_candidates = discover_packed_orphan_candidates(image, facts)
         # Dispatch sites must themselves be trusted code, never an island.
         trusted_facts = trusted.facts
+        probe_context = _PassProbeContext(image, trusted_facts, facts, artifacts)
         subroutine_calls = (
             *discover_inline_subroutine_calls(image, trusted_facts),
-            *discover_inline_operand_calls(image, trusted_facts),
+            *discover_inline_operand_calls(image, trusted_facts, prover=operand_prover),
         )
         subroutine_sites = {call.call_address for call in subroutine_calls}
         inline_calls = (*discover_inline_trap_calls(image, trusted_facts), *subroutine_calls)
@@ -329,13 +342,13 @@ def analyze_megadrive(
         }.values())
         orphan_candidates = tuple({candidate.address: candidate for candidate in (
             *orphan_candidates,
-            *_discover_packed_code(image, trusted_facts, facts, artifacts),
+            *_discover_packed_code(image, trusted_facts, facts, artifacts, probe_context),
         )}.values())
         validated_unused, unused_rejections = _discover_unused_code(
-            image, trusted_facts, facts, artifacts)
+            image, trusted_facts, facts, artifacts, probe_context)
         for candidate in validated_unused:
             unused_candidates.setdefault(candidate.address, candidate)
-        handler_validator = _dispatch_handler_validator(image, trusted_facts, facts, artifacts)
+        handler_validator = _dispatch_handler_validator(image, trusted_facts, facts, artifacts, probe_context)
         dispatch_seeds = list(discover_dispatch_table_seeds(
             image, trusted_facts, handler_validator=handler_validator))
         dispatch_seeds.extend(discover_ram_record_dispatch_seeds(image, trusted_facts))
@@ -375,6 +388,8 @@ def analyze_megadrive(
         # ABI is structural proof, unlike an abstract edge from unknown state;
         # the field executor must already belong to the trusted CFG.
         dispatch_seeds.extend(discover_callback_abi_seeds(
+            image, facts, execution_facts=trusted_facts))
+        dispatch_seeds.extend(discover_constructor_record_seeds(
             image, facts, execution_facts=trusted_facts))
         decoded_starts = {fact.cpu_address for fact in facts.values()}
         trusted_starts = {fact.cpu_address for fact in trusted_facts.values()}

@@ -215,15 +215,21 @@ class _M68kHarness:
         assert execution_facts is self._trusted_facts
         return tuple(self._current().get("word_callbacks", ()))
 
+    def constructor_callbacks(self, image, facts, *, execution_facts):
+        assert facts is self._last_facts
+        assert execution_facts is self._trusted_facts
+        return tuple(self._current().get("constructor_callbacks", ()))
+
     def patches(self) -> dict[str, object]:
         return {
             "discover_inline_trap_calls": lambda *args: tuple(self._current().get("inline", ())),
             "discover_inline_subroutine_calls": lambda *args: tuple(self._current().get("inline_subroutine", ())),
-            "discover_inline_operand_calls": lambda *args: tuple(self._current().get("inline_operand", ())),
+            "discover_inline_operand_calls": lambda *args, **kwargs: tuple(self._current().get("inline_operand", ())),
             "discover_link_continuation_seeds": lambda *args: (),
             "discover_returning_call_seeds": lambda *args, **kwargs: tuple(self._current().get("returning", ())),
             "discover_register_callback_seeds": lambda *args, **kwargs: (),
             "discover_callback_abi_seeds": lambda *args, **kwargs: (),
+            "discover_constructor_record_seeds": self.constructor_callbacks,
             "discover_ram_record_dispatch_seeds": lambda *args: (),
             "discover_word_ram_callback_seeds": self.word_callbacks,
             "_discover_packed_code": lambda *args: (),
@@ -277,6 +283,27 @@ class M68kConvergenceTests(unittest.TestCase):
         self.assertIn("000206\n", harness.plans_seen[1])
         self.assertNotIn("000204\n", harness.plans_seen[1])
         progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertTrue(progress["converged"])
+
+    def test_restored_trap_arguments_replace_stale_planned_code_next_pass(self):
+        # Backend restoration exposes a previously erased TRAP. Its argument
+        # was an accidental instruction/root on the preceding pass; the new
+        # DATA proof must force a rerun even with the continuation already seeded.
+        call = InlineTrapCall(0x200, 0x202, 0x204, 0x300, 0x240)
+        seeds = tuple(DecoderSeed(a, "test", "proven", "existing plan")
+                      for a in (0x200, 0x202, 0x204))
+        harness = _M68kHarness([{"inline": (call,)}, {"inline": (call,)}],
+                              initial_seeds=seeds)
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+        self.assertEqual(2, len(harness.plans_seen))
+        self.assertIn("000202\n", harness.plans_seen[0])
+        self.assertTrue(harness.plans_seen[1].startswith("DATA 000202 2\n"))
+        self.assertNotIn("000202", harness.plans_seen[1].splitlines()[1:])
+        self.assertIn("000204", harness.plans_seen[1].splitlines())
+        self.assertNotIn(0x202, harness.interpreter_entrypoints[1])
+        progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertEqual([0x202], progress["passes"][0]["new_inline_data_addresses"])
         self.assertTrue(progress["converged"])
 
     def test_exact_shared_leaf_can_bootstrap_without_predecoded_handlers(self):
@@ -385,6 +412,20 @@ class M68kConvergenceTests(unittest.TestCase):
         progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
         self.assertEqual([0x240], progress["passes"][0]["new_seed_addresses"])
         self.assertEqual(["validated complete CFG"],
+                         progress["passes"][0]["new_seed_evidence"][0]["evidence"])
+
+    def test_constructor_callback_uses_rooted_execution_and_survives_reanalysis(self):
+        seed = DecoderSeed(0x240, "constructor_record_callback", "proven",
+                           "counted ROM records share an executed RAM pool", 0x210)
+        harness = _M68kHarness([{"constructor_callbacks": (seed,)},
+                               {"constructor_callbacks": (seed,)}])
+        with self.assertRaises(_StopAfterLoop):
+            self._analyze(harness)
+        self.assertEqual(2, len(harness.plans_seen))
+        self.assertEqual([0x240], _plan_addresses(harness.plans_seen[1]))
+        progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
+        self.assertTrue(progress["converged"])
+        self.assertEqual([seed.evidence],
                          progress["passes"][0]["new_seed_evidence"][0]["evidence"])
 
     def test_structural_callback_from_raw_is_planned_for_next_pass(self):
