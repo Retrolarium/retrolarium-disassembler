@@ -32,6 +32,27 @@ def logical_image(image):
     return SimpleNamespace(data=LogicalBytes())
 
 
+def _supervisor_immediate_in_code(fact):
+    """An executed immediate MOVE to SR keeps the 68000 supervisor stack.
+
+    MOVE to SR traps before changing SR when entered in user mode. On its
+    normal path S is therefore already set. Requiring S=1, T=0 and zero
+    reserved bits leaves the active stack bank unchanged. This only supports
+    code classification: it does not establish that a callee returns from
+    arbitrary machine state and must not relax constructor/inline-call ABIs.
+    """
+    if (fact.mnemonic.upper() not in {'MOVE', 'MOVE.W'} or fact.length != 4
+            or len(fact.raw) != 4 or fact.raw[:2] != b'\x46\xfc'
+            or fact.flow_type.upper() != 'FALL_THROUGH'):
+        return False
+    match = re.fullmatch(r'#?(0x[0-9a-f]+)\|SR', fact.operands, re.I)
+    if match is None:
+        return False
+    value = int(match[1], 0)
+    return (value == int.from_bytes(fact.raw[2:], 'big')
+            and value & 0xf8e0 == 0x2000)
+
+
 def _balanced_body(body, entry, exits, inline_traps):
     """Keep normal calls distinct from stack aliases and return-PC tricks."""
     pending, seen = deque([(entry, 0)]), set()
@@ -44,7 +65,8 @@ def _balanced_body(body, entry, exits, inline_traps):
         op, operands = fact.mnemonic.upper(), fact.operands.upper().split('|')
         inline = inline_traps.get(address) if op == 'TRAP' else None
         if (fact.flow_type.upper() in {'COMPUTED_CALL', 'COMPUTED_JUMP'}
-                or inline is None and _unsupported_frame_or_exception(fact)):
+                or inline is None and _unsupported_frame_or_exception(fact)
+                and not _supervisor_immediate_in_code(fact)):
             return False
         if re.search(r'(?<![A-Z0-9])(?:SP|A7|USP)[BWL]?(?![A-Z0-9])', fact.operands.upper()):
             if op in {'MOVEM.W', 'MOVEM.L'}:

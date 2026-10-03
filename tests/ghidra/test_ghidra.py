@@ -238,6 +238,11 @@ class GhidraBackendTests(unittest.TestCase):
             command = run.call_args.args[0]
             script_index = command.index("SeedMegaDriveVectors.java")
             repair_index = command.index("RestoreM68kReturningCalls.java")
+            repair_indices = [i for i, value in enumerate(command) if value == "RestoreM68kReturningCalls.java"]
+            self.assertEqual(2, len(repair_indices))
+            self.assertEqual("-preScript", command[repair_indices[0] - 1])
+            self.assertEqual("-postScript", command[repair_indices[1] - 1])
+            self.assertEqual(str(return_plan.resolve()), command[repair_indices[1] + 1])
             restore_index = command.index("RestoreM68kPlannedSeeds.java")
             self.assertGreater(repair_index, script_index)
             self.assertLess(repair_index, restore_index)

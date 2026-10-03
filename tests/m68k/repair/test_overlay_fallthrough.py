@@ -14,7 +14,7 @@ from test_m68k_overlay import HEADER, row
 class OverlayFallthroughTests(unittest.TestCase):
     def test_canonical_repair_drives_next_pass_at_module_load_address(self):
         plans, entries = [], []
-        base = 0x2000
+        base = 0xFF2000
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / 'module.bin'
@@ -44,7 +44,7 @@ class OverlayFallthroughTests(unittest.TestCase):
             repair_report = json.loads((root/'analysis/fallthrough-repairs.json').read_text())
         self.assertEqual([(base,), (base,)], entries)
         self.assertEqual('', plans[0])
-        self.assertIn('REPAIR\t002000\t4e71\t002002\t303c1234\t002004:1234', plans[1])
+        self.assertIn(f'REPAIR\t{base:06X}\t4e71\t{base+2:06X}\t303c1234\t{base+4:06X}:1234', plans[1])
         self.assertEqual([base, base+2, base+6], addresses)
         self.assertTrue(report['converged'])
         self.assertEqual([base+2], report['passes'][0]['new_fallthrough_repair_addresses'])

@@ -56,6 +56,32 @@ class PassProbeContextTests(unittest.TestCase):
             self.assertEqual((2, 2, 2), (load.call_count, detect.call_count, z80.call_count))
             self.assertIsNot(context.decoded, later.decoded)
 
+    def test_relative_callbacks_keep_inline_data_logical_and_translate_rom_ranges(self):
+        image = SimpleNamespace(header=SimpleNamespace(rom_start=0x1000))
+        trusted, decoded = {0x200: object()}, {0x202: object()}
+        context = SimpleNamespace(protected=((0x400, 0x408), (0x600, 0x608)),
+                                  z80_ranges=((0x600, 0x608),), decoded=decoded)
+        observer = object()
+        with patch.object(pipeline, 'discover_relative_record_callback_seeds', return_value=()) as discover:
+            pipeline._discover_relative_callbacks(image, trusted, {}, object(), context,
+                                                   decode_request=observer, inline_data={0x1800: 6})
+        self.assertIs(discover.call_args.args[1], trusted)
+        self.assertIs(discover.call_args.args[2], decoded)
+        self.assertIs(discover.call_args.kwargs['decode_request'], observer)
+        self.assertEqual(((0x1400, 0x1408), (0x1600, 0x1608), (0x1800, 0x1806)),
+                         discover.call_args.kwargs['protected_ranges'])
+        self.assertEqual(((0x1600, 0x1608),), discover.call_args.kwargs['protected_record_ranges'])
+
+    def test_cleared_pool_states_receive_physical_ranges_including_inline_data(self):
+        image = SimpleNamespace(header=SimpleNamespace(rom_start=0x1000))
+        trusted, decoded = {0x1200: object()}, {0x1202: object()}
+        context = SimpleNamespace(protected=((0x400, 0x408),), decoded=decoded)
+        with patch.object(pipeline, 'discover_cleared_pool_state_seeds', return_value=()) as discover:
+            pipeline._discover_cleared_states(image, trusted, {}, object(), context, inline_data={0x1800: 6})
+        self.assertIs(discover.call_args.args[1], trusted)
+        self.assertIs(discover.call_args.args[2], decoded)
+        self.assertEqual(((0x400, 0x408), (0x800, 0x806)), discover.call_args.kwargs['protected_ranges'])
+
     def test_cursor_callbacks_receive_logical_protection_and_only_trusted_consumers(self):
         image = SimpleNamespace(header=SimpleNamespace(rom_start=0x1000))
         trusted, decoded = {0x200: object()}, {0x202: object()}

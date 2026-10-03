@@ -25,6 +25,8 @@ from .m68k_probe_requests import M68kProbeRequests
 from .m68k_fallthrough_repair import M68kFallthroughRepairs
 from .megadrive_emit import _asm_instruction
 from .m68k_seeds import discover_dense_branch_table_seeds, discover_indexed_branch_table_seeds
+from .m68k_relative_record_callbacks import discover_relative_record_callback_seeds
+from .m68k_cleared_pool_states import discover_cleared_pool_state_seeds
 from .m68k_indexed_dispatch import (discover_register_indexed_dispatch_seeds,
                                   discover_nested_word_dispatch_seeds,
                                   discover_added_index_dispatch_seeds,
@@ -100,7 +102,7 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
                                   allow_empty=True, allow_overlaps=True)
         probes = _normalize_bus_targets(probes)
         protected_ranges = tuple((p.physical_start, p.physical_end)
-                                 for p in detect_pointer_candidates(image, trusted.facts)
+                                 for p in detect_pointer_candidates(image, trusted.facts, scan_start=base_address)
                                  if p.status == "accepted")
         validate_handler = make_dispatch_handler_validator(
             image, trusted.facts, {**probes, **facts}, protected_ranges=protected_ranges,
@@ -123,6 +125,12 @@ def analyze_overlay(path: Path, workspace: Path, ghidra_home: Path, scripts: Pat
                 candidates[edge.target_address] = edge.evidence
         for seed in (*discover_dispatch_table_seeds(image, trusted.facts, handler_validator=handler_validator,
                                                     entrypoints=trusted.roots),
+                     *discover_relative_record_callback_seeds(
+                         image, trusted.facts, {**probes, **facts},
+                         protected_ranges=protected_ranges, decode_request=request_decode),
+                     *discover_cleared_pool_state_seeds(
+                         image, trusted.facts, {**probes, **facts},
+                         protected_ranges=protected_ranges, render_instruction=_asm_instruction),
                      *discover_register_indexed_dispatch_seeds(image, trusted.facts),
                      *discover_nested_word_dispatch_seeds(image, trusted.facts),
                      *discover_added_index_dispatch_seeds(image, trusted.facts)):

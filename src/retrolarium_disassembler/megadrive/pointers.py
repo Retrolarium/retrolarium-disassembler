@@ -239,12 +239,14 @@ def _absolute_candidates(
     image: MegaDriveImage,
     facts: dict[int, InstructionFact],
     width: int,
+    *,
+    scan_start: int = 0x200,
 ) -> list[PointerCandidate]:
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     referenced = _referenced_addresses(facts)
     indexed_long_reads = _indexed_long_read_addresses(facts)
     candidates: list[PointerCandidate] = []
-    offset = 0x200
+    offset = scan_start
     schema_id = f"megadrive.u{width * 8}be.absolute"
     while offset + width <= len(image.data):
         if any(byte in occupied for byte in range(offset, offset + width)):
@@ -292,6 +294,8 @@ def _relative_candidates(
     image: MegaDriveImage,
     facts: dict[int, InstructionFact],
     base_policy: str,
+    *,
+    scan_start: int = 0x200,
 ) -> list[PointerCandidate]:
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     referenced = _referenced_addresses(facts)
@@ -299,7 +303,10 @@ def _relative_candidates(
     candidates: list[PointerCandidate] = []
     origin = image.header.rom_start
     rom_end = image.actual_rom_end
-    words = array("h", image.data[:len(image.data) & ~1])
+    # An overlay's address-indexed view has a synthetic prefix. Index only
+    # bytes eligible for scanning; neither arrays nor suffix preprocessing
+    # should scale with the module's load address.
+    words = array("h", image.data[scan_start:len(image.data) & ~1])
     if sys.byteorder != "big":
         words.byteswap()
     code_starts = sorted(instruction_starts)
@@ -312,7 +319,7 @@ def _relative_candidates(
         next_stop = array("I", [len(words)]) * (len(words) + 1)
         suffix_hits = array("I", [0]) * (len(words) + 1)
         for index in range(len(words) - 1, -1, -1):
-            offset = index * 2
+            offset = scan_start + index * 2
             target = origin + offset + words[index]
             valid = (offset not in occupied and offset + 1 not in occupied
                      and origin <= target <= rom_end and not target & 1)
@@ -320,7 +327,7 @@ def _relative_candidates(
             suffix_hits[index] = suffix_hits[index + 1] + (target in instruction_starts)
         reference_offsets = sorted(address - origin for address in referenced
                                    if not (address - origin) & 1)
-    for start in range(0x200, max(0x200, len(image.data) - 5), 2):
+    for start in range(scan_start, max(scan_start, len(image.data) - 5), 2):
         logical_start = origin + start
         is_referenced = logical_start in referenced
         if not is_referenced:
@@ -332,18 +339,18 @@ def _relative_candidates(
             nearest = bisect_left(code_starts, logical_start - 0x8000)
             if nearest == len(code_starts) or code_starts[nearest] > rightmost:
                 continue
-        first = start // 2
+        first = (start - scan_start) // 2
         if entry_relative:
             last = min(first + MAX_ENTRIES, next_stop[first])
             boundary = bisect_right(reference_offsets, start)
             if boundary < len(reference_offsets):
-                last = min(last, reference_offsets[boundary] // 2)
+                last = min(last, (reference_offsets[boundary] - scan_start) // 2)
             target_hits = suffix_hits[first] - suffix_hits[last]
         else:
             last = first
             target_hits = 0
             while last < min(first + MAX_ENTRIES, len(words)):
-                offset = last * 2
+                offset = scan_start + last * 2
                 if offset in occupied or offset + 1 in occupied:
                     break
                 if last != first and origin + offset in referenced:
@@ -358,11 +365,11 @@ def _relative_candidates(
             continue
         # Materialize only windows which survive _evaluate's existing filter.
         entries = tuple(PointerEntry(
-            physical_offset=index * 2,
-            logical_address=origin + index * 2,
+            physical_offset=scan_start + index * 2,
+            logical_address=origin + scan_start + index * 2,
             raw_value=words[index] & 0xFFFF,
-            target=(origin + index * 2 if entry_relative else logical_start) + words[index],
-            base_address=origin + index * 2 if entry_relative else logical_start,
+            target=(origin + scan_start + index * 2 if entry_relative else logical_start) + words[index],
+            base_address=origin + scan_start + index * 2 if entry_relative else logical_start,
         ) for index in range(first, last))
         candidate = _evaluate(
             image,
@@ -405,12 +412,12 @@ def _vector_candidate(image: MegaDriveImage) -> PointerCandidate:
 
 
 def _ram_trampoline_candidates(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
+    image: MegaDriveImage, facts: dict[int, InstructionFact], *, scan_start: int = 0x200,
 ) -> tuple[PointerCandidate, ...]:
     """Promote loader-proven counted u16 function tables."""
     _, interiors, instruction_starts = _instruction_sets(facts)
     candidates = []
-    for table in discover_ram_trampoline_tables(image):
+    for table in discover_ram_trampoline_tables(image, scan_start=scan_start):
         start = table.table_address
         entries = tuple(
             PointerEntry(
@@ -630,10 +637,12 @@ def _animation_candidates(
     image: MegaDriveImage,
     facts: dict[int, InstructionFact],
     absolute_candidates: tuple[PointerCandidate, ...],
+    *,
+    scan_start: int = 0x200,
 ) -> tuple[PointerCandidate, ...]:
     """Recover long animation roots and their counted copied-RAM offsets."""
     regions = tuple(
-        region for region in discover_ram_copy_regions(image)
+        region for region in discover_ram_copy_regions(image, scan_start=scan_start)
         if region.destination_start & 0xFFFF == 0
         and region.destination_end - region.destination_start <= 0x10000
     )
@@ -1513,21 +1522,29 @@ def _pc_word_dispatch_tables(
 
 
 def detect_pointer_candidates(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
+    image: MegaDriveImage, facts: dict[int, InstructionFact], *, scan_start: int = 0x200,
 ) -> tuple[PointerCandidate, ...]:
+    """Detect pointer schemas; ``scan_start`` bounds physical scan-only work.
+
+    Explicit instruction-derived tables and vectors keep their original gates.
+    Overlay callers can skip their synthetic address-view prefix without
+    changing any candidate within the real module bytes.
+    """
+    if not isinstance(scan_start, int) or scan_start < 0 or scan_start & 1:
+        raise ValueError("pointer scan start must be a nonnegative even physical offset")
     candidates = [_vector_candidate(image)]
-    candidates.extend(_ram_trampoline_candidates(image, facts))
+    candidates.extend(_ram_trampoline_candidates(image, facts, scan_start=scan_start))
     candidates.extend(
         table.candidate for table in _dispatch_tables(image, facts)
     )
     candidates.extend(table.candidate for table in _word_dispatch_tables(image, facts))
     candidates.extend(table.candidate for table in _pc_word_dispatch_tables(image, facts))
-    absolute = tuple(_absolute_candidates(image, facts, 4))
+    absolute = tuple(_absolute_candidates(image, facts, 4, scan_start=scan_start))
     candidates.extend(absolute)
-    candidates.extend(_animation_candidates(image, facts, absolute))
-    candidates.extend(_absolute_candidates(image, facts, 2))
-    candidates.extend(_relative_candidates(image, facts, "table_base"))
-    candidates.extend(_relative_candidates(image, facts, "entry_address"))
+    candidates.extend(_animation_candidates(image, facts, absolute, scan_start=scan_start))
+    candidates.extend(_absolute_candidates(image, facts, 2, scan_start=scan_start))
+    candidates.extend(_relative_candidates(image, facts, "table_base", scan_start=scan_start))
+    candidates.extend(_relative_candidates(image, facts, "entry_address", scan_start=scan_start))
     unique: dict[tuple[str, int, int], PointerCandidate] = {}
     for candidate in candidates:
         key = (candidate.schema_id, candidate.physical_start, candidate.physical_end)

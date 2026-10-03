@@ -85,6 +85,12 @@ def run_megadrive_analysis(
         ),
         seed_script="SeedMegaDriveVectors.java",
         seed_arguments=(str(seed_plan.resolve()),),
+        # Set proven call-site overrides before no-return analysis can erase
+        # their continuations and replace them with inferred scalar data.
+        # Reapply after analysis as well; neither step clears existing data.
+        pre_analysis_scripts=(("-preScript", "RestoreM68kReturningCalls.java",
+            str(seed_plan.with_name("normal-return-calls.txt").resolve()))
+            if seed_plan.with_name("normal-return-calls.txt").is_file() else ()),
         export_block="ROM",
         probe_m68k_orphans=probe_orphans,
         probe_requests=probe_requests,
@@ -281,6 +287,7 @@ def _run_analysis(
     seed_arguments: tuple[str, ...] = (),
     probe_m68k_orphans: bool = False,
     probe_requests: Path | None = None,
+    pre_analysis_scripts: tuple[str, ...] = (),
     post_analysis_scripts: tuple[str, ...] = (),
 ) -> GhidraArtifacts:
     image = image.resolve()
@@ -319,6 +326,7 @@ def _run_analysis(
             "-preScript",
             seed_script,
             *seed_arguments,
+            *pre_analysis_scripts,
             *post_analysis_scripts,
             "-postScript",
             "InspectProgram.java",

@@ -125,6 +125,7 @@ def create_game_studio_preset(
                 staging / "documents" / "animations.json",
                 staging / "documents" / "audio.json",
                 staging / "documents" / "presentation.json",
+                staging / "documents" / "text.json",
                 staging / "documents" / "graphics.json",
             )
             extract_game(rom, resource_documents[0], resource="levels")
@@ -134,8 +135,9 @@ def create_game_studio_preset(
             extract_game(
                 rom, resource_documents[4], resource="presentation"
             )
+            extract_game(rom, resource_documents[5], resource="text")
             extract_game(
-                rom, resource_documents[5], resource="resource-bundle"
+                rom, resource_documents[6], resource="resource-bundle"
             )
         else:
             resource_documents = (staging / "documents" / "resources.json",)

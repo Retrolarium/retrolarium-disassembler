@@ -49,6 +49,7 @@ class StudioPresetTests(unittest.TestCase):
                         "animations.json": "animations",
                         "audio.json": "audio",
                         "presentation.json": "presentation",
+                        "text.json": "text",
                         "graphics.json": "resource-bundle",
                     }[document.name],
                     resource,
@@ -59,7 +60,7 @@ class StudioPresetTests(unittest.TestCase):
             def create(_manifest: Path, project: Path, **_kwargs: object) -> None:
                 self.assertEqual(
                     ["levels.json", "room-art.json", "animations.json",
-                     "audio.json", "presentation.json", "graphics.json"],
+                     "audio.json", "presentation.json", "text.json", "graphics.json"],
                     [item.name for item in _kwargs["resource_documents"]],
                 )
                 project.write_text("project", encoding="utf-8")

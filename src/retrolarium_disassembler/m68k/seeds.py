@@ -69,11 +69,11 @@ def discover_vector_seeds(image: MegaDriveImage) -> tuple[DecoderSeed, ...]:
     )
 
 
-def discover_ram_copy_regions(image: MegaDriveImage) -> tuple[RamCopyRegion, ...]:
+def discover_ram_copy_regions(image: MegaDriveImage, *, scan_start: int = 0x200) -> tuple[RamCopyRegion, ...]:
     """Find ranges proven by a complete MOVE/DBF/JMP ROM-to-RAM idiom."""
     data = image.data
     regions = []
-    for offset in range(0x200, len(data) - 27, 2):
+    for offset in range(scan_start, len(data) - 27, 2):
         if (
             _word(data, offset) != 0x41F9
             or _word(data, offset + 6) != 0x43F9
@@ -273,11 +273,13 @@ def discover_dense_branch_table_seeds(
 
 def discover_ram_trampoline_tables(
     image: MegaDriveImage,
+    *,
+    scan_start: int = 0x200,
 ) -> tuple[RamTrampolineTable, ...]:
     """Find counted ROM tables used to construct JMP abs.l stubs in RAM."""
     data = image.data
     tables = []
-    for offset in range(0x200, len(data) - 23, 2):
+    for offset in range(scan_start, len(data) - 23, 2):
         if (
             _word(data, offset) != 0x41FA
             or _word(data, offset + 4) != 0x43F8

@@ -40,6 +40,13 @@ public class RestoreM68kFallthrough extends GhidraScript {
         for (byte value:data) result.append(String.format("%02x",value & 255));
         return result.toString();
     }
+    private boolean ambiguousPadding(long start) throws Exception {
+        if (!backed(start,4)) return false;
+        String span=bytes(start,4);
+        // 0000 0000 also decodes as ORI.B #0,D0. A legacy repair plan must
+        // not extend this ambiguous padding stream beyond the backend stop.
+        return span.equals("00000000") || span.equals("ffffffff");
+    }
     private boolean ordinary(Instruction instruction) {
         String op=instruction.getMnemonicString().toUpperCase().split("\\.")[0];
         if (List.of("JSR","BSR","JMP","BRA","RTS","RTE","RTR","TRAP","TRAPV","STOP",
@@ -70,6 +77,7 @@ public class RestoreM68kFallthrough extends GhidraScript {
         long end=repair.target+length;
         if (!backed(repair.target,length) || !backed(repair.source,repair.sourceBytes.length()/2)
                 || !bytes(repair.target,length).equals(repair.bytes)) return false;
+        if (ambiguousPadding(repair.target)) return false;
         if (protectedSpan(repair.source,repair.source+repair.sourceBytes.length()/2,repair.sourceBytes))
             return false; // New data/interior evidence can revoke an old source proof.
         Instruction source=listing.getInstructionAt(at(repair.source));

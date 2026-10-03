@@ -125,6 +125,12 @@ class M68kFallthroughRepairs:
                     or not self.minimum_address <= target <= image_end - 2
                     or _intersects(target, target + 2, (*spans, *forbidden))):
                 continue
+            physical = target - self.image.header.rom_start
+            if self.image.data[physical:physical + 4] in {b'\x00' * 4, b'\xff' * 4}:
+                # 0000 0000 is a legal ORI.B #0,D0, but also ubiquitous
+                # padding. Respect the backend's stop instead of extending
+                # that ambiguous stream by one instruction every pass.
+                continue
             candidate = probes.get(target)
             if candidate is None:
                 if decode_request is not None:

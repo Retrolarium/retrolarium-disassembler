@@ -254,6 +254,8 @@ class _M68kHarness:
             "discover_reaching_word_dispatch_seeds": self.reaching_dispatch,
             "_discover_cursor_callbacks": self.cursor_callbacks,
             "_discover_tail_callbacks": self.tail_callbacks,
+            "_discover_relative_callbacks": lambda *args, **kwargs: (),
+            "_discover_cleared_states": lambda *args, **kwargs: (),
             "discover_ram_record_dispatch_seeds": lambda *args: (),
             "discover_word_ram_callback_seeds": self.word_callbacks,
             "_discover_packed_code": lambda *args: (),

@@ -39,6 +39,26 @@ class FallthroughRepairTests(unittest.TestCase):
                          (result[0].source_address,result[0].address,result[0].raw_bytes))
         self.assertEqual((0x304,'4e75'),(result[0].conflicts[0].address,result[0].conflicts[0].raw_bytes))
 
+    def test_undefined_zero_fill_does_not_grow_a_repair_or_probe_frontier(self):
+        image, source, _, _ = self.fixture()
+        target = source.cpu_address + source.length
+        data = bytearray(image.data)
+        data[target:target + 64] = bytes(64)
+        image = replace(image, data=bytes(data))
+        model = M68kFallthroughRepairs(image)
+        raw = {source.cpu_address: source}
+        requests = []
+        self.assertEqual((), model.discover(raw, raw, {}, decode_request=lambda *args: requests.append(args)))
+        self.assertEqual([], requests)
+        zero = instruction(target, '00000000', 'ORI.B', '#0x0|D0b')
+        self.assertEqual((), model.discover(raw, raw, {target: zero}))
+        self.assertEqual({}, model.repairs)
+        # An actual immediate operation next to zeros remains repairable.
+        nonzero = instruction(target, '00000001', 'ORI.B', '#0x1|D0b')
+        data[target:target + 4] = nonzero.raw
+        model = M68kFallthroughRepairs(replace(image, data=bytes(data)))
+        self.assertEqual([target], [r.address for r in model.discover(raw, raw, {target: nonzero})])
+
     def test_protected_operand(self):
         self.assertFalse(self.discover(protected=((0x304,0x305),)))
 

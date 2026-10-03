@@ -139,6 +139,38 @@ class DispatchClosureTests(unittest.TestCase):
         self.decoded[0x300]=instruction(0x300,'4e40','TRAP','0x0',flow='CALL_TERMINATOR')
         self.assertFalse(self.validator()(0x400))
 
+    def test_supervisor_immediate_is_only_a_normal_path_code_witness(self):
+        from retrolarium_kit.m68k_constructor_records import _unsupported_frame_or_exception
+        self.decoded.pop(0x306)
+        self.decoded[0x304] = call(0x304, 0x900)
+        self.decoded[0x30a] = instruction(0x30a, '4e75', 'RTS', flow='TERMINATOR')
+        for value in (0x2000, 0x2500, 0x2700, 0x271f):
+            fact = instruction(0x300, f'46fc{value:04x}', 'MOVE', f'#0x{value:x}|SR')
+            self.decoded[0x300] = fact
+            self.assertTrue(self.validator()(0x400), hex(value))
+            # Return/constructor/inline proofs must retain their stricter gate.
+            self.assertTrue(_unsupported_frame_or_exception(fact), hex(value))
+
+    def test_status_stack_switch_trace_reserved_bits_and_unknown_source_rejected(self):
+        self.decoded.pop(0x306)
+        self.decoded[0x304] = call(0x304, 0x900)
+        self.decoded[0x30a] = instruction(0x30a, '4e75', 'RTS', flow='TERMINATOR')
+        for value in (0, 0x700, 0xa000, 0x3000, 0x2800, 0x2020):
+            self.decoded[0x300] = instruction(0x300, f'46fc{value:04x}', 'MOVE', f'#0x{value:x}|SR')
+            self.assertFalse(self.validator()(0x400), hex(value))
+        self.decoded[0x300] = instruction(0x300, '46f80000', 'MOVE', '(0x0).w|SR')
+        self.assertFalse(self.validator()(0x400))
+
+    def test_supervisor_witness_rejects_mismatching_metadata(self):
+        from retrolarium_kit.m68k_dispatch_closure import _supervisor_immediate_in_code
+        fact = instruction(0x300, '46fc2700', 'MOVE', '#0x2700|SR')
+        self.assertTrue(_supervisor_immediate_in_code(fact))
+        for changed in (replace(fact, operands='#0x2000|SR'),
+                        replace(fact, raw=bytes.fromhex('46fc0700')),
+                        replace(fact, length=2), replace(fact, flow_type='TERMINATOR'),
+                        replace(fact, operands='D0w|SR')):
+            self.assertFalse(_supervisor_immediate_in_code(changed))
+
     def test_rooted_connection_does_not_justify_an_unresolved_computed_call(self):
         self.decoded[0x300]=call(0x300,0x900)
         self.decoded[0x306]=instruction(0x306,'4e90','JSR','(A0)',flow='COMPUTED_CALL')

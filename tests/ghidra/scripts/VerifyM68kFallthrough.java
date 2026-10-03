@@ -29,7 +29,7 @@ public class VerifyM68kFallthrough extends GhidraScript {
         listing=currentProgram.getListing();
         base=currentProgram.getMemory().getBlocks()[0].getStart().getOffset();
         byte[] original=getBytes(toAddr(base),0x500);
-        for (long source:new long[]{0x200,0x240,0x280,0x2c0,0x300,0x340,0x380,0x440}) single(source,2);
+        for (long source:new long[]{0x200,0x240,0x280,0x2c0,0x300,0x340,0x380,0x3c0,0x400,0x440}) single(source,2);
         for (long conflict:new long[]{0x204,0x244,0x2c4,0x304,0x384}) single(conflict,2);
         single(0x246,4);single(0x346,4);
         createData(toAddr(base+0x284),WordDataType.dataType);
@@ -37,7 +37,7 @@ public class VerifyM68kFallthrough extends GhidraScript {
         require(instruction(0x202)!=null && instruction(0x202).getLength()==6,"canonical instruction missing");
         require(instruction(0x242)!=null && instruction(0x242).getLength()==6,"union repair missing");
         require(instruction(0x248)==null,"cleared union tail was decoded");
-        for (long rejected:new long[]{0x282,0x2c2,0x302,0x342,0x382,0x442})
+        for (long rejected:new long[]{0x282,0x2c2,0x302,0x342,0x382,0x3c2,0x402,0x442})
             require(instruction(rejected)==null,"unsafe repair accepted at "+Long.toHexString(rejected));
         for (long conflict:new long[]{0x2c4,0x304,0x346,0x384})
             require(instruction(conflict)!=null,"rejected repair cleared its conflict");

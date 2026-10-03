@@ -21,10 +21,12 @@ class FallthroughIntegrationTests(unittest.TestCase):
                 for source in (0x200,0x240,0x280,0x2c0,0x300,0x340,0x380):
                     image[source:source+12]=bytes.fromhex('7001203c4e7500014e714e75')
                 image[0x440:0x444]=bytes.fromhex('70016a01')
+                image[0x3c0:0x3c6]=bytes.fromhex('700100000000')
+                image[0x400:0x406]=bytes.fromhex('7001ffffffff')
                 rom=root/'fixture.bin';rom.write_bytes(image)
                 def record(source,conflicts=True,union=False):
                     target=source+2
-                    raw='6a01' if source==0x440 else '203c4e750001'
+                    raw={0x440:'6a01',0x3c0:'00000000',0x400:'ffffffff'}.get(source,'203c4e750001')
                     allowed=f'{base+source+4:06X}:4e75' if conflicts else '-'
                     if union:allowed+=f',{base+source+6:06X}:00014e71'
                     return f'REPAIR\t{base+source:06X}\t7001\t{base+target:06X}\t{raw}\t{allowed}\n'
@@ -44,6 +46,10 @@ class FallthroughIntegrationTests(unittest.TestCase):
                     data(0x200,2)+record(0x200),
                     data(0x204,2)+record(0x200),
                 ]
+                # These deliberately emulate old plans generated before the
+                # Python padding gate existed. Java must independently reject
+                # the legal all-zero ORI instruction and the all-FF stream.
+                texts[0]+=record(0x3c0,conflicts=False)+record(0x400,conflicts=False)
                 plans=[]
                 for i,text in enumerate(texts):
                     plan=root/f'plan{i}.tsv';plan.write_text(text);plans.append(str(plan))
@@ -54,12 +60,17 @@ class FallthroughIntegrationTests(unittest.TestCase):
                     '-loader','BinaryLoader','-loader-blockName',block,'-loader-baseAddr',f'0x{base:X}',
                     '-processor','68000:BE:32:default','-noanalysis','-scriptPath',str(scripts),
                     '-postScript','VerifyM68kFallthrough.java',*plans,'-deleteProject']
+                environment=dict(os.environ)
+                for key in ('APPDATA','LOCALAPPDATA','XDG_CONFIG_HOME','XDG_CACHE_HOME'):
+                    location=root/key.lower()
+                    location.mkdir()
+                    environment[key]=str(location)
                 result=subprocess.run(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
-                                      text=True,errors='replace',timeout=180)
+                                      text=True,errors='replace',timeout=180,env=environment)
                 self.assertEqual(0,result.returncode,result.stdout[-12000:])
                 self.assertNotIn('REPORT SCRIPT ERROR:',result.stdout,result.stdout[-12000:])
                 self.assertIn('[PASS] canonical repair protects',result.stdout,result.stdout[-12000:])
-                self.assertIn('proofs satisfied=2 of 8',result.stdout,result.stdout[-12000:])
+                self.assertIn('proofs satisfied=2 of 10',result.stdout,result.stdout[-12000:])
                 self.assertEqual(2,result.stdout.count('proofs satisfied=0 of 1'))
 
 

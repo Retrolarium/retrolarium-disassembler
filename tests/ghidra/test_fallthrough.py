@@ -32,14 +32,18 @@ class GhidraFallthroughTests(unittest.TestCase):
                 run_megadrive_analysis(image,root/'out',home,scripts,
                                       seed_plan=seeds,fallthrough_repairs=repairs)
             command = backend.call_args.args[0]
-            ordered = [command.index(name) for name in (
+            returning = [i for i,name in enumerate(command) if name == 'RestoreM68kReturningCalls.java']
+            self.assertEqual(2,len(returning))
+            self.assertEqual(['-preScript','-postScript'],[command[i-1] for i in returning])
+            self.assertEqual([str(returns.resolve())]*2,[command[i+1] for i in returning])
+            ordered = [command.index(name,returning[1]) for name in (
                 'RestoreM68kReturningCalls.java','RestoreM68kPlannedSeeds.java',
                 'RestoreM68kFallthrough.java','ExportInstructionFacts.java')]
             self.assertEqual(ordered,sorted(ordered))
             for name,plan in (('RestoreM68kReturningCalls.java',returns),
                               ('RestoreM68kPlannedSeeds.java',seeds),
                               ('RestoreM68kFallthrough.java',repairs)):
-                index = command.index(name)
+                index = command.index(name,returning[1])
                 self.assertEqual('-postScript',command[index-1])
                 self.assertEqual(str(plan.resolve()),command[index+1])
             self.assertEqual('000206\n',seeds.read_text())
