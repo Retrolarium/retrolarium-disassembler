@@ -118,6 +118,27 @@ class MegaDriveZ80Tests(unittest.TestCase):
         self.assertEqual(2, len(group_z80_copies((first, gap))))
         self.assertEqual(2, len(group_z80_copies((first, overlap))))
 
+    def test_copy_length_from_end_minus_source_addresses(self) -> None:
+        # Compiled C: n = end - src; while (n--) *dst++ = *src++;
+        image = parse_megadrive(cartridge())
+        sequence = (
+            fact(0x200, "LEA", "(0x280).l|A0"),
+            fact(0x206, "LEA", "(0x2c0).l|A1"),
+            fact(0x20C, "MOVE.L", "A1|D0"),
+            fact(0x20E, "SUB.L", "A0|D0"),
+            fact(0x210, "SUBQ.W", "0x1|D0w"),
+            fact(0x212, "LEA", "(0xa00000).l|A1"),
+            fact(0x218, "MOVE.B", "(A0)+|(A1)+"),
+            fact(0x21A, "DBF", "D0w|0x00000218", flows=(0x218,)),
+        )
+        copy, = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
+        self.assertEqual((0x280, 0x2BF, 0, 0x40),
+                         (copy.source_start, copy.source_end, copy.target_start, copy.size))
+        # The subtracted register must be the copy source.
+        broken = tuple(replace(item, operands="A2|D0") if item.cpu_address == 0x20E else item
+                       for item in sequence)
+        self.assertEqual((), detect_z80_copies(image, {item.physical_offset: item for item in broken}))
+
     def test_recovers_driver_passed_to_shared_z80_copy_subroutine(self) -> None:
         image = parse_megadrive(cartridge())
         sequence = (

@@ -118,6 +118,8 @@ def create_game_studio_preset(
             extract_game(
                 rom, resource_documents[1], resource="resource-bundle"
             )
+            resource_documents += (staging / "documents" / "demo.json",)
+            extract_game(rom, resource_documents[2], resource="title-demo")
         elif game == "solomons-key":
             resource_documents = (
                 staging / "documents" / "levels.json",
@@ -139,6 +141,13 @@ def create_game_studio_preset(
             extract_game(
                 rom, resource_documents[6], resource="resource-bundle"
             )
+        elif game == "smb1" and revision == "ju":
+            resource_documents = (
+                staging / "documents" / "resources.json",
+                staging / "documents" / "demo.json",
+            )
+            extract_game(rom, resource_documents[0])
+            extract_game(rom, resource_documents[1], resource="demo")
         else:
             resource_documents = (staging / "documents" / "resources.json",)
             extract_game(rom, resource_documents[0])

@@ -210,12 +210,13 @@ class StudioPresetTests(unittest.TestCase):
                 result["enabled_tabs"],
             )
             self.assertEqual(
-                [("levels.json", "levels"), ("graphics.json", "resource-bundle")],
+                [("levels.json", "levels"), ("graphics.json", "resource-bundle"),
+                 ("demo.json", "title-demo")],
                 extracted,
             )
             resource_documents = create_mock.call_args.kwargs["resource_documents"]
             self.assertEqual(
-                ["levels.json", "graphics.json"],
+                ["levels.json", "graphics.json", "demo.json"],
                 [path.name for path in resource_documents],
             )
             self.assertTrue(result["built"])
@@ -240,7 +241,8 @@ class StudioPresetTests(unittest.TestCase):
 
             def extract(_rom: Path, document: Path, *,
                         resource: str | None = None) -> None:
-                self.assertEqual("resource-bundle", resource)
+                self.assertEqual({"graphics.json": "resource-bundle",
+                                  "demo.json": "title-demo"}[document.name], resource)
                 document.parent.mkdir(parents=True, exist_ok=True)
                 document.write_text("{}", encoding="utf-8")
 
@@ -268,7 +270,7 @@ class StudioPresetTests(unittest.TestCase):
                     legacy_castle_levels=legacy,
                 )
             validate.assert_called_once_with(rom.resolve(), legacy.resolve())
-            self.assertEqual(1, extract_mock.call_count)
+            self.assertEqual(2, extract_mock.call_count)
             self.assertEqual(legacy.read_bytes(),
                              (output / "documents/levels.json").read_bytes())
             self.assertEqual("ready", result["status"])
@@ -320,7 +322,7 @@ class StudioPresetTests(unittest.TestCase):
                 (staging / "manifest.json").write_text("{}", encoding="utf-8")
 
             def extract(_rom: Path, document: Path, **_kwargs: object) -> None:
-                document.parent.mkdir(parents=True)
+                document.parent.mkdir(parents=True, exist_ok=True)
                 document.write_text("{}", encoding="utf-8")
 
             def create(_manifest: Path, project: Path, **_kwargs: object) -> None:

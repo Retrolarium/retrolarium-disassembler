@@ -184,6 +184,42 @@ def _detect_subroutine_copies(
     return copies
 
 
+def _end_minus_source_count(
+    image: MegaDriveImage, ordered: list[InstructionFact], index: int,
+    count_register: str, source_register: str, source_start: int | None,
+) -> int | None:
+    """DBF count computed as end - source - 1 from two LEA'd addresses.
+
+    Matches MOVE.L Ay,Dn / SUB.L Ax,Dn / SUBQ #1,Dn, where Ax is the copy
+    source and Ay was loaded with the payload's end address, as compiled
+    `for (n = end - src; n--; ) *dst++ = *src++;` loops do.
+    """
+    if source_start is None or index < 2:
+        return None
+    subq, sub, move = ordered[index], ordered[index - 1], ordered[index - 2]
+    register = count_register.upper()
+    if not (subq.mnemonic.upper() in {"SUBQ.W", "SUBQ.L"}
+            and re.fullmatch(r"(?:#)?(?:0x)?1\|" + register + r"W?", subq.operands, re.I)):
+        return None
+    sub_match = re.fullmatch(r"(A[0-7])\|" + register, sub.operands, re.I)
+    if (sub.mnemonic.upper() != "SUB.L" or sub_match is None
+            or sub_match.group(1).upper() != source_register.upper()):
+        return None
+    move_match = re.fullmatch(r"(A[0-7])\|" + register, move.operands, re.I)
+    if move.mnemonic.upper() != "MOVE.L" or move_match is None:
+        return None
+    end_register = move_match.group(1).upper()
+    for previous in reversed(ordered[max(0, index - 8):index - 2]):
+        if _destination_register(previous) == end_register:
+            if previous.mnemonic != "LEA":
+                return None
+            end = _source_address(image, previous)
+            if end is None or end <= source_start:
+                return None
+            return end - source_start - 1
+    return None
+
+
 def detect_z80_copies(
     image: MegaDriveImage, facts: dict[int, InstructionFact]
 ) -> tuple[CrossCpuCopy, ...]:
@@ -246,6 +282,10 @@ def detect_z80_copies(
             continue
 
         count_value = _register_constant(count_fact, count_register)
+        if count_value is None:
+            count_value = _end_minus_source_count(
+                image, ordered, ordered.index(count_fact), count_register,
+                source_register, _source_address(image, source_fact))
         if count_value is None:
             continue
         size = (count_value & 0xFFFF) + 1
