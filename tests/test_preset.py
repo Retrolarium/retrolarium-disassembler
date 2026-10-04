@@ -211,12 +211,12 @@ class StudioPresetTests(unittest.TestCase):
             )
             self.assertEqual(
                 [("levels.json", "levels"), ("graphics.json", "resource-bundle"),
-                 ("demo.json", "title-demo")],
+                 ("demo.json", "title-demo"), ("screens.json", "screens")],
                 extracted,
             )
             resource_documents = create_mock.call_args.kwargs["resource_documents"]
             self.assertEqual(
-                ["levels.json", "graphics.json", "demo.json"],
+                ["levels.json", "graphics.json", "demo.json", "screens.json"],
                 [path.name for path in resource_documents],
             )
             self.assertTrue(result["built"])
@@ -241,8 +241,8 @@ class StudioPresetTests(unittest.TestCase):
 
             def extract(_rom: Path, document: Path, *,
                         resource: str | None = None) -> None:
-                self.assertEqual({"graphics.json": "resource-bundle",
-                                  "demo.json": "title-demo"}[document.name], resource)
+                self.assertEqual({"graphics.json": "resource-bundle", "demo.json": "title-demo",
+                                  "screens.json": "screens"}[document.name], resource)
                 document.parent.mkdir(parents=True, exist_ok=True)
                 document.write_text("{}", encoding="utf-8")
 
@@ -270,7 +270,7 @@ class StudioPresetTests(unittest.TestCase):
                     legacy_castle_levels=legacy,
                 )
             validate.assert_called_once_with(rom.resolve(), legacy.resolve())
-            self.assertEqual(2, extract_mock.call_count)
+            self.assertEqual(3, extract_mock.call_count)
             self.assertEqual(legacy.read_bytes(),
                              (output / "documents/levels.json").read_bytes())
             self.assertEqual("ready", result["status"])
@@ -363,7 +363,7 @@ class StudioPresetTests(unittest.TestCase):
                 )
 
             with patch("retrolarium_kit.studio_preset.inspect_game",
-                    return_value=inspection("doraemon")):
+                    return_value=inspection("honkeypong")):
                 with self.assertRaisesRegex(StudioProjectError, "limited"):
                     create_game_studio_preset(
                         rom, root / "new", ghidra_home=root / "ghidra"

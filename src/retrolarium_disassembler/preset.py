@@ -22,7 +22,7 @@ from .studio_project import (
 )
 
 
-SUPPORTED_PRESETS = frozenset({"castle-excellent", "pacman", "smb1",
+SUPPORTED_PRESETS = frozenset({"castle-excellent", "doraemon", "pacman", "smb1",
                                "solomons-key"})
 
 
@@ -60,7 +60,7 @@ def create_game_studio_preset(
     if game not in SUPPORTED_PRESETS:
         raise StudioProjectError(
             "ready Studio presets are currently limited to Castle Excellent / "
-            "Castlequest, Pac-Man, Super Mario Bros. 1, and Solomon's Key"
+            "Castlequest, Doraemon, Pac-Man, Super Mario Bros. 1, and Solomon's Key"
         )
     revision = str(inspection["revision"])
     if legacy_castle_levels is not None:
@@ -118,8 +118,10 @@ def create_game_studio_preset(
             extract_game(
                 rom, resource_documents[1], resource="resource-bundle"
             )
-            resource_documents += (staging / "documents" / "demo.json",)
+            resource_documents += (staging / "documents" / "demo.json",
+                                   staging / "documents" / "screens.json")
             extract_game(rom, resource_documents[2], resource="title-demo")
+            extract_game(rom, resource_documents[3], resource="screens")
         elif game == "solomons-key":
             resource_documents = (
                 staging / "documents" / "levels.json",
@@ -148,6 +150,24 @@ def create_game_studio_preset(
             )
             extract_game(rom, resource_documents[0])
             extract_game(rom, resource_documents[1], resource="demo")
+        elif game == "doraemon":
+            resource_documents = (
+                staging / "documents" / "resources.json",
+                staging / "documents" / "text.json",
+                staging / "documents" / "music.json",
+                staging / "documents" / "demo.json",
+            )
+            extract_game(rom, resource_documents[0])
+            extract_game(rom, resource_documents[1], resource="text")
+            extract_game(rom, resource_documents[2], resource="music")
+            extract_game(rom, resource_documents[3], resource="demo")
+        elif game == "pacman":
+            resource_documents = (
+                staging / "documents" / "resources.json",
+                staging / "documents" / "demo.json",
+            )
+            extract_game(rom, resource_documents[0])
+            extract_game(rom, resource_documents[1], resource="attract-demo")
         else:
             resource_documents = (staging / "documents" / "resources.json",)
             extract_game(rom, resource_documents[0])
