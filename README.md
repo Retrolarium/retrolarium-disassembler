@@ -687,3 +687,12 @@ baseline has precision 1.0 and recall 1.0 across four tables. Besides compact
 monotonic tables, it exercises two generic evidence patterns: pointer fields in
 a record reached from an accepted table, and two interleaved monotonic lanes.
 RHDE remains a source-isolated holdout and retains exact rebuild verification.
+
+## License
+
+Retrolarium Kit is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option)
+any later version (`GPL-3.0-or-later`, text in `LICENSE`). It comes without
+any warranty. The bundled toolchains keep their own licenses
+(`src/retrolarium_kit/_toolchains/licenses`).
