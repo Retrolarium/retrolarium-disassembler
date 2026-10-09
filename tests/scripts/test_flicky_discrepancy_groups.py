@@ -5,16 +5,16 @@ from pathlib import Path
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from flicky_discrepancy_groups import (
+from tools.reports.flicky_discrepancy_groups import (
     difference_segments,
     group_segments,
     instruction_groups,
     semantic_kind,
     source_spans,
 )
-from flicky_html_diff import SourceAtAddress
+from tools.reports.flicky_html_diff import SourceAtAddress
 
 
 class FlickyDiscrepancyGroupTests(unittest.TestCase):

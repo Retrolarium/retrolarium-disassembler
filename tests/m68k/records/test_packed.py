@@ -5,11 +5,11 @@ from dataclasses import replace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_disasm.m68k.records.packed import discover_packed_orphan_closure, _call_continuations, _complete_cfg
+from retrolarium_disassembler.m68k.records.packed import discover_packed_orphan_closure, _call_continuations, _complete_cfg
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_disasm.megadrive.emit import _asm_instruction
-from retrolarium_disasm.facts import InstructionReference
-from retrolarium_disasm.m68k.dispatch.ram import discover_inline_trap_calls
+from retrolarium_disassembler.megadrive.emit import _asm_instruction
+from retrolarium_disassembler.facts import InstructionReference
+from retrolarium_disassembler.m68k.dispatch.ram import discover_inline_trap_calls
 from test_megadrive import cartridge
 from test_m68k_unused import instruction
 
@@ -193,7 +193,7 @@ class PackedClosureTests(unittest.TestCase):
             image, self.known, self.decoded, render_instruction=_asm_instruction)])
 
     def test_only_addresses_read_through_their_register_are_data(self):
-        from retrolarium_disasm.m68k.abstract import immediate_rom_addresses
+        from retrolarium_disassembler.m68k.abstract import immediate_rom_addresses
         image = parse_megadrive(cartridge(size=0x800))
         known = {
             0x300: instruction(0x300, "47f900000400", "LEA", "(0x400).l|A3"),

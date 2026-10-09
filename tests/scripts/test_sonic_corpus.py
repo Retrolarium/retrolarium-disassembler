@@ -4,8 +4,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from sonic_corpus_benchmark import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.benchmarks.sonic_corpus import (
     below_source_recall_target, compare, normalise_reference_listing,
 )
 

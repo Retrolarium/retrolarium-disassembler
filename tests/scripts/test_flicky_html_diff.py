@@ -7,9 +7,9 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from flicky_html_diff import (
+from tools.reports.flicky_html_diff import (
     SourceAtAddress,
     _data_or_label,
     _is_difference,

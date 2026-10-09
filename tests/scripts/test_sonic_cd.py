@@ -4,8 +4,8 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from sonic_cd_benchmark import overlay_header, reference_instructions
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.benchmarks.sonic_cd import overlay_header, reference_instructions
 
 
 class SonicCdBenchmarkTests(unittest.TestCase):

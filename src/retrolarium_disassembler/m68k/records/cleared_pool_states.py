@@ -9,15 +9,15 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 import re
 
-from retrolarium_disasm.m68k.abstract import OrphanCandidate, _register_list
-from retrolarium_disasm.m68k.records.constructor import _writes, _unsupported_frame_or_exception
-from retrolarium_disasm.m68k.frames.call_frame import _STACK
-from retrolarium_disasm.m68k.dispatch.closure import logical_image, make_dispatch_closure_validator, _balanced_body
-from retrolarium_disasm.m68k.dispatch.leaf import _body, _schema
-from retrolarium_disasm.m68k.records.packed import _complete_cfg
-from retrolarium_disasm.m68k.seeds import DecoderSeed
-from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
-from retrolarium_disasm.m68k.instructions import pc_displacement_target, pc_indexed_target
+from retrolarium_disassembler.m68k.abstract import OrphanCandidate, _register_list
+from retrolarium_disassembler.m68k.records.constructor import _writes, _unsupported_frame_or_exception
+from retrolarium_disassembler.m68k.frames.call_frame import _STACK
+from retrolarium_disassembler.m68k.dispatch.closure import logical_image, make_dispatch_closure_validator, _balanced_body
+from retrolarium_disassembler.m68k.dispatch.leaf import _body, _schema
+from retrolarium_disassembler.m68k.records.packed import _complete_cfg
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.m68k.instructions import absolute_referenced_addresses
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target, pc_indexed_target
 
 
 def _field(text):

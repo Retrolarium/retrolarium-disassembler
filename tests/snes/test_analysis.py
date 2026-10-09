@@ -14,14 +14,14 @@ from retrolarium_core.snes import (
     cartridge_checksum,
     parse_snes,
 )
-from retrolarium_disasm.snes.analysis import (
+from retrolarium_disassembler.snes.analysis import (
     OPCODES,
     CpuState,
     analysis_manifest,
     analyze_snes,
     validate_backend_facts,
 )
-from retrolarium_disasm.facts import FactError, load_snes_ghidra_facts
+from retrolarium_disassembler.facts import FactError, load_snes_ghidra_facts
 from helpers import cartridge
 
 

@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 import re
 
-from flicky_html_diff import listing_source
-from source_benchmark import listing_instructions
+from tools.reports.flicky_html_diff import listing_source
+from tools.benchmarks.source import listing_instructions
 
 
 ROM_NAME = "Flicky (UE) [!].bin"

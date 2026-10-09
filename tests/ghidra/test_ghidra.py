@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from retrolarium_disasm.ghidra import (
+from retrolarium_disassembler.ghidra import (
     GhidraError,
     run_megadrive_analysis,
     run_nes_analysis,
@@ -28,7 +28,7 @@ class GhidraBackendTests(unittest.TestCase):
             index = import_arguments.index("-loader-baseAddr")
             return int(import_arguments[index + 1], 16)
 
-        with patch("retrolarium_disasm.ghidra._run_analysis", side_effect=interpret_loader_address):
+        with patch("retrolarium_disassembler.ghidra._run_analysis", side_effect=interpret_loader_address):
             decoded_base = run_z80_analysis(Path("payload.bin"), Path("output"), Path("ghidra"), Path("scripts"), base_address=0x1C00)
         self.assertEqual(0x1C00, decoded_base)
 
@@ -71,7 +71,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_nes_analysis(image, workspace, ghidra_home, scripts)
 
@@ -81,7 +81,7 @@ class GhidraBackendTests(unittest.TestCase):
             self.assertLess(seed_index, command.index("-postScript"))
 
     def test_nes_entry_seed_plan_reaches_vector_script(self) -> None:
-        from retrolarium_disasm.nes.pipeline import _run_seeded_nes_analysis
+        from retrolarium_disassembler.nes.pipeline import _run_seeded_nes_analysis
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -105,7 +105,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 _run_seeded_nes_analysis(
                     image, workspace, ghidra_home, scripts, seed_plan
@@ -120,7 +120,7 @@ class GhidraBackendTests(unittest.TestCase):
         # The script must consume that single argument as a hex address plan.
         source = (
             Path(__file__).resolve().parents[1]
-            / "src" / "retrolarium_disasm" / "ghidra" / "scripts" / "SeedNesVectors.java"
+            / "src" / "retrolarium_disassembler" / "ghidra" / "scripts" / "SeedNesVectors.java"
         ).read_text(encoding="utf-8")
         self.assertIn("getScriptArgs()", source)
         self.assertIn("args.length > 1", source)
@@ -138,7 +138,7 @@ class GhidraBackendTests(unittest.TestCase):
             )
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", return_value=result
+                "retrolarium_disassembler.ghidra.subprocess.run", return_value=result
             ):
                 with self.assertRaisesRegex(GhidraError, "script error"):
                     run_nes_analysis(image, workspace, ghidra_home, scripts)
@@ -173,7 +173,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_megadrive_analysis(
                     image, workspace, ghidra_home, scripts,
@@ -225,7 +225,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_megadrive_analysis(
                     image,
@@ -272,7 +272,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_z80_analysis(image, workspace, ghidra_home, scripts)
 
@@ -291,7 +291,7 @@ class GhidraBackendTests(unittest.TestCase):
             plan = root / "dispatch-seeds.txt"
             plan.write_text("T 0080 0088\nS 00A0\n", encoding="ascii")
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_z80_analysis(
                     image, workspace, ghidra_home, scripts, seed_plan=plan
@@ -324,7 +324,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_snes_bank_analysis(
                     image,
@@ -365,7 +365,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disasm.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
             ) as run:
                 run_spc700_analysis(
                     image,

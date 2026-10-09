@@ -9,59 +9,59 @@ from pathlib import Path
 import subprocess
 
 from retrolarium_core.contracts import validate_megadrive_disassembly_manifest
-from retrolarium_disasm.facts import (
+from retrolarium_disassembler.facts import (
     InstructionFact,
     load_megadrive_ghidra_facts,
     load_z80_ghidra_facts,
 )
-from retrolarium_disasm.ghidra import GhidraArtifacts, run_megadrive_analysis, run_z80_analysis
+from retrolarium_disassembler.ghidra import GhidraArtifacts, run_megadrive_analysis, run_z80_analysis
 from retrolarium_core.megadrive import MegaDriveImage, image_manifest, load_megadrive
-from retrolarium_disasm.m68k.abstract import (
+from retrolarium_disassembler.m68k.abstract import (
     discover_packed_orphan_candidates,
     discover_object_field_handler_candidates,
     discover_ram_handler_candidates,
     interpret_trusted_cfg,
     retain_trusted_instruction_facts,
 )
-from retrolarium_disasm.m68k.seeds import DecoderSeed, discover_initial_decoder_seeds
-from retrolarium_disasm.m68k.records.ram_copies import discover_descriptor_ram_code_seeds
-from retrolarium_disasm.m68k.repair.unused import UnusedCodeCandidate, discover_validated_unused_candidates
-from retrolarium_disasm.m68k.records.packed import discover_packed_orphan_closure
-from retrolarium_disasm.m68k.returns import discover_returning_call_seeds
-from retrolarium_disasm.m68k.callbacks.register import discover_register_callback_seeds
-from retrolarium_disasm.m68k.callbacks.abi import discover_callback_abi_seeds
-from retrolarium_disasm.m68k.records.constructor import (
+from retrolarium_disassembler.m68k.seeds import DecoderSeed, discover_initial_decoder_seeds
+from retrolarium_disassembler.m68k.records.ram_copies import discover_descriptor_ram_code_seeds
+from retrolarium_disassembler.m68k.repair.unused import UnusedCodeCandidate, discover_validated_unused_candidates
+from retrolarium_disassembler.m68k.records.packed import discover_packed_orphan_closure
+from retrolarium_disassembler.m68k.returns import discover_returning_call_seeds
+from retrolarium_disassembler.m68k.callbacks.register import discover_register_callback_seeds
+from retrolarium_disassembler.m68k.callbacks.abi import discover_callback_abi_seeds
+from retrolarium_disassembler.m68k.records.constructor import (
     discover_constructor_record_seeds, discover_tail_allocator_callback_seeds,
 )
-from retrolarium_disasm.m68k.dispatch.reaching import discover_reaching_word_dispatch_seeds
-from retrolarium_disasm.m68k.bytecode_cursor import discover_bytecode_cursor_seeds
-from retrolarium_disasm.m68k.dispatch.ram import discover_inline_trap_calls
-from retrolarium_disasm.m68k.frames.inline_calls import discover_inline_subroutine_calls
-from retrolarium_disasm.m68k.frames.inline_operands import InlineOperandProver, discover_inline_operand_calls
-from retrolarium_disasm.m68k.frames.link_continuations import discover_link_continuation_seeds
-from retrolarium_disasm.m68k.dispatch.ram_record import discover_ram_record_dispatch_seeds
-from retrolarium_disasm.m68k.callbacks.word import discover_word_ram_callback_seeds
-from retrolarium_disasm.m68k.callbacks.relative_record import discover_relative_record_callback_seeds
-from retrolarium_disasm.m68k.records.cleared_pool_states import discover_cleared_pool_state_seeds
-from retrolarium_disasm.m68k.callbacks.absolute_ram import discover_absolute_ram_callback_seeds
-from retrolarium_disasm.m68k.records.finite import discover_finite_record_callback_seeds
-from retrolarium_disasm.m68k.dispatch.witness import make_dispatch_handler_validator
-from retrolarium_disasm.m68k.repair.probe_requests import M68kProbeRequests
-from retrolarium_disasm.m68k.repair.fallthrough import M68kFallthroughRepairs
-from retrolarium_disasm.megadrive.emit import EmitResult, MegaDriveEmitError, emit_project, _asm_instruction
-from retrolarium_disasm.megadrive.pointers import (
+from retrolarium_disassembler.m68k.dispatch.reaching import discover_reaching_word_dispatch_seeds
+from retrolarium_disassembler.m68k.bytecode_cursor import discover_bytecode_cursor_seeds
+from retrolarium_disassembler.m68k.dispatch.ram import discover_inline_trap_calls
+from retrolarium_disassembler.m68k.frames.inline_calls import discover_inline_subroutine_calls
+from retrolarium_disassembler.m68k.frames.inline_operands import InlineOperandProver, discover_inline_operand_calls
+from retrolarium_disassembler.m68k.frames.link_continuations import discover_link_continuation_seeds
+from retrolarium_disassembler.m68k.dispatch.ram_record import discover_ram_record_dispatch_seeds
+from retrolarium_disassembler.m68k.callbacks.word import discover_word_ram_callback_seeds
+from retrolarium_disassembler.m68k.callbacks.relative_record import discover_relative_record_callback_seeds
+from retrolarium_disassembler.m68k.records.cleared_pool_states import discover_cleared_pool_state_seeds
+from retrolarium_disassembler.m68k.callbacks.absolute_ram import discover_absolute_ram_callback_seeds
+from retrolarium_disassembler.m68k.records.finite import discover_finite_record_callback_seeds
+from retrolarium_disassembler.m68k.dispatch.witness import make_dispatch_handler_validator
+from retrolarium_disassembler.m68k.repair.probe_requests import M68kProbeRequests
+from retrolarium_disassembler.m68k.repair.fallthrough import M68kFallthroughRepairs
+from retrolarium_disassembler.megadrive.emit import EmitResult, MegaDriveEmitError, emit_project, _asm_instruction
+from retrolarium_disassembler.megadrive.pointers import (
     detect_pointer_candidates,
     discover_dispatch_table_seeds,
     can_bootstrap_dispatch_seeds,
     write_pointer_report,
 )
-from retrolarium_disasm.megadrive.symbols import generate_symbols, write_symbol_report
-from retrolarium_disasm.megadrive.z80 import (
+from retrolarium_disassembler.megadrive.symbols import generate_symbols, write_symbol_report
+from retrolarium_disassembler.megadrive.z80 import (
     CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
     group_z80_copies, z80_im1_handler_seed,
 )
-from retrolarium_disasm.toolchain import toolchain_status
-from retrolarium_disasm.z80.dispatch import Z80DispatchTable, discover_z80_dispatch_tables
+from retrolarium_disassembler.toolchain import toolchain_status
+from retrolarium_disassembler.z80.dispatch import Z80DispatchTable, discover_z80_dispatch_tables
 
 
 MAX_ABSTRACT_PASSES = 32
@@ -1354,7 +1354,7 @@ def emit_analyzed_megadrive(
     verification: dict[str, object] = {"status": "not-run"}
     if build_container is not None:
         rebuilt = _build_emitted_project(generated, build_container)
-        from retrolarium_disasm.verify import verify_exact
+        from retrolarium_disassembler.verify import verify_exact
 
         verification = verify_exact(rom, rebuilt)
         verification["checksum_status"] = load_megadrive(rebuilt).checksum_status

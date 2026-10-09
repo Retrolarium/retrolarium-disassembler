@@ -19,13 +19,13 @@ dependencies = ["retrolarium-core"]
 studio = ["retrolarium-kit"]
 
 [project.scripts]
-rldisasm = "retrolarium_disasm.cli:main"
+rldisasm = "retrolarium_disassembler.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-retrolarium_disasm = [
+retrolarium_disassembler = [
   "ghidra/scripts/*.java",
   "toolchains/*.json",
 ]

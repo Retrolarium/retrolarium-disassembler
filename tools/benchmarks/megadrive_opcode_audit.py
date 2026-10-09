@@ -14,14 +14,14 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
-from retrolarium_disasm.facts import load_megadrive_ghidra_facts
+from retrolarium_disassembler.facts import load_megadrive_ghidra_facts
 from retrolarium_core.megadrive import load_megadrive
-from retrolarium_disasm.m68k.abstract import discover_packed_orphan_candidates
-from megadrive_reference_benchmark import _group_missed, _modules
-from source_benchmark import instruction_quality, read_listing, same_instruction
+from retrolarium_disassembler.m68k.abstract import discover_packed_orphan_candidates
+from tools.benchmarks.megadrive_reference import _group_missed, _modules
+from tools.benchmarks.source import instruction_quality, read_listing, same_instruction
 
 
 REASONS = {

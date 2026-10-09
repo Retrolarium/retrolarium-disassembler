@@ -21,22 +21,22 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_disasm.megadrive import pipeline
-from retrolarium_disasm.ghidra import GhidraArtifacts
-from retrolarium_disasm.m68k.abstract import (
+from retrolarium_disassembler.megadrive import pipeline
+from retrolarium_disassembler.ghidra import GhidraArtifacts
+from retrolarium_disassembler.m68k.abstract import (
     EntryPointCandidate,
     IndirectEdge,
     InterpretationResult,
     OrphanCandidate,
     TrustedCfg,
 )
-from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_disasm.megadrive.emit import MegaDriveEmitError
-from retrolarium_disasm.m68k.repair.unused import UnusedCodeCandidate
-from retrolarium_disasm.m68k.dispatch.ram import InlineTrapCall
-from retrolarium_disasm.megadrive.z80 import CrossCpuCopy
-from retrolarium_disasm.z80.dispatch import Z80DispatchTable
+from retrolarium_disassembler.megadrive.emit import MegaDriveEmitError
+from retrolarium_disassembler.m68k.repair.unused import UnusedCodeCandidate
+from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
+from retrolarium_disassembler.megadrive.z80 import CrossCpuCopy
+from retrolarium_disassembler.z80.dispatch import Z80DispatchTable
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 

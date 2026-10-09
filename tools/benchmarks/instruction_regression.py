@@ -10,7 +10,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-from source_benchmark import instruction_quality, read_listing
+from tools.benchmarks.source import instruction_quality, read_listing
 
 
 def compare_instruction_sets(reference, before, after):

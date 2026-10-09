@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 import sys
 
-from sonic_cd_benchmark import emit_overlay_project, generated_instructions, write_difference_html
-from sonic_corpus_benchmark import normalise_reference_listing, compare
+from tools.benchmarks.sonic_cd import emit_overlay_project, generated_instructions, write_difference_html
+from tools.benchmarks.sonic_corpus import normalise_reference_listing, compare
 
 
 def fixed_window_entries(data: bytes) -> tuple[int, int, tuple[int, ...]]:
@@ -55,14 +55,14 @@ def main():
     parser.add_argument("--rom", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--ghidra-home", type=Path, default=Path(__file__).resolve().parents[1] / ".tools" / "ghidra")
+    parser.add_argument("--ghidra-home", type=Path, default=Path(__file__).resolve().parents[2] / ".tools" / "ghidra")
     parser.add_argument("--reuse-analysis", action="store_true")
     parser.add_argument("--minimum-source-recall", type=float, default=0)
     args = parser.parse_args()
     if not 0 <= args.minimum_source_recall <= 100:
         parser.error("minimum source recall must be between 0 and 100")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from retrolarium_disasm.m68k.repair.overlay import analyze_overlay
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    from retrolarium_disassembler.m68k.repair.overlay import analyze_overlay
     data = args.rom.read_bytes()
     base, size, entries = fixed_window_entries(data)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -71,7 +71,7 @@ def main():
     tsv = args.output / "analysis/instructions.tsv"
     if not args.reuse_analysis:
         analyze_overlay(payload, args.output / "analysis", args.ghidra_home,
-                        Path(__file__).resolve().parents[1] / "src/retrolarium_disasm/ghidra/scripts",
+                        Path(__file__).resolve().parents[2] / "src/retrolarium_disassembler/ghidra/scripts",
                         base_address=base, entry_addresses=tuple(sorted(entries)))
     actual, text = generated_instructions(tsv, data[:size], base)
     emitted, project = emit_overlay_project(
@@ -87,7 +87,7 @@ def main():
               "reference_provenance": provenance,
               "scope": "Full reference M68K denominator; fixed-window analysis only. SH-2 excluded."}
     (args.output / "comparison.json").write_text(json.dumps(result, indent=2) + "\n")
-    from source_benchmark import LISTING_LINE
+    from tools.benchmarks.source import LISTING_LINE
     reference_text = {}
     for line in (args.output / "reference-m68k.lst").read_text(encoding="utf-8").splitlines():
         match = LISTING_LINE.match(line)

@@ -38,7 +38,7 @@ project, is the one command that needs the kit installed
 ## Layout
 
 ```text
-src/retrolarium_disasm/
+src/retrolarium_disassembler/
   cli.py            rldisasm; every command imports what it runs
   preset.py         ROM -> Studio project (the only module that imports the kit)
   facts.py          neutral instruction facts shared by every CPU
@@ -51,7 +51,11 @@ src/retrolarium_disasm/
   z80/              Z80 dispatch tables
   snes/             W65C816 analysis, SPC700 uploads, ca65 emitter
 tests/              unit tests (python -m unittest discover -s tests)
-tools/              corpus benchmarks and reference preparation scripts
+tools/              python -m tools.<group>.<name>, from this folder:
+  references/       preparing the reference disassemblies (evaluation only)
+  benchmarks/       scoring ROM-only disassembly against them
+  reports/          HTML and Markdown source comparisons
+  compiler_scan/    compiler traces in ROM sets
 fixtures/           open test games, synthetic probes and their Docker images
 docs/               pipeline contracts, corpus baselines and reviews
 ```
@@ -96,10 +100,10 @@ rltool project verify `
 ```
 
 `ghidra install` downloads the versions recorded in
-`src/retrolarium_disasm/toolchains/disassembly.lock.json`, verifies the archive
-sizes and SHA-256 values, rejects unsafe ZIP members and installs into the
-ignored `.tools/` directory. An existing compatible install can be selected with
-`--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`. The same command installs the
+`src/retrolarium_disassembler/toolchains/disassembly.lock.json`, verifies the
+archive sizes and SHA-256 values, rejects unsafe ZIP members and installs into
+the ignored `.tools/` directory. An existing compatible install can be selected
+with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`. The same command installs the
 pinned MIT W65C816 and SPC700 languages as `Retrolarium65816` and
 `RetrolariumSPC700`, compiles them with Ghidra's SLEIGH compiler and preserves
 their upstream licenses; it does not install the upstream SNES cartridge loader.
@@ -237,7 +241,7 @@ coordination tables.
 For an independent Flicky source benchmark, run this after disassembly:
 
 ```powershell
-python tools/source_benchmark.py `
+python -m tools.benchmarks.source `
   --reference path\to\flicky_src `
   --generated build/megadrive-disassembly/generated `
   --output build/flicky-benchmark `
@@ -274,12 +278,12 @@ recall, 99.29% precision). The generated Z80 source emits 1646/1683 reference
 instructions as mnemonics (97.8%). The assembled ROM is byte exact.
 
 For additional independent games, the Sonic Retro reference corpus is pinned in
-`docs/sonic-reference-corpus.lock.json`. `tools/prepare_sonic_references.py`
-exports unified assembly units, preserves build profiles, and verifies them
-against upstream builds and original ROMs. The references are evaluation inputs
-only; they never seed the ROM analyzer.
+`tools/references/sonic.lock.json`. `tools/references/prepare_sonic.py` exports
+unified assembly units, preserves build profiles, and verifies them against
+upstream builds and original ROMs. The references are evaluation inputs only;
+they never seed the ROM analyzer.
 
-The Sonic disassembly benchmark (`tools/sonic_corpus_benchmark.py`) runs
+The Sonic disassembly benchmark (`tools/benchmarks/sonic_corpus.py`) runs
 ROM-only analysis against those verified references, measures opcode recall and
 precision, verifies exact rebuilds, and produces differences-only HTML.
 
@@ -287,7 +291,7 @@ For side-by-side editing, export the two ROM-aligned reference files after
 disassembly:
 
 ```powershell
-python tools/export_flicky_reference.py `
+python -m tools.reports.export_flicky_reference `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated
 ```
@@ -300,7 +304,7 @@ the cartridge vectors and header. These comparison files are not assembled.
 For a standalone address-aligned HTML view, build both projects and run:
 
 ```powershell
-python tools/flicky_html_diff.py `
+python -m tools.reports.flicky_html_diff `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison\flicky-source-diff.html
@@ -321,7 +325,7 @@ analysis. It requires the rebuilt ROM to match the reference byte for byte.
 For an actionable text and JSON report of the same build, run:
 
 ```powershell
-python tools/flicky_diff_report.py `
+python -m tools.reports.flicky_diff_report `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison
@@ -335,7 +339,7 @@ emission and differences limited to names or formatting.
 To turn the source differences into contiguous regions for heuristic work, run:
 
 ```powershell
-python tools/flicky_discrepancy_groups.py `
+python -m tools.reports.flicky_discrepancy_groups `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison

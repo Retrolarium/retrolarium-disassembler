@@ -1,6 +1,6 @@
 """Scan a GoodNES set for NES games compiled from C (cc65).
 
-usage: python tools/nes_compiler_scan.py NESMERGE_DIR OUTPUT_DIR --cc65 DIR
+usage: python -m tools.compiler_scan.nes NESMERGE_DIR OUTPUT_DIR --cc65 DIR
            [--include-pd] [--limit N] [--only SUBSTRING] [--recompute]
 
 NESMERGE_DIR holds one .7z per game (GoodNES "NESMerge"). One good dump is
@@ -29,8 +29,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from megadrive_compiler_scan import BAD_TAGS, GOOD, extract, list_archive, region_rank  # noqa: E402
+from tools.compiler_scan.megadrive import BAD_TAGS, GOOD, extract, list_archive, region_rank  # noqa: E402
 
 PD_TAG = re.compile(r"\((?:PD)[^)]*\)", re.I)
 

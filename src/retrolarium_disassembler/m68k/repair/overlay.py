@@ -9,27 +9,27 @@ import hashlib
 import json
 from pathlib import Path
 
-from retrolarium_disasm.facts import _load_ghidra_facts
-from retrolarium_disasm.ghidra import GhidraArtifacts, run_m68k_overlay_analysis
+from retrolarium_disassembler.facts import _load_ghidra_facts
+from retrolarium_disassembler.ghidra import GhidraArtifacts, run_m68k_overlay_analysis
 from retrolarium_core.megadrive import MegaDriveImage, M68kVector, parse_megadrive
-from retrolarium_disasm.m68k.abstract import (
+from retrolarium_disassembler.m68k.abstract import (
     interpret_trusted_cfg, discover_packed_orphan_candidates,
     discover_object_field_handler_candidates, discover_ram_handler_candidates,
     MAX_BACKEND_COMPUTED_FLOW_TARGETS,
 )
-from retrolarium_disasm.megadrive.pointers import (discover_dispatch_table_seeds, can_bootstrap_dispatch_seeds,
+from retrolarium_disassembler.megadrive.pointers import (discover_dispatch_table_seeds, can_bootstrap_dispatch_seeds,
                                 detect_pointer_candidates)
-from retrolarium_disasm.m68k.repair.unused import discover_validated_unused_candidates
-from retrolarium_disasm.m68k.dispatch.witness import make_dispatch_handler_validator
-from retrolarium_disasm.m68k.repair.probe_requests import M68kProbeRequests
-from retrolarium_disasm.m68k.repair.fallthrough import M68kFallthroughRepairs
-from retrolarium_disasm.megadrive.emit import _asm_instruction
-from retrolarium_disasm.m68k.seeds import discover_dense_branch_table_seeds, discover_indexed_branch_table_seeds
-from retrolarium_disasm.m68k.callbacks.relative_record import discover_relative_record_callback_seeds
-from retrolarium_disasm.m68k.records.cleared_pool_states import discover_cleared_pool_state_seeds
-from retrolarium_disasm.m68k.callbacks.absolute_ram import discover_absolute_ram_callback_seeds
-from retrolarium_disasm.m68k.records.finite import discover_finite_record_callback_seeds
-from retrolarium_disasm.m68k.dispatch.indexed import (discover_register_indexed_dispatch_seeds,
+from retrolarium_disassembler.m68k.repair.unused import discover_validated_unused_candidates
+from retrolarium_disassembler.m68k.dispatch.witness import make_dispatch_handler_validator
+from retrolarium_disassembler.m68k.repair.probe_requests import M68kProbeRequests
+from retrolarium_disassembler.m68k.repair.fallthrough import M68kFallthroughRepairs
+from retrolarium_disassembler.megadrive.emit import _asm_instruction
+from retrolarium_disassembler.m68k.seeds import discover_dense_branch_table_seeds, discover_indexed_branch_table_seeds
+from retrolarium_disassembler.m68k.callbacks.relative_record import discover_relative_record_callback_seeds
+from retrolarium_disassembler.m68k.records.cleared_pool_states import discover_cleared_pool_state_seeds
+from retrolarium_disassembler.m68k.callbacks.absolute_ram import discover_absolute_ram_callback_seeds
+from retrolarium_disassembler.m68k.records.finite import discover_finite_record_callback_seeds
+from retrolarium_disassembler.m68k.dispatch.indexed import (discover_register_indexed_dispatch_seeds,
                                   discover_nested_word_dispatch_seeds,
                                   discover_added_index_dispatch_seeds,
                                   discover_dense_absolute_jump_seeds)

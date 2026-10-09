@@ -14,8 +14,8 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_disasm.m68k import abstract as m68k_abstract
-from retrolarium_disasm.megadrive import pipeline
+from retrolarium_disassembler.m68k import abstract as m68k_abstract
+from retrolarium_disassembler.megadrive import pipeline
 from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_megadrive_pointers import dispatch_facts, dispatch_image

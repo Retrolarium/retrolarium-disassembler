@@ -8,10 +8,10 @@ import json
 from pathlib import Path
 import subprocess
 
-from retrolarium_disasm.nes.ca65 import emit_project
+from retrolarium_disassembler.nes.ca65 import emit_project
 from retrolarium_core.contracts import validate_disassembly_manifest
-from retrolarium_disasm.facts import InstructionFact, load_ghidra_facts
-from retrolarium_disasm.ghidra import GhidraArtifacts, _run_analysis, run_nes_analysis
+from retrolarium_disassembler.facts import InstructionFact, load_ghidra_facts
+from retrolarium_disassembler.ghidra import GhidraArtifacts, _run_analysis, run_nes_analysis
 from retrolarium_core.ines import (
     InesImage,
     PrgAnalysisTarget,
@@ -22,15 +22,15 @@ from retrolarium_core.ines import (
     nrom_projections,
     prg_analysis_targets,
 )
-from retrolarium_disasm.nes.pointers import (
+from retrolarium_disassembler.nes.pointers import (
     PointerCandidate,
     accepted_code_entry_tables,
     accepted_pointer_tables,
     detect_banked_pointer_candidates,
     write_pointer_report,
 )
-from retrolarium_disasm.toolchain import toolchain_status
-from retrolarium_disasm.verify import verify_exact
+from retrolarium_disassembler.toolchain import toolchain_status
+from retrolarium_disassembler.verify import verify_exact
 
 
 class PipelineError(RuntimeError):

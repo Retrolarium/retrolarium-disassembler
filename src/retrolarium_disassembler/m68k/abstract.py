@@ -8,9 +8,9 @@ from enum import Enum
 from math import gcd
 import re
 
-from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disassembler.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.m68k.instructions import pc_indexed_target
+from retrolarium_disassembler.m68k.instructions import pc_indexed_target
 
 
 MAX_SMALL_SET = 32
@@ -891,8 +891,8 @@ def discover_object_field_handler_candidates(
     The latter connects the allocated object to its executor through their
     RAM list head, so overloaded offsets in unrelated structures do not match.
     """
-    from retrolarium_disasm.m68k.dispatch.record import executed_stack_fields
-    from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+    from retrolarium_disassembler.m68k.dispatch.record import executed_stack_fields
+    from retrolarium_disassembler.m68k.instructions import absolute_referenced_addresses, instruction_sets
     stack_fields = executed_stack_fields(facts)
     _, interiors, _ = instruction_sets(facts)
     data_addresses = absolute_referenced_addresses(execution_facts or {})
@@ -1919,7 +1919,7 @@ def bounded_word_dispatch_targets(
     first entry that reaches a target, so a table followed directly by
     decoded code bounds the real targets.
     """
-    from retrolarium_disasm.megadrive.pointers import _pc_word_dispatch_tables, _word_dispatch_tables
+    from retrolarium_disassembler.megadrive.pointers import _pc_word_dispatch_tables, _word_dispatch_tables
     starts = {fact.cpu_address for fact in facts.values()}
     # Only a table that ends where decoded code begins is known complete;
     # a reader stopped by an implausible entry may still be too short.

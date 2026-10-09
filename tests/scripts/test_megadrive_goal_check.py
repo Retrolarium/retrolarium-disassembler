@@ -6,8 +6,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from megadrive_goal_check import check_goal, evaluate_case
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.benchmarks.megadrive_goal_check import check_goal, evaluate_case
 
 
 class MegaDriveGoalTests(unittest.TestCase):

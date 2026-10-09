@@ -11,8 +11,8 @@ from pathlib import Path
 import re
 import sys
 
-from flicky_html_diff import write_html
-from source_benchmark import LISTING_LINE, instruction_quality, read_listing, same_instruction
+from tools.reports.flicky_html_diff import write_html
+from tools.benchmarks.source import LISTING_LINE, instruction_quality, read_listing, same_instruction
 
 
 M68K = set("""abcd add adda addi addq addx and andi asl asr bcc bcs beq bge bgt bhi
@@ -277,7 +277,7 @@ def benchmark(
 ) -> dict:
     manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
     # The kit builds and verifies the generated projects.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-kit" / "src"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-kit" / "src"))
     from retrolarium_kit.core.project import build_project, verify_project
     reports = []
     for unit in manifest["units"]:

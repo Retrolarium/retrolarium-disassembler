@@ -5,10 +5,10 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_disasm.facts import InstructionReference
-from retrolarium_disasm.m68k.dispatch.witness import make_dispatch_handler_validator
+from retrolarium_disassembler.facts import InstructionReference
+from retrolarium_disassembler.m68k.dispatch.witness import make_dispatch_handler_validator
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_disasm.megadrive.emit import _asm_instruction
+from retrolarium_disassembler.megadrive.emit import _asm_instruction
 from test_megadrive import cartridge
 from test_m68k_unused import instruction
 

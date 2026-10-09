@@ -15,13 +15,13 @@ import re
 import shutil
 import subprocess
 
-from extra_reference_profiles import as_environment, read_header, run_step
-from prepare_sonic_references import export, sha256
-from sonic_corpus_benchmark import normalise_reference_listing
-from source_benchmark import read_listing
+from tools.references.extra_profiles import as_environment, read_header, run_step
+from tools.references.prepare_sonic import export, sha256
+from tools.benchmarks.sonic_corpus import normalise_reference_listing
+from tools.benchmarks.source import read_listing
 
 
-PLAN = Path(__file__).with_name("quackshot_rev01_layout.json")
+PLAN = Path(__file__).with_name("quackshot_rev01.json")
 LABEL = re.compile(r"^\s*([A-Za-z_][A-Za-z_0-9]*):")
 INCLUDE = re.compile(r'^\s*binclude\s+"([^"]+)"', re.IGNORECASE)
 ADDRESS = re.compile(r"_([0-9a-f]{4,6})$", re.IGNORECASE)

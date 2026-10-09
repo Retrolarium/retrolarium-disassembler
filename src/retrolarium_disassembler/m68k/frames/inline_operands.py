@@ -25,9 +25,9 @@ from __future__ import annotations
 from collections import deque
 from typing import NamedTuple
 
-from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disassembler.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.m68k.dispatch.ram import InlineTrapCall
+from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
 
 
 MAX_INLINE_BYTES = 32

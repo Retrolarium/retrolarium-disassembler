@@ -14,19 +14,19 @@ import ast
 from pathlib import Path
 import unittest
 
-PACKAGE = Path(__file__).resolve().parents[1] / "src" / "retrolarium_disasm"
+PACKAGE = Path(__file__).resolve().parents[1] / "src" / "retrolarium_disassembler"
 PLATFORMS = {"nes", "megadrive", "m68k", "z80", "snes"}
 SHARED = {"facts", "ghidra", "toolchain", "verify", "benchmark"}
 ALLOWED = {("megadrive", "m68k"), ("megadrive", "z80"), ("m68k", "megadrive")}
 # What the 68000 passes may still take from megadrive/ (moving these into
 # m68k/ waits for a second 68000 platform, Sega CD or 32X, to shape them).
 M68K_FROM_MEGADRIVE = {
-    ("retrolarium_disasm.megadrive.emit", "_asm_instruction"),
-    ("retrolarium_disasm.megadrive.pointers", "_pc_word_dispatch_tables"),
-    ("retrolarium_disasm.megadrive.pointers", "_word_dispatch_tables"),
-    ("retrolarium_disasm.megadrive.pointers", "discover_dispatch_table_seeds"),
-    ("retrolarium_disasm.megadrive.pointers", "can_bootstrap_dispatch_seeds"),
-    ("retrolarium_disasm.megadrive.pointers", "detect_pointer_candidates"),
+    ("retrolarium_disassembler.megadrive.emit", "_asm_instruction"),
+    ("retrolarium_disassembler.megadrive.pointers", "_pc_word_dispatch_tables"),
+    ("retrolarium_disassembler.megadrive.pointers", "_word_dispatch_tables"),
+    ("retrolarium_disassembler.megadrive.pointers", "discover_dispatch_table_seeds"),
+    ("retrolarium_disassembler.megadrive.pointers", "can_bootstrap_dispatch_seeds"),
+    ("retrolarium_disassembler.megadrive.pointers", "detect_pointer_candidates"),
 }
 
 
@@ -40,7 +40,7 @@ def imports() -> list[tuple[tuple[str, ...], tuple[str, ...], int]]:
             names = []
             if isinstance(node, ast.ImportFrom) and node.module:
                 names = [node.module]
-                if node.module == "retrolarium_disasm":
+                if node.module == "retrolarium_disassembler":
                     names += [f"{node.module}.{alias.name}" for alias in node.names]
             elif isinstance(node, ast.Import):
                 names = [alias.name for alias in node.names]
@@ -58,14 +58,14 @@ class LayerTests(unittest.TestCase):
     def test_shared_modules_know_no_platform(self) -> None:
         offenders = [f"{'.'.join(module)}:{line} imports {'.'.join(target)}"
                      for module, target, line in imports()
-                     if module[0] in SHARED and target[0] == "retrolarium_disasm" and len(target) > 1
+                     if module[0] in SHARED and target[0] == "retrolarium_disassembler" and len(target) > 1
                      and target[1] in PLATFORMS | {"cli", "preset"}]
         self.assertEqual([], offenders)
 
     def test_platforms_keep_to_themselves(self) -> None:
         offenders = []
         for module, target, line in imports():
-            if module[0] not in PLATFORMS or target[0] != "retrolarium_disasm" or len(target) < 2:
+            if module[0] not in PLATFORMS or target[0] != "retrolarium_disassembler" or len(target) < 2:
                 continue
             other = target[1]
             if other in {"cli", "preset"} or (
@@ -79,9 +79,9 @@ class LayerTests(unittest.TestCase):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Import):
                     offenders += [f"{path.name}:{node.lineno} imports {alias.name}" for alias in node.names
-                                  if alias.name.startswith("retrolarium_disasm.megadrive")]
+                                  if alias.name.startswith("retrolarium_disassembler.megadrive")]
                 if not (isinstance(node, ast.ImportFrom) and node.module
-                        and node.module.startswith("retrolarium_disasm.megadrive")):
+                        and node.module.startswith("retrolarium_disassembler.megadrive")):
                     continue
                 offenders += [f"{path.name}:{node.lineno} imports {node.module}.{alias.name}"
                               for alias in node.names
@@ -102,8 +102,8 @@ class LayerTests(unittest.TestCase):
             "        if name == 'retrolarium_kit' or name.startswith('retrolarium_kit.'):\n"
             "            raise ImportError('no kit here')\n"
             "sys.meta_path.insert(0, NoKit())\n"
-            "import retrolarium_disasm\n"
-            "for info in pkgutil.walk_packages(retrolarium_disasm.__path__, 'retrolarium_disasm.'):\n"
+            "import retrolarium_disassembler\n"
+            "for info in pkgutil.walk_packages(retrolarium_disassembler.__path__, 'retrolarium_disassembler.'):\n"
             "    if info.name.rsplit('.', 1)[-1] not in ('preset', '__main__'):\n"
             "        importlib.import_module(info.name)\n"
             "print('ok')\n"

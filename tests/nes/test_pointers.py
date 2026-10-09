@@ -9,10 +9,10 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_disasm.nes.ca65 import prg_source
-from retrolarium_disasm.facts import load_ghidra_facts
+from retrolarium_disassembler.nes.ca65 import prg_source
+from retrolarium_disassembler.facts import load_ghidra_facts
 from retrolarium_core.ines import parse_ines
-from retrolarium_disasm.nes.pointers import (
+from retrolarium_disassembler.nes.pointers import (
     accepted_code_entry_tables,
     accepted_pointer_tables,
     accepted_u16le,

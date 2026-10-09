@@ -4,8 +4,8 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from extract_sega_cd import SYNC, data_track_from_cue, mode1_raw_to_iso
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.references.extract_sega_cd import SYNC, data_track_from_cue, mode1_raw_to_iso
 
 
 class ExtractSegaCdTests(unittest.TestCase):

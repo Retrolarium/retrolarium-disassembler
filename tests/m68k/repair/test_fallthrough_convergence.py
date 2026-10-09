@@ -7,9 +7,9 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from retrolarium_disasm.megadrive import pipeline
-from retrolarium_disasm.m68k.repair.fallthrough import M68kFallthroughRepairs
-from retrolarium_disasm.m68k.dispatch.ram import InlineTrapCall
+from retrolarium_disassembler.megadrive import pipeline
+from retrolarium_disassembler.m68k.repair.fallthrough import M68kFallthroughRepairs
+from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
 from test_megadrive_pipeline_convergence import _M68kHarness, _StopAfterLoop, _image
 from test_megadrive_z80 import fact
 

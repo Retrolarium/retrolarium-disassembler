@@ -88,7 +88,7 @@ The 65816 processor definition is pinned independently from cartridge parsing:
 - language: `65816:LE:24:snes`;
 - verified host: Ghidra 12.1.3;
 - source archive size and SHA-256: recorded in
-  `src/retrolarium_disasm/toolchains/disassembly.lock.json`.
+  `src/retrolarium_disassembler/toolchains/disassembly.lock.json`.
 
 `rldisasm ghidra install` extracts only the upstream `data/languages` processor
 material, compiles `65816.slaspec` with the pinned Ghidra SLEIGH compiler and

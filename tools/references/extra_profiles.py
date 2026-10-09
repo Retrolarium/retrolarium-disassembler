@@ -26,9 +26,9 @@ import subprocess
 import sys
 import tempfile
 
-from prepare_sonic_references import export, sha256
-from sonic_corpus_benchmark import M68K, normalise_reference_listing
-from source_benchmark import read_listing
+from tools.references.prepare_sonic import export, sha256
+from tools.benchmarks.sonic_corpus import M68K, normalise_reference_listing
+from tools.benchmarks.source import read_listing
 
 
 ROM_SUFFIXES = {".gen", ".bin", ".md"}
@@ -749,7 +749,7 @@ def build_vasm(profile: Profile, ctx: Context) -> Build:
 def build_quackshot_restored(profile: Profile, ctx: Context) -> Build:
     # Import at execution time: the standalone evaluation adapter reuses the
     # header and assembler helpers in this module, not the ROM analyzer.
-    from prepare_quackshot_reference import PLAN, assemble, prepare
+    from tools.references.prepare_quackshot import PLAN, assemble, prepare
 
     plan = json.loads(PLAN.read_text(encoding="utf-8"))
     originals = [item for item in ctx.pool if item.sha256 == plan["rom_sha256"]]

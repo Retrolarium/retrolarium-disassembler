@@ -14,7 +14,7 @@ import re
 import shutil
 import subprocess
 
-from flatten_asm_source import flatten_source
+from tools.references.flatten_asm_source import flatten_source
 
 
 REPOSITORIES = ("s1disasm", "s2disasm", "skdisasm", "chaotix", "scddisasm")

@@ -15,16 +15,16 @@ from collections import deque
 from dataclasses import dataclass, replace
 import re
 
-from retrolarium_disasm.m68k.abstract import _register_list
-from retrolarium_disasm.m68k.records.constructor import _preserved_registers
-from retrolarium_disasm.m68k.instructions import pc_displacement_target
-from retrolarium_disasm.m68k.abstract import OrphanCandidate
-from retrolarium_disasm.m68k.frames.call_frame import make_trap_call_frame_validator
-from retrolarium_disasm.m68k.dispatch.closure import _balanced_body, logical_image, make_dispatch_closure_validator
-from retrolarium_disasm.m68k.repair.fallthrough import _direct_data_ranges
-from retrolarium_disasm.m68k.records.packed import _complete_cfg
-from retrolarium_disasm.m68k.dispatch.ram import discover_inline_trap_calls
-from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.m68k.abstract import _register_list
+from retrolarium_disassembler.m68k.records.constructor import _preserved_registers
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target
+from retrolarium_disassembler.m68k.abstract import OrphanCandidate
+from retrolarium_disassembler.m68k.frames.call_frame import make_trap_call_frame_validator
+from retrolarium_disassembler.m68k.dispatch.closure import _balanced_body, logical_image, make_dispatch_closure_validator
+from retrolarium_disassembler.m68k.repair.fallthrough import _direct_data_ranges
+from retrolarium_disassembler.m68k.records.packed import _complete_cfg
+from retrolarium_disassembler.m68k.dispatch.ram import discover_inline_trap_calls
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
 from bisect import bisect_right
 
 

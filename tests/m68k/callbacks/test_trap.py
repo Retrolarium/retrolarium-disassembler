@@ -2,7 +2,7 @@ from dataclasses import replace
 import unittest
 import test_m68k_variable_traps as fixture
 from test_m68k_unused import instruction
-from retrolarium_disasm.m68k.repair.variable_traps import discover_variable_inline_trap_calls
+from retrolarium_disassembler.m68k.repair.variable_traps import discover_variable_inline_trap_calls
 from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 

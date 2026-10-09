@@ -2,8 +2,8 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from sega32x_benchmark import fixed_window_entries
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.benchmarks.sega32x import fixed_window_entries
 
 
 class Sega32xVectorTests(unittest.TestCase):

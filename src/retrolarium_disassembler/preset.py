@@ -18,7 +18,7 @@ import sys
 import tempfile
 from typing import Any
 
-from retrolarium_disasm.nes.pipeline import disassemble_nes
+from retrolarium_disassembler.nes.pipeline import disassemble_nes
 
 
 def _find_kit() -> None:

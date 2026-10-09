@@ -9,11 +9,11 @@ from collections import deque
 from dataclasses import dataclass
 import re
 
-from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
 
-from retrolarium_disasm.m68k.instructions import pc_indexed_target
-from retrolarium_disasm.m68k.instructions import instruction_sets, absolute_referenced_addresses
-from retrolarium_disasm.m68k.records.constructor import _unsupported_frame_or_exception
+from retrolarium_disassembler.m68k.instructions import pc_indexed_target
+from retrolarium_disassembler.m68k.instructions import instruction_sets, absolute_referenced_addresses
+from retrolarium_disassembler.m68k.records.constructor import _unsupported_frame_or_exception
 
 
 def _absolute_address(operand):

@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace
 import hashlib
 import re
 
-from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disassembler.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage, m68k_to_rom_offset
 
 

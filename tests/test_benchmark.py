@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from retrolarium_disasm.benchmark import BenchmarkError, score_pointer_report
+from retrolarium_disassembler.benchmark import BenchmarkError, score_pointer_report
 
 
 class BenchmarkTests(unittest.TestCase):

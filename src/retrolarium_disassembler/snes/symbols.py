@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 
 from retrolarium_core.snes import SnesImage, snes_to_rom_offset
-from retrolarium_disasm.snes.analysis import AnalysisResult
-from retrolarium_disasm.snes.pointers import PointerCandidate
+from retrolarium_disassembler.snes.analysis import AnalysisResult
+from retrolarium_disassembler.snes.pointers import PointerCandidate
 
 
 @dataclass(frozen=True)

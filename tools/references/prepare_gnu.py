@@ -13,8 +13,8 @@ from pathlib import Path
 import re
 import shutil
 
-from sonic_corpus_benchmark import M68K, digest, operation
-from source_benchmark import read_listing
+from tools.benchmarks.sonic_corpus import M68K, digest, operation
+from tools.benchmarks.source import read_listing
 
 
 def section_bases(text: str, object_name: str) -> dict[str, int]:

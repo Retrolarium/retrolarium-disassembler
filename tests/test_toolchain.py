@@ -10,7 +10,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from retrolarium_disasm.toolchain import (
+from retrolarium_disassembler.toolchain import (
     ToolchainError,
     install_spc700_backend,
     install_snes_backend,
@@ -78,7 +78,7 @@ class ToolchainTests(unittest.TestCase):
                 return type("Result", (), {"returncode": 0, "stdout": "ok"})()
 
             with patch(
-                "retrolarium_disasm.toolchain.subprocess.run",
+                "retrolarium_disassembler.toolchain.subprocess.run",
                 side_effect=compile_language,
             ):
                 install_snes_backend(
@@ -125,7 +125,7 @@ class ToolchainTests(unittest.TestCase):
                 return type("Result", (), {"returncode": 0, "stdout": "ok"})()
 
             with patch(
-                "retrolarium_disasm.toolchain.subprocess.run",
+                "retrolarium_disassembler.toolchain.subprocess.run",
                 side_effect=compile_language,
             ):
                 install_spc700_backend(

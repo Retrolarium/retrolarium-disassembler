@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 import re
 
-from source_benchmark import read_listing
+from tools.benchmarks.source import read_listing
 
 
 LISTING_LINE = re.compile(r"^(?:\(\d+\))?\s*\d+/\s*([0-9A-Fa-f]+)\s+: (.*)$")

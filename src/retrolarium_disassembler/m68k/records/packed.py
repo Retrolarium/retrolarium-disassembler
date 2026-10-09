@@ -12,12 +12,12 @@ from bisect import bisect_left, bisect_right
 import re
 from typing import Callable
 
-from retrolarium_disasm.facts import InstructionFact
-from retrolarium_disasm.m68k.abstract import (
+from retrolarium_disassembler.facts import InstructionFact
+from retrolarium_disassembler.m68k.abstract import (
     OrphanCandidate, discover_packed_orphan_candidates, immediate_rom_addresses,
 )
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.m68k.dispatch.ram import discover_inline_trap_calls
+from retrolarium_disassembler.m68k.dispatch.ram import discover_inline_trap_calls
 
 
 def _call_continuations(known: dict[int, InstructionFact], image: MegaDriveImage):

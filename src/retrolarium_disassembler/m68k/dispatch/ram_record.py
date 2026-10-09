@@ -2,10 +2,10 @@
 from collections import deque
 import re
 
-from retrolarium_disasm.m68k.seeds import DecoderSeed
-from retrolarium_disasm.m68k.frames.call_frame import _STACK
-from retrolarium_disasm.m68k.instructions import pc_displacement_target
-from retrolarium_disasm.m68k.instructions import instruction_sets, absolute_referenced_addresses
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.m68k.frames.call_frame import _STACK
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target
+from retrolarium_disassembler.m68k.instructions import instruction_sets, absolute_referenced_addresses
 
 
 def _rom_lea(fact, register):

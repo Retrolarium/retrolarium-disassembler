@@ -13,9 +13,9 @@ import shutil
 import subprocess
 import sys
 
-from extra_reference_profiles import PROFILES as SECOND_BATCH, confirm_existing, prepare_profile, scan_roms
-from prepare_sonic_references import export, run, sha256
-from sonic_corpus_benchmark import normalise_reference_listing
+from tools.references.extra_profiles import PROFILES as SECOND_BATCH, confirm_existing, prepare_profile, scan_roms
+from tools.references.prepare_sonic import export, run, sha256
+from tools.benchmarks.sonic_corpus import normalise_reference_listing
 
 
 PROFILES = {

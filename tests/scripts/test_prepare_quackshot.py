@@ -4,8 +4,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from prepare_quackshot_reference import extract_assets, prepare
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.references.prepare_quackshot import extract_assets, prepare
 
 
 class QuackShotReferenceTests(unittest.TestCase):

@@ -8,10 +8,10 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from retrolarium_disasm.snes.analysis import analyze_snes
-from retrolarium_disasm.snes.emit import emit_project
-from retrolarium_disasm.snes.pointers import detect_pointer_candidates
-from retrolarium_disasm.snes.symbols import generate_symbols
+from retrolarium_disassembler.snes.analysis import analyze_snes
+from retrolarium_disassembler.snes.emit import emit_project
+from retrolarium_disassembler.snes.pointers import detect_pointer_candidates
+from retrolarium_disassembler.snes.symbols import generate_symbols
 from test_snes_pointers import probe_image
 
 

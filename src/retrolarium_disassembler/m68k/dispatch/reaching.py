@@ -10,10 +10,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 import re
 
-from retrolarium_disasm.m68k.records.constructor import _writes, _unsupported_frame_or_exception
-from retrolarium_disasm.m68k.seeds import DecoderSeed
-from retrolarium_disasm.m68k.instructions import pc_displacement_target
-from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disassembler.m68k.records.constructor import _writes, _unsupported_frame_or_exception
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target
+from retrolarium_disassembler.m68k.instructions import absolute_referenced_addresses, instruction_sets
 
 
 @dataclass(frozen=True)

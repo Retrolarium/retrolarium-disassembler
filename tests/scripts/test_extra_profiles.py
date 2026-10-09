@@ -6,17 +6,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from extra_reference_benchmark import benchmark, comparable
-from extra_reference_profiles import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.benchmarks.extra_reference import benchmark, comparable
+from tools.references.extra_profiles import (
     PROFILES, TJE_SHA1, Identity, classify_build, confirm_existing, genesis_checksum,
     inspect_sega_cd_image, landstalker_build, normalise_vasm_listing, option_overrides,
     parse_simple_yaml, prepare_profile, quackshot_name, read_header, scan_roms,
     sega_cd_applicability, select_split_input, vasm_absolute_pc_labels,
     nemesis_cli_compress,
 )
-from prepare_extra_references import PROFILES as FIRST_BATCH
-from source_benchmark import read_listing
+from tools.references.prepare_extra import PROFILES as FIRST_BATCH
+from tools.benchmarks.source import read_listing
 
 
 REFERENCES = Path(__file__).resolve().parents[2] / "references"
@@ -57,7 +57,7 @@ class HeaderAndSelectionTests(unittest.TestCase):
                 Path(command[-1]).write_bytes(b"wrong")
                 return type("Result", (), {"returncode": 0})()
 
-            with patch("extra_reference_profiles.subprocess.run", side_effect=incorrect_tool):
+            with patch("tools.references.extra_profiles.subprocess.run", side_effect=incorrect_tool):
                 with self.assertRaisesRegex(RuntimeError, "round-trip mismatch"):
                     nemesis_cli_compress(tool, source, target)
 

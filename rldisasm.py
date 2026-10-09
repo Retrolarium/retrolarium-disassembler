@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from retrolarium_disasm.cli import main  # noqa: E402
+from retrolarium_disassembler.cli import main  # noqa: E402
 
 
 if __name__ == "__main__":

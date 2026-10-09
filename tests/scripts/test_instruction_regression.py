@@ -4,8 +4,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from instruction_regression import audit_listings, compare_instruction_sets, main, read_complete_listing
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.benchmarks.instruction_regression import audit_listings, compare_instruction_sets, main, read_complete_listing
 
 
 def line(address, encoded, source):

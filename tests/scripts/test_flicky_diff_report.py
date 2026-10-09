@@ -5,9 +5,9 @@ from pathlib import Path
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from flicky_diff_report import _code
+from tools.reports.flicky_diff_report import _code
 
 
 class FlickyDiffReportTests(unittest.TestCase):

@@ -8,10 +8,10 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_disasm.facts import InstructionReference
+from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_disasm.megadrive.pointers import _pc_word_dispatch_tables, discover_dispatch_table_seeds
-from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
+from retrolarium_disassembler.megadrive.pointers import _pc_word_dispatch_tables, discover_dispatch_table_seeds
+from retrolarium_disassembler.m68k.instructions import absolute_referenced_addresses
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 

@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from retrolarium_disasm.m68k.repair import overlay
-from retrolarium_disasm.ghidra import GhidraArtifacts
+from retrolarium_disassembler.m68k.repair import overlay
+from retrolarium_disassembler.ghidra import GhidraArtifacts
 from test_m68k_overlay import HEADER, row
 
 

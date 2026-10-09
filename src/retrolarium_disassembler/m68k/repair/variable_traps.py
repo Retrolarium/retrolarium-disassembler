@@ -2,10 +2,10 @@
 from collections import deque
 import re
 
-from retrolarium_disasm.m68k.abstract import _register_list
-from retrolarium_disasm.m68k.frames.call_frame import _STACK
-from retrolarium_disasm.m68k.dispatch.table import _targets
-from retrolarium_disasm.m68k.instructions import pc_indexed_target
+from retrolarium_disassembler.m68k.abstract import _register_list
+from retrolarium_disassembler.m68k.frames.call_frame import _STACK
+from retrolarium_disassembler.m68k.dispatch.table import _targets
+from retrolarium_disassembler.m68k.instructions import pc_indexed_target
 
 
 def _dispatch(image, facts, handler):
@@ -119,9 +119,9 @@ def _consumption(facts, start, slot, pc_register, saved, width):
 
 
 def discover_variable_inline_trap_calls(image, facts):
-    from retrolarium_disasm.m68k.dispatch.ram import InlineTrapCall
-    from retrolarium_disasm.m68k.callbacks.trap import executed_arrays, setter_array
-    from retrolarium_disasm.m68k.instructions import instruction_sets
+    from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
+    from retrolarium_disassembler.m68k.callbacks.trap import executed_arrays, setter_array
+    from retrolarium_disassembler.m68k.instructions import instruction_sets
     facts = {fact.cpu_address: fact for fact in facts.values()}
     arrays = executed_arrays(image, facts)
     _, interiors, _ = instruction_sets(facts)

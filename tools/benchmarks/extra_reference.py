@@ -15,12 +15,12 @@ from pathlib import Path
 import subprocess
 import sys
 
-from flicky_html_diff import write_html
-from sonic_corpus_benchmark import annotate_groups, below_source_recall_target, compare, digest
-from source_benchmark import read_listing
+from tools.reports.flicky_html_diff import write_html
+from tools.benchmarks.sonic_corpus import annotate_groups, below_source_recall_target, compare, digest
+from tools.benchmarks.source import read_listing
 
 
-DISASSEMBLER = Path(__file__).resolve().parents[1]
+DISASSEMBLER = Path(__file__).resolve().parents[2]
 # The kit builds and verifies the generated projects.
 KIT = DISASSEMBLER.parent / "retrolarium-kit"
 

@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
-from retrolarium_disasm.ghidra import find_headless
+from retrolarium_disassembler.ghidra import find_headless
 
 KIT=Path(__file__).resolve().parents[1]
 
@@ -54,7 +54,7 @@ class FallthroughIntegrationTests(unittest.TestCase):
                 for i,text in enumerate(texts):
                     plan=root/f'plan{i}.tsv';plan.write_text(text);plans.append(str(plan))
                 scripts=root/'scripts';scripts.mkdir()
-                shutil.copy2(KIT/'src/retrolarium_disasm/ghidra/scripts/RestoreM68kFallthrough.java',scripts)
+                shutil.copy2(KIT/'src/retrolarium_disassembler/ghidra/scripts/RestoreM68kFallthrough.java',scripts)
                 shutil.copy2(KIT/'tests/ghidra_scripts/VerifyM68kFallthrough.java',scripts)
                 command=[str(find_headless(ghidra)),str(root),'fallthrough_smoke','-import',str(rom),
                     '-loader','BinaryLoader','-loader-blockName',block,'-loader-baseAddr',f'0x{base:X}',

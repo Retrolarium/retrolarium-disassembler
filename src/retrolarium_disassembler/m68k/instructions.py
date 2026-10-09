@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disassembler.facts import InstructionFact
 
 
 def instruction_sets(

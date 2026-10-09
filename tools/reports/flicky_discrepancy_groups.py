@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import re
 
-from flicky_html_diff import (
+from tools.reports.flicky_html_diff import (
     DIRECTIVES,
     LABEL,
     ROM_NAME,
@@ -18,7 +18,7 @@ from flicky_html_diff import (
     _operation,
     listing_source,
 )
-from source_benchmark import listing_instructions
+from tools.benchmarks.source import listing_instructions
 
 
 CATEGORY_LABELS = {

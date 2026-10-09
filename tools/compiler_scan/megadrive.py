@@ -1,6 +1,6 @@
 """Scan a GoodGen set for Mega Drive games compiled from C.
 
-usage: python tools/megadrive_compiler_scan.py GENMERGE_DIR OUTPUT_DIR
+usage: python -m tools.compiler_scan.megadrive GENMERGE_DIR OUTPUT_DIR
            [--sierra-lib DIR] [--limit N] [--only SUBSTRING]
 
 GENMERGE_DIR holds one .7z per game (GoodGen "GenMerge"). For each game one

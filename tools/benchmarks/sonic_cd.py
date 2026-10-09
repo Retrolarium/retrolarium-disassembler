@@ -16,8 +16,8 @@ import re
 import subprocess
 import sys
 
-from sonic_corpus_benchmark import M68K, compare
-from source_benchmark import instruction_quality
+from tools.benchmarks.sonic_corpus import M68K, compare
+from tools.benchmarks.source import instruction_quality
 
 
 SOURCE_LINE = re.compile(
@@ -111,8 +111,8 @@ def generated_instructions(tsv: Path, data: bytes, base: int) -> tuple[dict[int,
 def emit_overlay_project(tsv: Path, data: bytes, base: int, root: Path,
                          assembler: Path, p2bin: Path, *, tail_data: bytes = b"") -> tuple[dict[int, bytes], dict[str, object]]:
     """Emit a standalone ASM module, assemble it, and require exact bytes."""
-    from retrolarium_disasm.facts import InstructionFact, parse_address, parse_references
-    from retrolarium_disasm.megadrive.emit import _asm_instruction
+    from retrolarium_disassembler.facts import InstructionFact, parse_address, parse_references
+    from retrolarium_disassembler.megadrive.emit import _asm_instruction
 
     facts: dict[int, InstructionFact] = {}
     with tsv.open(encoding="utf-8", newline="") as stream:
@@ -245,7 +245,7 @@ def main() -> None:
     parser.add_argument("--disc-files", type=Path, default=Path("build/sonic-cd/disc-files"))
     parser.add_argument("--corpus", type=Path, default=Path("build/sonic-references"))
     parser.add_argument("--output", type=Path, default=Path("build/sonic-cd/comparison"))
-    parser.add_argument("--ghidra-home", type=Path, default=Path(__file__).resolve().parents[1] / ".tools" / "ghidra")
+    parser.add_argument("--ghidra-home", type=Path, default=Path(__file__).resolve().parents[2] / ".tools" / "ghidra")
     parser.add_argument("--unit", action="append", help="limit to a reference unit name; repeat as needed")
     parser.add_argument("--report-only", action="store_true",
                         help="rebuild summary from existing per-module comparisons")
@@ -257,12 +257,12 @@ def main() -> None:
     args = parser.parse_args()
     if not 0 <= args.minimum_source_recall <= 100:
         parser.error("minimum source recall must be between 0 and 100")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from retrolarium_disasm.m68k.repair.overlay import analyze_overlay
-    from retrolarium_disasm.ghidra import GhidraArtifacts
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    from retrolarium_disassembler.m68k.repair.overlay import analyze_overlay
+    from retrolarium_disassembler.ghidra import GhidraArtifacts
     manifest = json.loads((args.corpus / "manifest.json").read_text(encoding="utf-8"))
     sources = {sha256(path.read_bytes()): path for path in args.disc_files.rglob("*.MMD")}
-    scripts = Path(__file__).resolve().parents[1] / "src/retrolarium_disasm/ghidra/scripts"
+    scripts = Path(__file__).resolve().parents[2] / "src/retrolarium_disassembler/ghidra/scripts"
     args.output.mkdir(parents=True, exist_ok=True)
     cases = []
     for unit in manifest["units"]:

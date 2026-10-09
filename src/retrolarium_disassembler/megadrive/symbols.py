@@ -6,11 +6,11 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
-from retrolarium_disasm.facts import InstructionFact
-from retrolarium_disasm.m68k.instructions import pc_displacement_target, pc_indexed_target
+from retrolarium_disassembler.facts import InstructionFact
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target, pc_indexed_target
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import PointerCandidate
-from retrolarium_disasm.megadrive.structures import (
+from retrolarium_disassembler.megadrive.pointers import PointerCandidate
+from retrolarium_disassembler.megadrive.structures import (
     discover_long_ff_padding,
     discover_standard_boot_setups,
 )

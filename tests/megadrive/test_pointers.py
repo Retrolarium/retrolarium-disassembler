@@ -9,9 +9,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_disasm.facts import InstructionFact, InstructionReference
+from retrolarium_disassembler.facts import InstructionFact, InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_disasm.megadrive.pointers import (
+from retrolarium_disassembler.megadrive.pointers import (
     detect_pointer_candidates,
     discover_dispatch_table_seeds,
 )

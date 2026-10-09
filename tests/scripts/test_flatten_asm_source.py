@@ -5,8 +5,8 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from flatten_asm_source import flatten_source
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.references.flatten_asm_source import flatten_source
 
 
 class FlattenSourceTests(unittest.TestCase):

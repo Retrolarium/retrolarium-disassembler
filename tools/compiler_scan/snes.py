@@ -1,6 +1,6 @@
 """Scan a GoodSNES set for SNES games compiled from C.
 
-usage: python tools/snes_compiler_scan.py SNESMERGE_DIR OUTPUT_DIR
+usage: python -m tools.compiler_scan.snes SNESMERGE_DIR OUTPUT_DIR
            [--include-pd] [--limit N] [--only SUBSTRING] [--recompute]
 
 One good dump per game is chosen with the rules of megadrive_compiler_scan.py
@@ -25,8 +25,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from megadrive_compiler_scan import BAD_TAGS, GOOD, TOOL_STRINGS, extract, list_archive, region_rank  # noqa: E402
+from tools.compiler_scan.megadrive import BAD_TAGS, GOOD, TOOL_STRINGS, extract, list_archive, region_rank  # noqa: E402
 
 PD_TAG = re.compile(r"\(PD\)", re.I)
 EXTENSIONS = (".smc", ".sfc", ".swc", ".fig")

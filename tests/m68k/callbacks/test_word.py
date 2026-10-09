@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_disasm.m68k.callbacks.word import (
+from retrolarium_disassembler.m68k.callbacks.word import (
     discover_nested_word_resolver_seeds, discover_word_ram_callback_seeds,
 )
 from retrolarium_core.megadrive import parse_megadrive

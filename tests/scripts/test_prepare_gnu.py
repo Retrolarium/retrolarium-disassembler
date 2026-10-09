@@ -3,9 +3,9 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from prepare_gnu_reference import normalize_listing, prepare, section_bases
-from source_benchmark import read_listing
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.references.prepare_gnu import normalize_listing, prepare, section_bases
+from tools.benchmarks.source import read_listing
 
 
 class GnuReferenceTests(unittest.TestCase):

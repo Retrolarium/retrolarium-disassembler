@@ -9,14 +9,14 @@ from __future__ import annotations
 from collections import deque
 import re
 
-from retrolarium_disasm.facts import InstructionFact
-from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.facts import InstructionFact
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.m68k.instructions import instruction_sets
-from retrolarium_disasm.m68k.instructions import pc_displacement_target
-from retrolarium_disasm.m68k.dispatch.record import executed_stack_fields
-from retrolarium_disasm.m68k.abstract import _register_list
-from retrolarium_disasm.m68k.frames.call_frame import _STACK
+from retrolarium_disassembler.m68k.instructions import instruction_sets
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target
+from retrolarium_disassembler.m68k.dispatch.record import executed_stack_fields
+from retrolarium_disassembler.m68k.abstract import _register_list
+from retrolarium_disassembler.m68k.frames.call_frame import _STACK
 
 
 _FIELD = r"\((?:(-?0x[0-9a-f]+),)?(A[0-6])\)"

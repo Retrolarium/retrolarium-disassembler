@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import sys
 
-from retrolarium_disasm import __version__
+from retrolarium_disassembler import __version__
 
 
 DEFAULT_TOOL_ROOT = Path(__file__).resolve().parents[2] / ".tools"
@@ -31,19 +31,19 @@ def ghidra_home(args: argparse.Namespace) -> Path:
 
 def command_nes_inspect(args: argparse.Namespace) -> None:
     from retrolarium_core.ines import load_ines
-    from retrolarium_disasm.nes.pipeline import image_manifest
+    from retrolarium_disassembler.nes.pipeline import image_manifest
 
     print_json(image_manifest(load_ines(args.rom)))
 
 
 def command_nes_analyze(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.nes.pipeline import analyze_mapper_banks
+    from retrolarium_disassembler.nes.pipeline import analyze_mapper_banks
 
     print_json(analyze_mapper_banks(args.rom, args.output, ghidra_home(args)))
 
 
 def command_nes_disassemble(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.nes.pipeline import disassemble_nes
+    from retrolarium_disassembler.nes.pipeline import disassemble_nes
 
     print_json(disassemble_nes(args.rom, args.output, ghidra_home(args),
                                build_container=args.build_container))
@@ -58,20 +58,20 @@ def command_megadrive_inspect(args: argparse.Namespace) -> None:
 
 
 def command_megadrive_analyze(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.megadrive.pipeline import analyze_m68k
+    from retrolarium_disassembler.megadrive.pipeline import analyze_m68k
 
     print_json(analyze_m68k(args.rom, args.output, ghidra_home(args)))
 
 
 def command_megadrive_disassemble(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.megadrive.pipeline import disassemble_megadrive
+    from retrolarium_disassembler.megadrive.pipeline import disassemble_megadrive
 
     print_json(disassemble_megadrive(args.rom, args.output, ghidra_home(args),
                                      build_container=args.build_container))
 
 
 def command_megadrive_emit(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.megadrive.pipeline import emit_analyzed_megadrive
+    from retrolarium_disassembler.megadrive.pipeline import emit_analyzed_megadrive
 
     print_json(emit_analyzed_megadrive(args.rom, args.output))
 
@@ -86,13 +86,13 @@ def command_snes_inspect(args: argparse.Namespace) -> None:
 
 def command_snes_analyze(args: argparse.Namespace) -> None:
     from retrolarium_core.snes import load_snes
-    from retrolarium_disasm.snes.analysis import analysis_manifest, analyze_snes
-    from retrolarium_disasm.snes.pointers import (
+    from retrolarium_disassembler.snes.analysis import analysis_manifest, analyze_snes
+    from retrolarium_disassembler.snes.pointers import (
         accepted_pointer_tables,
         detect_pointer_candidates,
         write_pointer_report,
     )
-    from retrolarium_disasm.snes.symbols import generate_symbols, write_symbol_report
+    from retrolarium_disassembler.snes.symbols import generate_symbols, write_symbol_report
 
     image = load_snes(args.rom)
     analysis = analyze_snes(image)
@@ -122,7 +122,7 @@ def command_snes_analyze(args: argparse.Namespace) -> None:
 
 
 def command_snes_disassemble(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.snes.pipeline import disassemble_snes
+    from retrolarium_disassembler.snes.pipeline import disassemble_snes
 
     print_json(disassemble_snes(args.rom, args.output, ghidra_home=ghidra_home(args),
                                 build_container=args.build_container))
@@ -131,25 +131,25 @@ def command_snes_disassemble(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------- shared
 
 def command_verify(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.verify import verify_exact
+    from retrolarium_disassembler.verify import verify_exact
 
     print_json(verify_exact(args.original, args.rebuilt))
 
 
 def command_ghidra_status(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.toolchain import toolchain_status
+    from retrolarium_disassembler.toolchain import toolchain_status
 
     print_json(toolchain_status(args.ghidra_home))
 
 
 def command_ghidra_install(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.toolchain import install_toolchain
+    from retrolarium_disassembler.toolchain import install_toolchain
 
     print_json(install_toolchain(args.tool_root))
 
 
 def command_benchmark_pointers(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.benchmark import score_pointer_report, write_benchmark
+    from retrolarium_disassembler.benchmark import score_pointer_report, write_benchmark
 
     result = score_pointer_report(args.report, args.oracle)
     if args.output is not None:
@@ -158,7 +158,7 @@ def command_benchmark_pointers(args: argparse.Namespace) -> None:
 
 
 def command_preset(args: argparse.Namespace) -> None:
-    from retrolarium_disasm.preset import create_game_studio_preset
+    from retrolarium_disassembler.preset import create_game_studio_preset
 
     print_json(
         create_game_studio_preset(
@@ -315,17 +315,17 @@ def _expected_errors() -> tuple[type[BaseException], ...]:
         "retrolarium_core.ines": "InesError",
         "retrolarium_core.megadrive": "MegaDriveError",
         "retrolarium_core.snes": "SnesError",
-        "retrolarium_disasm.benchmark": "BenchmarkError",
-        "retrolarium_disasm.facts": "FactError",
-        "retrolarium_disasm.ghidra": "GhidraError",
-        "retrolarium_disasm.toolchain": "ToolchainError",
-        "retrolarium_disasm.nes.ca65": "EmitError",
-        "retrolarium_disasm.nes.pipeline": "PipelineError",
-        "retrolarium_disasm.megadrive.emit": "MegaDriveEmitError",
-        "retrolarium_disasm.snes.analysis": "SnesAnalysisError",
-        "retrolarium_disasm.snes.emit": "SnesEmitError",
-        "retrolarium_disasm.snes.pipeline": "SnesPipelineError",
-        "retrolarium_disasm.verify": "VerificationError",
+        "retrolarium_disassembler.benchmark": "BenchmarkError",
+        "retrolarium_disassembler.facts": "FactError",
+        "retrolarium_disassembler.ghidra": "GhidraError",
+        "retrolarium_disassembler.toolchain": "ToolchainError",
+        "retrolarium_disassembler.nes.ca65": "EmitError",
+        "retrolarium_disassembler.nes.pipeline": "PipelineError",
+        "retrolarium_disassembler.megadrive.emit": "MegaDriveEmitError",
+        "retrolarium_disassembler.snes.analysis": "SnesAnalysisError",
+        "retrolarium_disassembler.snes.emit": "SnesEmitError",
+        "retrolarium_disassembler.snes.pipeline": "SnesPipelineError",
+        "retrolarium_disassembler.verify": "VerificationError",
         "retrolarium_kit.studio.project": "StudioProjectError",
         "retrolarium_kit.core.authoring": "AuthoringError",
     }

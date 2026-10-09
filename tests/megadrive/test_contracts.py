@@ -266,8 +266,8 @@ class MegaDriveContractTests(unittest.TestCase):
 
 class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
     def test_cached_emission_rejects_another_rom_and_tampered_facts(self) -> None:
-        from retrolarium_disasm.megadrive import pipeline
-        from retrolarium_disasm.megadrive.emit import MegaDriveEmitError
+        from retrolarium_disassembler.megadrive import pipeline
+        from retrolarium_disassembler.megadrive.emit import MegaDriveEmitError
         from test_megadrive import cartridge
 
         with tempfile.TemporaryDirectory() as directory:
@@ -293,8 +293,8 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
                 emit.assert_not_called()
 
     def _disassemble(self, root: Path, *, build_container: str | None):
-        from retrolarium_disasm.megadrive import pipeline
-        from retrolarium_disasm.z80.dispatch import Z80DispatchTable
+        from retrolarium_disassembler.megadrive import pipeline
+        from retrolarium_disassembler.z80.dispatch import Z80DispatchTable
 
         analysis = root / "out" / "analysis"
         (analysis / "m68k").mkdir(parents=True)
@@ -382,7 +382,7 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
                 patch.object(pipeline, "validate_megadrive_disassembly_manifest"), \
                 patch.object(pipeline, "_build_emitted_project",
                              return_value=rebuilt) as build, \
-                patch("retrolarium_disasm.verify.verify_exact",
+                patch("retrolarium_disassembler.verify.verify_exact",
                       return_value={"status": "exact"}):
             manifest = pipeline.disassemble_megadrive(
                 root / "rom.bin", root / "out", root / "ghidra",

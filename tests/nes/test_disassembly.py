@@ -12,17 +12,17 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_disasm.nes.ca65 import emit_project, prg_source
-from retrolarium_disasm.nes import pipeline
-from retrolarium_disasm.facts import load_ghidra_facts
-from retrolarium_disasm.ghidra import GhidraArtifacts
+from retrolarium_disassembler.nes.ca65 import emit_project, prg_source
+from retrolarium_disassembler.nes import pipeline
+from retrolarium_disassembler.facts import load_ghidra_facts
+from retrolarium_disassembler.ghidra import GhidraArtifacts
 from retrolarium_core.ines import InesError, parse_ines
-from retrolarium_disasm.nes.pipeline import (
+from retrolarium_disassembler.nes.pipeline import (
     asset_manifest,
     disassemble_nrom,
 )
-from retrolarium_disasm.verify import VerificationError, verify_exact
-from retrolarium_disasm.nes.pointers import detect_banked_pointer_candidates
+from retrolarium_disassembler.verify import VerificationError, verify_exact
+from retrolarium_disassembler.nes.pointers import detect_banked_pointer_candidates
 from helpers import KIT, needs_kit, nrom16_image, write_facts
 
 if KIT:

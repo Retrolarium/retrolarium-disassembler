@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 import test_ghidra
-from retrolarium_disasm.ghidra import GhidraError, run_megadrive_analysis, run_m68k_overlay_analysis
+from retrolarium_disassembler.ghidra import GhidraError, run_megadrive_analysis, run_m68k_overlay_analysis
 
 
 class GhidraProbeRequestTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class GhidraProbeRequestTests(unittest.TestCase):
             root = Path(directory)
             requests = root / 'requests.tsv'
             requests.write_text('FF2002\tFF2010\n')
-            with patch('retrolarium_disasm.ghidra._run_analysis') as backend:
+            with patch('retrolarium_disassembler.ghidra._run_analysis') as backend:
                 run_m68k_overlay_analysis(root / 'module.bin', root / 'analysis', root, root,
                     base_address=0xFF1F00, entry_addresses=(0xFF2000,),
                     probe_orphans=True, probe_requests=requests)
@@ -45,7 +45,7 @@ class GhidraProbeRequestTests(unittest.TestCase):
                 self.assertEqual(str(seeds.resolve()), command[command.index('RestoreM68kPlannedSeeds.java') + 1])
                 return subprocess.CompletedProcess(command, 0, 'ok')
 
-            with patch('retrolarium_disasm.ghidra.subprocess.run', side_effect=complete):
+            with patch('retrolarium_disassembler.ghidra.subprocess.run', side_effect=complete):
                 artifacts = run_megadrive_analysis(image, root / 'out', home, scripts,
                     seed_plan=seeds, probe_orphans=True, probe_requests=requests)
             self.assertEqual('000200\n', seeds.read_text())

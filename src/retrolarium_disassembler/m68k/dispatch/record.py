@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import re
 
-from retrolarium_disasm.facts import InstructionFact
-from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.facts import InstructionFact
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
-from retrolarium_disasm.m68k.instructions import pc_displacement_target
+from retrolarium_disassembler.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target
 
 
 _FIELD = r"\((-?0x[0-9a-f]+),(A[0-6])\)"

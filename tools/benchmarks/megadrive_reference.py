@@ -8,8 +8,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from flatten_asm_source import flatten_source
-from source_benchmark import instruction_quality, read_listing, same_instruction, source_metrics
+from tools.references.flatten_asm_source import flatten_source
+from tools.benchmarks.source import instruction_quality, read_listing, same_instruction, source_metrics
 
 
 def _sha256(raw: bytes) -> str:

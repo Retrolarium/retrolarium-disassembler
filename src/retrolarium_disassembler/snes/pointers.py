@@ -12,7 +12,7 @@ from retrolarium_core.snes import (
     rom_offset_aliases,
     snes_to_rom_offset,
 )
-from retrolarium_disasm.snes.analysis import AnalysisResult
+from retrolarium_disassembler.snes.analysis import AnalysisResult
 
 
 MIN_ENTRIES = 3

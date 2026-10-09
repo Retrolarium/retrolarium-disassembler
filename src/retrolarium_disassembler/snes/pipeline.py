@@ -8,20 +8,20 @@ from pathlib import Path
 import subprocess
 
 from retrolarium_core.contracts import validate_snes_disassembly_manifest
-from retrolarium_disasm.facts import InstructionFact, load_spc700_ghidra_facts
-from retrolarium_disasm.ghidra import run_spc700_analysis
-from retrolarium_disasm.verify import verify_exact
+from retrolarium_disassembler.facts import InstructionFact, load_spc700_ghidra_facts
+from retrolarium_disassembler.ghidra import run_spc700_analysis
+from retrolarium_disassembler.verify import verify_exact
 from retrolarium_core.snes import image_manifest, load_snes
-from retrolarium_disasm.snes.analysis import analysis_manifest, analyze_snes
-from retrolarium_disasm.snes.emit import EmissionResult, emit_project
-from retrolarium_disasm.snes.pointers import (
+from retrolarium_disassembler.snes.analysis import analysis_manifest, analyze_snes
+from retrolarium_disassembler.snes.emit import EmissionResult, emit_project
+from retrolarium_disassembler.snes.pointers import (
     accepted_pointer_tables,
     detect_pointer_candidates,
     write_pointer_report,
 )
-from retrolarium_disasm.snes.symbols import generate_symbols, write_symbol_report
-from retrolarium_disasm.snes.spc700 import CrossCpuCopy, detect_spc700_copies, payload_for_copy
-from retrolarium_disasm.toolchain import toolchain_status
+from retrolarium_disassembler.snes.symbols import generate_symbols, write_symbol_report
+from retrolarium_disassembler.snes.spc700 import CrossCpuCopy, detect_spc700_copies, payload_for_copy
+from retrolarium_disassembler.toolchain import toolchain_status
 
 
 class SnesPipelineError(RuntimeError):

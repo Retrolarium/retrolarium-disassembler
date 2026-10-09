@@ -7,9 +7,9 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from source_benchmark import (
+from tools.benchmarks.source import (
     compare_z80_program,
     instruction_quality,
     read_listing,

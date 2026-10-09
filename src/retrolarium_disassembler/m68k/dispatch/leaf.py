@@ -4,11 +4,11 @@ from __future__ import annotations
 import re
 from typing import Callable
 
-from retrolarium_disasm.facts import InstructionFact
-from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disassembler.facts import InstructionFact
+from retrolarium_disassembler.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
-from retrolarium_disasm.m68k.instructions import pc_displacement_target
+from retrolarium_disassembler.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disassembler.m68k.instructions import pc_displacement_target
 
 
 def _direct(fact):
@@ -169,7 +169,7 @@ def discover_leaf_word_dispatch_seeds(
         masks = None
         if len(body) == 3:
             if masks_before is None:
-                from retrolarium_disasm.m68k.dispatch.reaching import make_word_index_mask_reader
+                from retrolarium_disassembler.m68k.dispatch.reaching import make_word_index_mask_reader
                 masks_before = make_word_index_mask_reader(facts, entrypoints=(
                     *entrypoints, *(vector.address for vector in image.vector_table[1:])))
             register = body[0].operands.split('|')[0][:-1].lower()
