@@ -7,9 +7,9 @@ volatile RAM as a constant or overriding truly nonreturning routines.
 """
 from collections import deque
 
-from .m68k_abstract import _register_list, AbstractState, TruthValue, transfer_instruction, _branch_outcome
-from .m68k_seeds import DecoderSeed
-from .m68k_call_frame import _STACK
+from retrolarium_kit.m68k_abstract import _register_list, AbstractState, TruthValue, transfer_instruction, _branch_outcome
+from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_kit.m68k_call_frame import _STACK
 
 
 def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_roots=frozenset()):

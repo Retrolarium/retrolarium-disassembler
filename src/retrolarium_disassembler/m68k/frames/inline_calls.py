@@ -1,9 +1,9 @@
 """Prove an ordinary subroutine ABI that consumes an inline word."""
 import re
 
-from .m68k_abstract import _register_list
-from .m68k_call_frame import _STACK
-from .m68k_ram_dispatch import InlineTrapCall
+from retrolarium_kit.m68k_abstract import _register_list
+from retrolarium_kit.m68k_call_frame import _STACK
+from retrolarium_kit.m68k_ram_dispatch import InlineTrapCall
 
 
 def _consumes_word(facts, start):

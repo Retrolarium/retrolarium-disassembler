@@ -6,10 +6,10 @@ from dataclasses import dataclass, replace
 from collections import deque
 from typing import Iterable, TYPE_CHECKING
 
-from .snes import SnesError, SnesImage, snes_to_rom_offset
+from retrolarium_core.snes import SnesError, SnesImage, snes_to_rom_offset
 
 if TYPE_CHECKING:
-    from .facts import InstructionFact
+    from retrolarium_kit.facts import InstructionFact
 
 
 class SnesAnalysisError(RuntimeError):
@@ -491,7 +491,7 @@ def validate_backend_facts(
     facts: dict[int, "InstructionFact"],
 ) -> dict[int, "InstructionFact"]:
     """Accept backend facts only where independent state-aware decoding agrees."""
-    from .facts import FactError
+    from retrolarium_kit.facts import FactError
 
     independent = {
         instruction.logical_address: instruction

@@ -6,8 +6,9 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.snes import (
+from retrolarium_core.snes import (
     HIROM_HEADER_OFFSET,
     LOROM_HEADER_OFFSET,
     cartridge_checksum,
@@ -19,7 +20,7 @@ from retrolarium_kit.snes_pointers import (
     detect_pointer_candidates,
 )
 from retrolarium_kit.snes_symbols import generate_symbols
-from test_snes import cartridge
+from helpers import cartridge
 
 
 PROBE = bytes.fromhex(

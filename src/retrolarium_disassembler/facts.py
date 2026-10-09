@@ -8,9 +8,9 @@ from pathlib import Path
 import re
 from typing import Callable
 
-from .ines import InesImage, InesError, cpu_to_prg_offset
-from .megadrive import MegaDriveError, MegaDriveImage, m68k_to_rom_offset
-from .snes import SnesError, SnesImage, snes_to_rom_offset
+from retrolarium_core.ines import InesImage, InesError, cpu_to_prg_offset
+from retrolarium_core.megadrive import MegaDriveError, MegaDriveImage, m68k_to_rom_offset
+from retrolarium_core.snes import SnesError, SnesImage, snes_to_rom_offset
 
 
 class FactError(ValueError):

@@ -8,14 +8,14 @@ from pathlib import Path
 import re
 import struct
 
-from .facts import InstructionFact
-from .ines import (
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_core.ines import (
     InesImage,
     canonical_prg_start,
     cpu_to_prg_offset,
     prg_analysis_targets,
 )
-from .pointers import (
+from retrolarium_kit.pointers import (
     PointerCandidate,
     accepted_pointer_tables,
     relocate_pointer_candidate,

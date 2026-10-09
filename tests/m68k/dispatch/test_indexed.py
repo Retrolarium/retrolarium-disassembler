@@ -4,7 +4,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from retrolarium_kit.megadrive import parse_megadrive
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_kit.m68k_indexed_dispatch import (
     discover_register_indexed_dispatch_seeds, discover_added_index_dispatch_seeds,
     discover_nested_word_dispatch_seeds,

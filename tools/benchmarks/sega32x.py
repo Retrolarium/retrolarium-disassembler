@@ -55,7 +55,7 @@ def main():
     parser.add_argument("--rom", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--ghidra-home", type=Path, default=Path("retrolarium_kit/.tools/ghidra"))
+    parser.add_argument("--ghidra-home", type=Path, default=Path("retrolarium-kit/.tools/ghidra"))
     parser.add_argument("--reuse-analysis", action="store_true")
     parser.add_argument("--minimum-source-recall", type=float, default=0)
     args = parser.parse_args()

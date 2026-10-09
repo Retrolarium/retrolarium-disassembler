@@ -2,10 +2,10 @@
 from collections import deque
 import re
 
-from .m68k_abstract import _register_list
-from .m68k_call_frame import _STACK
-from .m68k_table_dispatch import _targets
-from .megadrive_symbols import pc_indexed_target
+from retrolarium_kit.m68k_abstract import _register_list
+from retrolarium_kit.m68k_call_frame import _STACK
+from retrolarium_kit.m68k_table_dispatch import _targets
+from retrolarium_kit.megadrive_symbols import pc_indexed_target
 
 
 def _dispatch(image, facts, handler):
@@ -119,9 +119,9 @@ def _consumption(facts, start, slot, pc_register, saved, width):
 
 
 def discover_variable_inline_trap_calls(image, facts):
-    from .m68k_ram_dispatch import InlineTrapCall
-    from .m68k_trap_callbacks import executed_arrays, setter_array
-    from .megadrive_pointers import _instruction_sets
+    from retrolarium_kit.m68k_ram_dispatch import InlineTrapCall
+    from retrolarium_kit.m68k_trap_callbacks import executed_arrays, setter_array
+    from retrolarium_kit.megadrive_pointers import _instruction_sets
     facts = {fact.cpu_address: fact for fact in facts.values()}
     arrays = executed_arrays(image, facts)
     _, interiors, _ = _instruction_sets(facts)

@@ -6,9 +6,10 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
 from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_pointers import (
     _absolute_referenced_addresses, _pc_word_dispatch_tables, discover_dispatch_table_seeds,
 )

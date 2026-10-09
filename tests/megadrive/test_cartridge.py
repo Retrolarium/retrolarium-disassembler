@@ -7,8 +7,9 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.megadrive import (
+from retrolarium_core.megadrive import (
     MegaDriveError,
     cartridge_checksum,
     image_manifest,

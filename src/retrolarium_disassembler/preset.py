@@ -10,9 +10,9 @@ import shutil
 import tempfile
 from typing import Any
 
-from .games import extract_game, inspect_game, validate_game
-from .pipeline import disassemble_nes
-from .studio_project import (
+from retrolarium_kit.games import extract_game, inspect_game, validate_game
+from retrolarium_kit.pipeline import disassemble_nes
+from retrolarium_kit.studio_project import (
     StudioProjectError,
     build_studio_project,
     create_studio_project,

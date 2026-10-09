@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import re
 
-from .facts import InstructionFact
-from .m68k_seeds import DecoderSeed
-from .megadrive import MegaDriveImage
-from .megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
-from .megadrive_symbols import pc_displacement_target
-from .m68k_abstract import _register_list
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_core.megadrive import MegaDriveImage
+from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
+from retrolarium_kit.megadrive_symbols import pc_displacement_target
+from retrolarium_kit.m68k_abstract import _register_list
 
 
 def _lea_base(fact, register):

@@ -2,7 +2,7 @@
 from collections import deque
 import re
 
-from .m68k_abstract import _register_list
+from retrolarium_kit.m68k_abstract import _register_list
 
 
 _STACK = re.compile(r"(?<![A-Z0-9])(?:SP|A7|USP)[BWL]?(?![A-Z0-9])", re.I)

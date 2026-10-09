@@ -10,9 +10,9 @@ from bisect import bisect_left
 from dataclasses import asdict, dataclass
 from typing import Callable
 
-from .facts import InstructionFact
-from .megadrive import MegaDriveImage
-from .megadrive_pointers import _absolute_referenced_addresses
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_core.megadrive import MegaDriveImage
+from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses
 
 
 MAX_UNUSED_GAP = 2048

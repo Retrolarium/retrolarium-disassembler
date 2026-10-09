@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .facts import InstructionFact
-from .megadrive import MegaDriveImage
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_core.megadrive import MegaDriveImage
 
 
 STANDARD_BOOT_SETUP_SIZE = 0x6C

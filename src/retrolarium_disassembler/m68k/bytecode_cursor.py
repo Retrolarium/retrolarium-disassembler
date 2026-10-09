@@ -9,11 +9,11 @@ from collections import deque
 from dataclasses import dataclass
 import re
 
-from .m68k_seeds import DecoderSeed
+from retrolarium_kit.m68k_seeds import DecoderSeed
 
-from .megadrive_symbols import pc_indexed_target
-from .megadrive_pointers import _instruction_sets, _absolute_referenced_addresses
-from .m68k_constructor_records import _unsupported_frame_or_exception
+from retrolarium_kit.megadrive_symbols import pc_indexed_target
+from retrolarium_kit.megadrive_pointers import _instruction_sets, _absolute_referenced_addresses
+from retrolarium_kit.m68k_constructor_records import _unsupported_frame_or_exception
 
 
 def _absolute_address(operand):

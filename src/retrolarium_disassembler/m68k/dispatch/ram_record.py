@@ -2,10 +2,10 @@
 from collections import deque
 import re
 
-from .m68k_seeds import DecoderSeed
-from .m68k_call_frame import _STACK
-from .megadrive_symbols import pc_displacement_target
-from .megadrive_pointers import _instruction_sets, _absolute_referenced_addresses
+from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_kit.m68k_call_frame import _STACK
+from retrolarium_kit.megadrive_symbols import pc_displacement_target
+from retrolarium_kit.megadrive_pointers import _instruction_sets, _absolute_referenced_addresses
 
 
 def _rom_lea(fact, register):

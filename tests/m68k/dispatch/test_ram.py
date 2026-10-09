@@ -4,8 +4,9 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 from retrolarium_kit.m68k_ram_dispatch import discover_ram_stub_dispatch_seeds, discover_inline_trap_calls
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 

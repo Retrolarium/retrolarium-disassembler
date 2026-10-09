@@ -7,22 +7,22 @@ import hashlib
 from pathlib import Path
 import re
 
-from .facts import InstructionFact
-from .megadrive import MegaDriveImage
-from .megadrive_pointers import PointerCandidate
-from .megadrive_structures import (
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_core.megadrive import MegaDriveImage
+from retrolarium_kit.megadrive_pointers import PointerCandidate
+from retrolarium_kit.megadrive_structures import (
     LONG_FF_PADDING_MIN_BYTES,
     StandardBootSetup,
     discover_standard_boot_setups,
 )
-from .megadrive_symbols import (
+from retrolarium_kit.megadrive_symbols import (
     TechnicalSymbol,
     pc_displacement_target,
     pc_indexed_target,
     pc_indexed_jsr_target,
 )
-from .megadrive_z80 import CrossCpuCopy
-from .z80_dispatch import Z80DispatchTable
+from retrolarium_kit.megadrive_z80 import CrossCpuCopy
+from retrolarium_kit.z80_dispatch import Z80DispatchTable
 
 
 MODULE_SIZE = 0x10000

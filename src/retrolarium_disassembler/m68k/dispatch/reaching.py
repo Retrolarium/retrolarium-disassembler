@@ -10,10 +10,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 import re
 
-from .m68k_constructor_records import _writes, _unsupported_frame_or_exception
-from .m68k_seeds import DecoderSeed
-from .megadrive_symbols import pc_displacement_target
-from .megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
+from retrolarium_kit.m68k_constructor_records import _writes, _unsupported_frame_or_exception
+from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_kit.megadrive_symbols import pc_displacement_target
+from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
 
 
 @dataclass(frozen=True)

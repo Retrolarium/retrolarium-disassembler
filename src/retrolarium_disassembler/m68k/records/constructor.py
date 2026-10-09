@@ -12,13 +12,13 @@ from collections import deque
 from dataclasses import dataclass
 import re
 
-from .facts import InstructionFact
-from .megadrive import MegaDriveImage
-from .m68k_seeds import DecoderSeed
-from .m68k_abstract import _register_name, _register_list
-from .m68k_callback_abi import _executed_fields
-from .megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
-from .megadrive_symbols import pc_displacement_target
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_core.megadrive import MegaDriveImage
+from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_kit.m68k_abstract import _register_name, _register_list
+from retrolarium_kit.m68k_callback_abi import _executed_fields
+from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
+from retrolarium_kit.megadrive_symbols import pc_displacement_target
 
 
 def _nonzero_immediate_word_division(fact):

@@ -7,10 +7,11 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
 from retrolarium_kit.ca65 import prg_source
 from retrolarium_kit.facts import load_ghidra_facts
-from retrolarium_kit.ines import parse_ines
+from retrolarium_core.ines import parse_ines
 from retrolarium_kit.pointers import (
     accepted_code_entry_tables,
     accepted_pointer_tables,

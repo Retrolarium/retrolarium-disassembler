@@ -6,8 +6,8 @@ from dataclasses import dataclass, replace
 import hashlib
 import re
 
-from .facts import InstructionFact
-from .megadrive import MegaDriveImage, m68k_to_rom_offset
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_core.megadrive import MegaDriveImage, m68k_to_rom_offset
 
 
 Z80_WINDOW_START = 0xA00000

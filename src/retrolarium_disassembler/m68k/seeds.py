@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .megadrive import MegaDriveImage
+from retrolarium_core.megadrive import MegaDriveImage
 
 
 @dataclass(frozen=True)

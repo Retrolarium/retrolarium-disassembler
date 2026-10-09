@@ -7,21 +7,21 @@ import json
 from pathlib import Path
 import subprocess
 
-from .contracts import validate_snes_disassembly_manifest
-from .facts import InstructionFact, load_spc700_ghidra_facts
-from .ghidra import run_spc700_analysis
-from .pipeline import verify_exact
-from .snes import image_manifest, load_snes
-from .snes_analysis import analysis_manifest, analyze_snes
-from .snes_emit import EmissionResult, emit_project
-from .snes_pointers import (
+from retrolarium_core.contracts import validate_snes_disassembly_manifest
+from retrolarium_kit.facts import InstructionFact, load_spc700_ghidra_facts
+from retrolarium_kit.ghidra import run_spc700_analysis
+from retrolarium_kit.pipeline import verify_exact
+from retrolarium_core.snes import image_manifest, load_snes
+from retrolarium_kit.snes_analysis import analysis_manifest, analyze_snes
+from retrolarium_kit.snes_emit import EmissionResult, emit_project
+from retrolarium_kit.snes_pointers import (
     accepted_pointer_tables,
     detect_pointer_candidates,
     write_pointer_report,
 )
-from .snes_symbols import generate_symbols, write_symbol_report
-from .snes_spc700 import CrossCpuCopy, detect_spc700_copies, payload_for_copy
-from .toolchain import toolchain_status
+from retrolarium_kit.snes_symbols import generate_symbols, write_symbol_report
+from retrolarium_kit.snes_spc700 import CrossCpuCopy, detect_spc700_copies, payload_for_copy
+from retrolarium_kit.toolchain import toolchain_status
 
 
 class SnesPipelineError(RuntimeError):

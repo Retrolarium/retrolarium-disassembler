@@ -6,6 +6,7 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
 from retrolarium_kit.snes_analysis import analyze_snes
 from retrolarium_kit.snes_spc700 import detect_spc700_copies, payload_for_copy
@@ -33,7 +34,7 @@ class SnesSpc700Tests(unittest.TestCase):
         data = bytearray(image.container_data)
         # CPX #$0006 at logical $00906A / physical $00106A.
         data[0x106B:0x106D] = b"\x00\x00"
-        from retrolarium_kit.snes import parse_snes
+        from retrolarium_core.snes import parse_snes
 
         modified = parse_snes(bytes(data))
         self.assertEqual((), detect_spc700_copies(modified, analyze_snes(modified)))

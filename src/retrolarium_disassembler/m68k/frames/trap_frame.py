@@ -2,8 +2,8 @@
 from collections import deque
 import re
 
-from .m68k_abstract import _register_list
-from .m68k_call_frame import _STACK
+from retrolarium_kit.m68k_abstract import _register_list
+from retrolarium_kit.m68k_call_frame import _STACK
 
 
 def _handler_consumes_word(facts, handler):
@@ -108,7 +108,7 @@ def _handler_consumes_word(facts, handler):
 
 
 def discover_frame_inline_trap_calls(image, facts):
-    from .m68k_ram_dispatch import InlineTrapCall
+    from retrolarium_kit.m68k_ram_dispatch import InlineTrapCall
     facts = {fact.cpu_address: fact for fact in facts.values()}
     handlers = {number: image.vector_table[32 + number].address
                 for number in range(max(0, min(16, len(image.vector_table) - 32)))

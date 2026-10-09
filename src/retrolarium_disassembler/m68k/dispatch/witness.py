@@ -4,14 +4,14 @@ from __future__ import annotations
 from bisect import bisect_right
 from typing import Callable
 
-from .facts import InstructionFact
-from .m68k_abstract import OrphanCandidate
-from .m68k_packed import _complete_cfg
-from .m68k_ram_dispatch import discover_inline_trap_calls
-from .m68k_call_frame import make_trap_call_frame_validator
-from .m68k_dispatch_closure import logical_image, make_dispatch_closure_validator
-from .megadrive import MegaDriveImage
-from .megadrive_pointers import _absolute_referenced_addresses
+from retrolarium_kit.facts import InstructionFact
+from retrolarium_kit.m68k_abstract import OrphanCandidate
+from retrolarium_kit.m68k_packed import _complete_cfg
+from retrolarium_kit.m68k_ram_dispatch import discover_inline_trap_calls
+from retrolarium_kit.m68k_call_frame import make_trap_call_frame_validator
+from retrolarium_kit.m68k_dispatch_closure import logical_image, make_dispatch_closure_validator
+from retrolarium_core.megadrive import MegaDriveImage
+from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses
 
 
 def make_dispatch_handler_validator(

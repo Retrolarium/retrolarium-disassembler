@@ -7,8 +7,9 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.snes import (
+from retrolarium_core.snes import (
     LOROM_HEADER_OFFSET,
     cartridge_checksum,
     parse_snes,
@@ -21,7 +22,7 @@ from retrolarium_kit.snes_analysis import (
     validate_backend_facts,
 )
 from retrolarium_kit.facts import FactError, load_snes_ghidra_facts
-from test_snes import cartridge
+from helpers import cartridge
 
 
 def image_with_code(code: bytes):

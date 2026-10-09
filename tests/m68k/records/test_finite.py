@@ -2,9 +2,10 @@ from pathlib import Path
 import sys, unittest
 from dataclasses import replace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_emit import _asm_instruction
 from retrolarium_kit.facts import InstructionReference
 from retrolarium_kit.m68k_abstract import OrphanCandidate

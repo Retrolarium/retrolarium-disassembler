@@ -6,13 +6,13 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
-from .snes import (
+from retrolarium_core.snes import (
     SnesError,
     SnesImage,
     rom_offset_aliases,
     snes_to_rom_offset,
 )
-from .snes_analysis import AnalysisResult
+from retrolarium_kit.snes_analysis import AnalysisResult
 
 
 MIN_ENTRIES = 3

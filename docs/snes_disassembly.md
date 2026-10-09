@@ -56,19 +56,19 @@ invariants and the exact rebuilt artifact.
 ## Commands and operations
 
 ```powershell
-python retrolarium_kit/rltool.py snes inspect game.sfc
-python retrolarium_kit/rltool.py snes analyze game.sfc `
-  --output retrolarium_kit/build/game-analysis
-python retrolarium_kit/rltool.py snes disassemble game.sfc `
-  --output retrolarium_kit/build/game-disassembly
-python retrolarium_kit/rltool.py project validate `
-  retrolarium_kit/build/game-disassembly/retrolarium-project.json
-python retrolarium_kit/rltool.py project build `
-  retrolarium_kit/build/game-disassembly/retrolarium-project.json
-python retrolarium_kit/rltool.py project verify `
-  retrolarium_kit/build/game-disassembly/retrolarium-project.json
-python retrolarium_kit/rltool.py project launch `
-  retrolarium_kit/build/game-disassembly/retrolarium-project.json `
+python retrolarium-kit/rltool.py snes inspect game.sfc
+python retrolarium-kit/rltool.py snes analyze game.sfc `
+  --output retrolarium-kit/build/game-analysis
+python retrolarium-kit/rltool.py snes disassemble game.sfc `
+  --output retrolarium-kit/build/game-disassembly
+python retrolarium-kit/rltool.py project validate `
+  retrolarium-kit/build/game-disassembly/retrolarium-project.json
+python retrolarium-kit/rltool.py project build `
+  retrolarium-kit/build/game-disassembly/retrolarium-project.json
+python retrolarium-kit/rltool.py project verify `
+  retrolarium-kit/build/game-disassembly/retrolarium-project.json
+python retrolarium-kit/rltool.py project launch `
+  retrolarium-kit/build/game-disassembly/retrolarium-project.json `
   --mame mame_testing/mame/consoles.exe --machine snes --seconds 2
 ```
 

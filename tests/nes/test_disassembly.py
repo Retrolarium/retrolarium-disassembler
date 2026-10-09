@@ -10,13 +10,14 @@ from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
 from retrolarium_kit.build_toolchains import materialize_build_toolchain
 from retrolarium_kit.ca65 import emit_project, prg_source
 from retrolarium_kit import pipeline
 from retrolarium_kit.facts import load_ghidra_facts
 from retrolarium_kit.ghidra import GhidraArtifacts
-from retrolarium_kit.ines import InesError, parse_ines
+from retrolarium_core.ines import InesError, parse_ines
 from retrolarium_kit.pipeline import (
     PipelineError,
     asset_manifest,

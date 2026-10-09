@@ -4,11 +4,12 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 from retrolarium_kit.m68k_relative_record_callbacks import (
     discover_relative_record_callbacks as discover,
     discover_relative_record_callback_seeds,
 )
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_kit.facts import InstructionReference
 from test_megadrive import cartridge
 from test_m68k_unused import instruction

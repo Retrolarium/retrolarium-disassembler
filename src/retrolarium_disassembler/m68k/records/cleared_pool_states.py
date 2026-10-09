@@ -9,15 +9,15 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 import re
 
-from .m68k_abstract import OrphanCandidate, _register_list
-from .m68k_constructor_records import _writes, _unsupported_frame_or_exception
-from .m68k_call_frame import _STACK
-from .m68k_dispatch_closure import logical_image, make_dispatch_closure_validator, _balanced_body
-from .m68k_leaf_dispatch import _body, _schema
-from .m68k_packed import _complete_cfg
-from .m68k_seeds import DecoderSeed
-from .megadrive_pointers import _absolute_referenced_addresses
-from .megadrive_symbols import pc_displacement_target, pc_indexed_target
+from retrolarium_kit.m68k_abstract import OrphanCandidate, _register_list
+from retrolarium_kit.m68k_constructor_records import _writes, _unsupported_frame_or_exception
+from retrolarium_kit.m68k_call_frame import _STACK
+from retrolarium_kit.m68k_dispatch_closure import logical_image, make_dispatch_closure_validator, _balanced_body
+from retrolarium_kit.m68k_leaf_dispatch import _body, _schema
+from retrolarium_kit.m68k_packed import _complete_cfg
+from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses
+from retrolarium_kit.megadrive_symbols import pc_displacement_target, pc_indexed_target
 
 
 def _field(text):

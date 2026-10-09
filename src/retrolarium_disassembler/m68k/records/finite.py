@@ -15,16 +15,16 @@ from collections import deque
 from dataclasses import dataclass, replace
 import re
 
-from .m68k_abstract import _register_list
-from .m68k_constructor_records import _preserved_registers
-from .megadrive_symbols import pc_displacement_target
-from .m68k_abstract import OrphanCandidate
-from .m68k_call_frame import make_trap_call_frame_validator
-from .m68k_dispatch_closure import _balanced_body, logical_image, make_dispatch_closure_validator
-from .m68k_fallthrough_repair import _direct_data_ranges
-from .m68k_packed import _complete_cfg
-from .m68k_ram_dispatch import discover_inline_trap_calls
-from .m68k_seeds import DecoderSeed
+from retrolarium_kit.m68k_abstract import _register_list
+from retrolarium_kit.m68k_constructor_records import _preserved_registers
+from retrolarium_kit.megadrive_symbols import pc_displacement_target
+from retrolarium_kit.m68k_abstract import OrphanCandidate
+from retrolarium_kit.m68k_call_frame import make_trap_call_frame_validator
+from retrolarium_kit.m68k_dispatch_closure import _balanced_body, logical_image, make_dispatch_closure_validator
+from retrolarium_kit.m68k_fallthrough_repair import _direct_data_ranges
+from retrolarium_kit.m68k_packed import _complete_cfg
+from retrolarium_kit.m68k_ram_dispatch import discover_inline_trap_calls
+from retrolarium_kit.m68k_seeds import DecoderSeed
 from bisect import bisect_right
 
 

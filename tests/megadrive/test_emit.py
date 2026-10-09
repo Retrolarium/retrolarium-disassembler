@@ -10,10 +10,11 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
 from retrolarium_kit.build_toolchains import materialize_build_toolchain
 from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_emit import (
     MegaDriveEmitError,
     _asm_instruction,
@@ -38,7 +39,7 @@ from test_megadrive_pointers import word_dispatch_image
 
 class MegaDriveEmitTests(unittest.TestCase):
     def test_overlapping_z80_sources_build_complete_programs_emit_shared_byte_once(self):
-        from retrolarium_kit.contracts import _validate_megadrive_assets, ContractError
+        from retrolarium_core.contracts import _validate_megadrive_assets, ContractError
         data = bytearray(cartridge(size=0x600))
         data[0x300:0x307] = bytes.fromhex("f30000c90000c9")
         image = parse_megadrive(bytes(data))

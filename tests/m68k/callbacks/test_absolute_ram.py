@@ -6,7 +6,7 @@ import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from retrolarium_kit.m68k_absolute_ram_callbacks import discover_absolute_ram_callback_seeds as discover
 from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_m68k_unused import instruction
 

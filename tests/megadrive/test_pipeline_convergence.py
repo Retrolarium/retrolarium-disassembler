@@ -19,6 +19,7 @@ from unittest import mock
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
 from retrolarium_kit import megadrive_pipeline as pipeline
 from retrolarium_kit.ghidra import GhidraArtifacts
@@ -30,7 +31,7 @@ from retrolarium_kit.m68k_abstract import (
     TrustedCfg,
 )
 from retrolarium_kit.m68k_seeds import DecoderSeed
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_kit.megadrive_emit import MegaDriveEmitError
 from retrolarium_kit.m68k_unused import UnusedCodeCandidate
 from retrolarium_kit.m68k_ram_dispatch import InlineTrapCall

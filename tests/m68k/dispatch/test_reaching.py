@@ -8,7 +8,7 @@ from retrolarium_kit.m68k_reaching_dispatch import discover_reaching_word_dispat
 from retrolarium_kit.m68k_reaching_dispatch import discover_reaching_word_dispatch_seeds
 from retrolarium_kit.m68k_reaching_dispatch import make_word_index_mask_reader
 from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 

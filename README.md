@@ -219,10 +219,10 @@ zero-edit exact rebuilds, edited builds and the common MAME launch path without
 a HonkeyPong-specific CLI branch.
 
 ```powershell
-rltool game inspect retrolarium_kit/fixtures/nes/bin/HonkeyPong.nes
-rltool game extract retrolarium_kit/fixtures/nes/bin/HonkeyPong.nes `
+rltool game inspect retrolarium-kit/fixtures/nes/bin/HonkeyPong.nes
+rltool game extract retrolarium-kit/fixtures/nes/bin/HonkeyPong.nes `
   --output build/honkeypong/resources.json
-rltool game build retrolarium_kit/fixtures/nes/bin/HonkeyPong.nes `
+rltool game build retrolarium-kit/fixtures/nes/bin/HonkeyPong.nes `
   build/honkeypong/resources.json --output build/honkeypong/edited.nes
 ```
 
@@ -235,23 +235,23 @@ Run the source-checkout launcher from the repository root. Python 3.11+, Java 21
 and Docker are required for the complete verified path.
 
 ```powershell
-python retrolarium_kit/fixtures/scripts/build_fixtures.py toolchain nes
-python retrolarium_kit/fixtures/scripts/build_fixtures.py build `
+python retrolarium-kit/fixtures/scripts/build_fixtures.py toolchain nes
+python retrolarium-kit/fixtures/scripts/build_fixtures.py build `
   nes.honkeypong nes.rhde nes.cnrom_probe nes.gnrom_probe
-python retrolarium_kit/rltool.py ghidra install
-python retrolarium_kit/rltool.py nes disassemble `
-  retrolarium_kit/fixtures/nes/bin/HonkeyPong.nes `
-  --output retrolarium_kit/build/honkey-disassembly
-python retrolarium_kit/rltool.py project build `
-  retrolarium_kit/build/honkey-disassembly/manifest.json
-python retrolarium_kit/rltool.py project verify `
-  retrolarium_kit/build/honkey-disassembly/manifest.json
+python retrolarium-kit/rltool.py ghidra install
+python retrolarium-kit/rltool.py nes disassemble `
+  retrolarium-kit/fixtures/nes/bin/HonkeyPong.nes `
+  --output retrolarium-kit/build/honkey-disassembly
+python retrolarium-kit/rltool.py project build `
+  retrolarium-kit/build/honkey-disassembly/manifest.json
+python retrolarium-kit/rltool.py project verify `
+  retrolarium-kit/build/honkey-disassembly/manifest.json
 ```
 
 `ghidra install` downloads the versions recorded in
 `src/retrolarium_kit/toolchains/disassembly.lock.json`, verifies the archive
 sizes and SHA-256 values, rejects unsafe ZIP members and installs into the
-ignored `retrolarium_kit/.tools/` directory. An existing compatible install can
+ignored `retrolarium-kit/.tools/` directory. An existing compatible install can
 be selected with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`. The same command
 installs the pinned MIT W65C816 and SPC700 languages as `Retrolarium65816` and
 `RetrolariumSPC700`, compiles them with Ghidra's SLEIGH compiler and preserves
@@ -260,19 +260,19 @@ their upstream licenses; it does not install the upstream SNES cartridge loader.
 ### Mega Drive / Genesis
 
 ```powershell
-python retrolarium_kit/fixtures/scripts/build_fixtures.py toolchain megadrive
-python retrolarium_kit/fixtures/scripts/build_fixtures.py build `
+python retrolarium-kit/fixtures/scripts/build_fixtures.py toolchain megadrive
+python retrolarium-kit/fixtures/scripts/build_fixtures.py build `
   megadrive.dualcpu_probe megadrive.5stars megadrive.dragons_castle `
   megadrive.miniplanets
-python retrolarium_kit/rltool.py megadrive disassemble `
-  retrolarium_kit/fixtures/megadrive/bin/megadrive-dualcpu-probe.bin `
-  --output retrolarium_kit/build/megadrive-disassembly
-python retrolarium_kit/rltool.py project build `
-  retrolarium_kit/build/megadrive-disassembly/retrolarium-project.json
-python retrolarium_kit/rltool.py project verify `
-  retrolarium_kit/build/megadrive-disassembly/retrolarium-project.json
-python retrolarium_kit/rltool.py project launch `
-  retrolarium_kit/build/megadrive-disassembly/retrolarium-project.json `
+python retrolarium-kit/rltool.py megadrive disassemble `
+  retrolarium-kit/fixtures/megadrive/bin/megadrive-dualcpu-probe.bin `
+  --output retrolarium-kit/build/megadrive-disassembly
+python retrolarium-kit/rltool.py project build `
+  retrolarium-kit/build/megadrive-disassembly/retrolarium-project.json
+python retrolarium-kit/rltool.py project verify `
+  retrolarium-kit/build/megadrive-disassembly/retrolarium-project.json
+python retrolarium-kit/rltool.py project launch `
+  retrolarium-kit/build/megadrive-disassembly/retrolarium-project.json `
   --mame mame_testing/mame/consoles.exe --machine genesis --seconds 2
 ```
 
@@ -391,10 +391,10 @@ coordination tables.
 For an independent Flicky source benchmark, run this after disassembly:
 
 ```powershell
-python retrolarium_kit/tools/source_benchmark.py `
+python retrolarium-kit/tools/source_benchmark.py `
   --reference path\to\flicky_src `
-  --generated retrolarium_kit/build/megadrive-disassembly/generated `
-  --output retrolarium_kit/build/flicky-benchmark `
+  --generated retrolarium-kit/build/megadrive-disassembly/generated `
+  --output retrolarium-kit/build/flicky-benchmark `
   --minimum-m68k-instruction-match 99 `
   --minimum-m68k-precision 99 `
   --minimum-m68k-f1 99 `
@@ -441,7 +441,7 @@ For side-by-side editing, export the two ROM-aligned reference files after
 disassembly:
 
 ```powershell
-python retrolarium_kit/tools/export_flicky_reference.py `
+python retrolarium-kit/tools/export_flicky_reference.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated
 ```
@@ -454,7 +454,7 @@ the cartridge vectors and header. These comparison files are not assembled.
 For a standalone address-aligned HTML view, build both projects and run:
 
 ```powershell
-python retrolarium_kit/tools/flicky_html_diff.py `
+python retrolarium-kit/tools/flicky_html_diff.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison\flicky-source-diff.html
@@ -475,7 +475,7 @@ analysis. It requires the rebuilt ROM to match the reference byte for byte.
 For an actionable text and JSON report of the same build, run:
 
 ```powershell
-python retrolarium_kit/tools/flicky_diff_report.py `
+python retrolarium-kit/tools/flicky_diff_report.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison
@@ -489,7 +489,7 @@ emission and differences limited to names or formatting.
 To turn the source differences into contiguous regions for heuristic work, run:
 
 ```powershell
-python retrolarium_kit/tools/flicky_discrepancy_groups.py `
+python retrolarium-kit/tools/flicky_discrepancy_groups.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison
@@ -504,20 +504,20 @@ group links to the matching row in the HTML report.
 ### SNES / Super Famicom foundation
 
 ```powershell
-python retrolarium_kit/fixtures/scripts/build_fixtures.py build `
+python retrolarium-kit/fixtures/scripts/build_fixtures.py build `
   snes.lorom_probe snes.hirom_probe
-python retrolarium_kit/rltool.py snes inspect `
-  retrolarium_kit/fixtures/snes/bin/snes-lorom-probe.sfc
-python retrolarium_kit/rltool.py snes analyze `
-  retrolarium_kit/fixtures/snes/bin/snes-lorom-probe.sfc `
-  --output retrolarium_kit/build/snes-lorom-analysis
-python retrolarium_kit/rltool.py snes disassemble `
-  retrolarium_kit/fixtures/snes/bin/snes-lorom-probe.sfc `
-  --output retrolarium_kit/build/snes-lorom-disassembly
-python retrolarium_kit/rltool.py project build `
-  retrolarium_kit/build/snes-lorom-disassembly/retrolarium-project.json
-python retrolarium_kit/rltool.py project verify `
-  retrolarium_kit/build/snes-lorom-disassembly/retrolarium-project.json
+python retrolarium-kit/rltool.py snes inspect `
+  retrolarium-kit/fixtures/snes/bin/snes-lorom-probe.sfc
+python retrolarium-kit/rltool.py snes analyze `
+  retrolarium-kit/fixtures/snes/bin/snes-lorom-probe.sfc `
+  --output retrolarium-kit/build/snes-lorom-analysis
+python retrolarium-kit/rltool.py snes disassemble `
+  retrolarium-kit/fixtures/snes/bin/snes-lorom-probe.sfc `
+  --output retrolarium-kit/build/snes-lorom-disassembly
+python retrolarium-kit/rltool.py project build `
+  retrolarium-kit/build/snes-lorom-disassembly/retrolarium-project.json
+python retrolarium-kit/rltool.py project verify `
+  retrolarium-kit/build/snes-lorom-disassembly/retrolarium-project.json
 ```
 
 Inspection and independent state-aware W65C816 decoding are available. Full
@@ -608,24 +608,24 @@ volume programs through a dedicated `audio.synthesis` Studio tab; see
 ## Other commands
 
 ```powershell
-python retrolarium_kit/rltool.py nes inspect game.nes
-python retrolarium_kit/rltool.py nes analyze game.nes `
-  --output retrolarium_kit/build/game-analysis
-python retrolarium_kit/rltool.py project validate `
-  retrolarium_kit/build/game-disassembly/manifest.json
-python retrolarium_kit/rltool.py project build `
-  retrolarium_kit/build/game-disassembly/manifest.json
-python retrolarium_kit/rltool.py project verify `
-  retrolarium_kit/build/game-disassembly/manifest.json
-python retrolarium_kit/rltool.py project launch `
-  retrolarium_kit/build/game-disassembly/manifest.json `
+python retrolarium-kit/rltool.py nes inspect game.nes
+python retrolarium-kit/rltool.py nes analyze game.nes `
+  --output retrolarium-kit/build/game-analysis
+python retrolarium-kit/rltool.py project validate `
+  retrolarium-kit/build/game-disassembly/manifest.json
+python retrolarium-kit/rltool.py project build `
+  retrolarium-kit/build/game-disassembly/manifest.json
+python retrolarium-kit/rltool.py project verify `
+  retrolarium-kit/build/game-disassembly/manifest.json
+python retrolarium-kit/rltool.py project launch `
+  retrolarium-kit/build/game-disassembly/manifest.json `
   --mame mame_testing/mame/consoles.exe --seconds 2
-python retrolarium_kit/rltool.py ghidra status
-python retrolarium_kit/rltool.py verify original.nes rebuilt.nes
-python retrolarium_kit/rltool.py benchmark pointers `
-  retrolarium_kit/build/honkey-disassembly/analysis/pointers.json `
-  retrolarium_kit/fixtures/oracles/nes.honkeypong.pointer-tables.json
-python -m unittest discover retrolarium_kit/tests -v
+python retrolarium-kit/rltool.py ghidra status
+python retrolarium-kit/rltool.py verify original.nes rebuilt.nes
+python retrolarium-kit/rltool.py benchmark pointers `
+  retrolarium-kit/build/honkey-disassembly/analysis/pointers.json `
+  retrolarium-kit/fixtures/oracles/nes.honkeypong.pointer-tables.json
+python -m unittest discover retrolarium-kit/tests -v
 ```
 
 Generated NES/SNES projects use the bundled `ca65-ld65-v1` recipe, and Mega
@@ -646,7 +646,7 @@ directory:
 python -m pip install ./retrolarium_kit
 rltool --version
 
-uv build --wheel --out-dir retrolarium_kit/build/dist ./retrolarium_kit
+uv build --wheel --out-dir retrolarium-kit/build/dist ./retrolarium_kit
 ```
 
 An editable development install uses

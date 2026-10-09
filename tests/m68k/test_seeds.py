@@ -6,6 +6,7 @@ import unittest
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
 from retrolarium_kit.m68k_seeds import (
     discover_dense_branch_table_seeds,
@@ -15,7 +16,7 @@ from retrolarium_kit.m68k_seeds import (
     discover_ram_trampoline_seeds,
     discover_vector_seeds,
 )
-from retrolarium_kit.megadrive import parse_megadrive
+from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 
 

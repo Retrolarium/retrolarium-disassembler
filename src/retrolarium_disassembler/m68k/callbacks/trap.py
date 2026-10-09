@@ -1,7 +1,7 @@
 """Corroborate inline TRAP pointers with a bounded RAM callback array ABI."""
 import re
 
-from .m68k_abstract import _register_list
+from retrolarium_kit.m68k_abstract import _register_list
 
 
 def _sequence(facts, start, count):

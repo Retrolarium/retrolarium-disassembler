@@ -13,8 +13,9 @@ from unittest.mock import patch
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.contracts import (
+from retrolarium_core.contracts import (
     ContractError,
     load_disassembly_manifest,
     validate_megadrive_disassembly_manifest,

@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 
-from .snes import SnesError, SnesImage, snes_to_rom_offset
-from .snes_analysis import AnalysisResult, Instruction
+from retrolarium_core.snes import SnesError, SnesImage, snes_to_rom_offset
+from retrolarium_kit.snes_analysis import AnalysisResult, Instruction
 
 
 APU_IO0 = 0x2140
