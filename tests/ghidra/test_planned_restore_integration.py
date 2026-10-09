@@ -9,7 +9,7 @@ import sys
 import tempfile
 import unittest
 
-KIT = Path(__file__).resolve().parents[1]
+KIT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(KIT / "src"))
 from retrolarium_disassembler.ghidra import find_headless
 
@@ -39,7 +39,7 @@ class PlannedSeedRestoreIntegrationTests(unittest.TestCase):
             scripts = root / "scripts"
             scripts.mkdir()
             shutil.copy2(KIT / "src/retrolarium_disassembler/ghidra/scripts/RestoreM68kPlannedSeeds.java", scripts)
-            shutil.copy2(KIT / "tests/ghidra_scripts/VerifyM68kPlannedSeeds.java", scripts)
+            shutil.copy2(KIT / "tests/ghidra/scripts/VerifyM68kPlannedSeeds.java", scripts)
             command = [str(find_headless(ghidra)), str(root), "restore_smoke", "-import", str(rom),
                        "-loader", "BinaryLoader", "-loader-blockName", "ROM", "-loader-baseAddr", "0",
                        "-processor", "68000:BE:32:default", "-noanalysis", "-scriptPath", str(scripts),

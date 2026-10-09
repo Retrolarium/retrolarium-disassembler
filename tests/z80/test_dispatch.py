@@ -8,10 +8,10 @@ from pathlib import Path
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from retrolarium_disassembler.z80.dispatch import discover_z80_dispatch_tables
-from test_megadrive_z80 import fact
+from megadrive.builders import fact
 
 
 def instruction(address: int, raw: bytes):

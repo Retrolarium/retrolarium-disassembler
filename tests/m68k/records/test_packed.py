@@ -3,15 +3,15 @@ import sys
 import unittest
 from dataclasses import replace
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" / "python"))
 from retrolarium_disassembler.m68k.records.packed import discover_packed_orphan_closure, _call_continuations, _complete_cfg
 from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_disassembler.megadrive.emit import _asm_instruction
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_disassembler.m68k.dispatch.ram import discover_inline_trap_calls
-from test_megadrive import cartridge
-from test_m68k_unused import instruction
+from megadrive.builders import cartridge
+from m68k.builders import instruction
 
 
 class PackedClosureTests(unittest.TestCase):

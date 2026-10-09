@@ -1,9 +1,9 @@
 # Retrolarium Mega Drive Integration Contract v1
 
-This document defines the machine boundary between Retrolarium Kit and the Qt
-5.15 application for Sega Mega Drive / Genesis disassembly projects. The root
-document uses `schema: retrolarium.megadrive.disassembly` and
-`schema_version: 1`; unknown schemas and versions are rejected.
+This contract defines the machine boundary between a disassembled Sega Mega
+Drive / Genesis project and the tools that consume it. The root document uses
+`schema: retrolarium.megadrive.disassembly` and `schema_version: 1`; unknown
+schemas and versions are rejected.
 
 ## Address and CPU identity
 
@@ -73,23 +73,16 @@ the `retrolarium-kit` wheel and executes the versioned `asl-p2bin-v1` recipe
 without a shell. A caller can still select a pinned compatibility container
 explicitly with `project build --container IMAGE`; its argv remains a literal
 array. Launch supports only MAME `genesis` (NTSC) and `megadriv` (PAL).
-`launch-plan` returns a versioned `retrolarium.process-spec`, which the Qt
-bridge checks against the MAME path selected by the user before passing program
-and arguments separately to `QProcess`.
+`launch-plan` returns a versioned `retrolarium.process-spec`; the caller starts
+it as program + argv against the MAME it chose, never through a shell.
 
-## Qt consumer
+## Consumers
 
-`retrolarium::MegaDriveDisassemblyProject::load()` imports programs,
-instructions, stable symbols, pointer candidates, cross-CPU edges, assets,
-source units and operation descriptors. It independently checks schemas,
-canonical paths and SHA-256 records. The UI presents 68000 and Z80 programs as
-separate nodes and exposes cross-CPU evidence rather than flattening it into a
-single pseudo-address space.
-
-`retrolarium.exe --studio-smoke retrolarium-project.json` exercises the same
-loader as the interactive **File -> Open generated project** action. The
-build/verify/MAME actions are common with NES and are invoked through
-Retrolarium Kit.
+The kit's `project` commands read this manifest, and a Retrolarium Studio
+project (`.rlj`) names it as the disassembly it builds on. Consumers keep the
+68000 and Z80 programs separate and show cross-CPU evidence instead of
+flattening it into a single pseudo-address space. Build, verify and MAME
+operations are the fixed ones above, common with NES.
 
 ## Validation baseline
 

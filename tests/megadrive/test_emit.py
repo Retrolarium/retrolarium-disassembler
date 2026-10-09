@@ -9,8 +9,8 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
@@ -30,9 +30,9 @@ from retrolarium_disassembler.megadrive.pointers import (
 from retrolarium_disassembler.megadrive.symbols import TechnicalSymbol, generate_symbols
 from retrolarium_disassembler.megadrive.z80 import CrossCpuCopy
 from retrolarium_disassembler.z80.dispatch import Z80DispatchTable
-from test_megadrive import cartridge
-from test_megadrive_z80 import fact
-from test_megadrive_pointers import word_dispatch_image
+from megadrive.builders import cartridge
+from megadrive.builders import fact
+from megadrive.builders import word_dispatch_image
 from helpers import KIT, needs_kit
 
 if KIT:

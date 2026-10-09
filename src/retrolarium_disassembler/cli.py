@@ -168,7 +168,7 @@ def command_preset(args: argparse.Namespace) -> None:
             build=not args.no_build,
             build_container=args.build_container,
             toolchain_cache=args.toolchain_cache,
-            legacy_castle_levels=args.legacy_castle_levels,
+            legacy_castle_excellent_levels=args.legacy_castle_excellent_levels,
         )
     )
 
@@ -297,8 +297,8 @@ def parser() -> argparse.ArgumentParser:
     preset.add_argument("--ghidra-home", type=Path)
     preset.add_argument("--build-container")
     preset.add_argument("--toolchain-cache", type=Path)
-    preset.add_argument("--legacy-castle-levels", type=Path,
-                        help="import a validated legacy Castle levels JSON")
+    preset.add_argument("--legacy-castle-excellent-levels", type=Path,
+                        help="import a validated legacy Castle Excellent levels JSON")
     preset.add_argument(
         "--no-build", action="store_true",
         help="create and validate the workspace without building its first artifact",

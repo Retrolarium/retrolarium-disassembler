@@ -2,8 +2,8 @@
 from dataclasses import replace
 import unittest
 
-from test_m68k_unused import instruction
-from test_megadrive import cartridge
+from m68k.builders import instruction
+from megadrive.builders import cartridge
 from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_disassembler.m68k.repair.fallthrough import M68kFallthroughRepairs, _direct_data_ranges

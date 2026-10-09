@@ -1,10 +1,10 @@
 from dataclasses import replace
 import unittest
-import test_m68k_variable_traps as fixture
-from test_m68k_unused import instruction
+from m68k.repair import test_variable_traps as fixture
+from m68k.builders import instruction
 from retrolarium_disassembler.m68k.repair.variable_traps import discover_variable_inline_trap_calls
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
+from megadrive.builders import cartridge
 
 
 class TrapCallbackTests(unittest.TestCase):

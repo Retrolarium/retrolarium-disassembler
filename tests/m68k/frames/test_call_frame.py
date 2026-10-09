@@ -2,14 +2,14 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src'))
 from retrolarium_disassembler.m68k.frames.call_frame import make_trap_call_frame_validator
-from test_m68k_unused import instruction
+from m68k.builders import instruction
 
 
 class TrapCalleeFrameTests(unittest.TestCase):
     def trap_operation(self, operation):
-        from test_m68k_dispatch_witness import InlineTrapWitnessTests
+        from m68k.dispatch.test_witness import InlineTrapWitnessTests
         case = InlineTrapWitnessTests()
         case.setUp()
         case.handler.pop(0x20E)
@@ -25,7 +25,7 @@ class TrapCalleeFrameTests(unittest.TestCase):
 
     def fixture(self, helpers):
         # Keep the complete new witness in the test, not just its local guard.
-        from test_m68k_dispatch_witness import InlineTrapWitnessTests
+        from m68k.dispatch.test_witness import InlineTrapWitnessTests
         case = InlineTrapWitnessTests()
         case.setUp()
         case.handler.pop(0x20E)
@@ -100,7 +100,7 @@ class TrapCalleeFrameTests(unittest.TestCase):
         self.assertFalse(case.validate())
 
     def test_trap_cannot_save_stack_pointer_or_write_usp(self):
-        from test_m68k_dispatch_witness import InlineTrapWitnessTests
+        from m68k.dispatch.test_witness import InlineTrapWitnessTests
         case = InlineTrapWitnessTests()
         case.setUp()
         case.handler.update({

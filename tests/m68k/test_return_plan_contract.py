@@ -4,7 +4,8 @@ import tempfile
 import unittest
 from unittest import mock
 
-from test_megadrive_pipeline_convergence import _M68kHarness, _StopAfterLoop, pipeline
+from megadrive.pipeline_harness import _M68kHarness, _StopAfterLoop
+from retrolarium_disassembler.megadrive import pipeline
 from retrolarium_disassembler.m68k.seeds import DecoderSeed
 from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
 

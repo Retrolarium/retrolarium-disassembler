@@ -67,7 +67,7 @@ def create_game_studio_preset(
     build: bool = True,
     build_container: str | None = None,
     toolchain_cache: Path | None = None,
-    legacy_castle_levels: Path | None = None,
+    legacy_castle_excellent_levels: Path | None = None,
 ) -> dict[str, Any]:
     """Create a complete supported-game Studio without publishing partial output."""
 
@@ -89,32 +89,32 @@ def create_game_studio_preset(
             "Castlequest, Doraemon, Pac-Man, Super Mario Bros. 1, and Solomon's Key"
         )
     revision = str(inspection["revision"])
-    if legacy_castle_levels is not None:
+    if legacy_castle_excellent_levels is not None:
         if game != "castle-excellent":
             raise StudioProjectError(
-                "legacy Castle levels can only be imported into a Castle Studio"
+                "legacy Castle Excellent levels can only be imported into a Castle Excellent Studio"
             )
-        legacy_castle_levels = legacy_castle_levels.resolve()
-        if not legacy_castle_levels.is_file():
+        legacy_castle_excellent_levels = legacy_castle_excellent_levels.resolve()
+        if not legacy_castle_excellent_levels.is_file():
             raise StudioProjectError(
-                f"legacy Castle levels document does not exist: {legacy_castle_levels}"
+                f"legacy Castle Excellent levels document does not exist: {legacy_castle_excellent_levels}"
             )
         try:
             legacy_identity = json.loads(
-                legacy_castle_levels.read_text(encoding="utf-8")
+                legacy_castle_excellent_levels.read_text(encoding="utf-8")
             )
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise StudioProjectError(
-                f"cannot read legacy Castle levels document: {exc}"
+                f"cannot read legacy Castle Excellent levels document: {exc}"
             ) from exc
         if not isinstance(legacy_identity, dict) \
-                or legacy_identity.get("schema") != "retrolarium.castle-levels":
+                or legacy_identity.get("schema") != "retrolarium.castle-excellent-levels":
             raise StudioProjectError(
-                "legacy Castle levels document must use retrolarium.castle-levels"
+                "legacy Castle Excellent levels document must use retrolarium.castle-excellent-levels"
             )
-        validation = validate_game(rom, legacy_castle_levels)
+        validation = validate_game(rom, legacy_castle_excellent_levels)
         if validation["status"] != "valid":
-            raise StudioProjectError("legacy Castle levels document is not valid")
+            raise StudioProjectError("legacy Castle Excellent levels document is not valid")
     profile_version = int(inspection["profile_version"])
     identifier = _project_id(game, revision)
     project_name = f"{inspection['name']} ({revision})"
@@ -136,11 +136,11 @@ def create_game_studio_preset(
                 staging / "documents" / "levels.json",
                 staging / "documents" / "graphics.json",
             )
-            if legacy_castle_levels is None:
+            if legacy_castle_excellent_levels is None:
                 extract_game(rom, resource_documents[0], resource="levels")
             else:
                 resource_documents[0].parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(legacy_castle_levels, resource_documents[0])
+                shutil.copyfile(legacy_castle_excellent_levels, resource_documents[0])
             extract_game(
                 rom, resource_documents[1], resource="resource-bundle"
             )

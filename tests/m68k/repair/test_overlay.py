@@ -5,16 +5,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 from retrolarium_disassembler.ghidra import GhidraArtifacts
 from retrolarium_disassembler.m68k.repair.overlay import analyze_overlay, address_view
-
-
-HEADER = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\treferences\tflow_type\tsymbol\tfunction\n"
-
-
-def row(address, raw, mnemonic, operands="", flows="", flow="TERMINATOR"):
-    return f"CD_MODULE\tram\t{address:08X}\t{len(bytes.fromhex(raw))}\t{raw}\t{mnemonic}\t{operands}\t{flows}\t\t{flow}\t\t\n"
+from m68k.repair.builders import HEADER, row
 
 
 class OverlayTests(unittest.TestCase):

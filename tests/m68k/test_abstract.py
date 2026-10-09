@@ -6,8 +6,8 @@ from pathlib import Path
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_disassembler.m68k.abstract import (
     AbstractState,
@@ -24,8 +24,8 @@ from retrolarium_disassembler.m68k.abstract import (
 )
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
-from test_megadrive_z80 import fact
+from megadrive.builders import cartridge
+from megadrive.builders import fact
 
 
 class M68kAbstractTests(unittest.TestCase):

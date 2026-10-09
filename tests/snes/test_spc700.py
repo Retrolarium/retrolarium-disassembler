@@ -5,12 +5,12 @@ from pathlib import Path
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_disassembler.snes.analysis import analyze_snes
 from retrolarium_disassembler.snes.spc700 import detect_spc700_copies, payload_for_copy
-from test_snes_pointers import probe_image
+from snes.builders import probe_image
 
 
 class SnesSpc700Tests(unittest.TestCase):

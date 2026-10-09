@@ -1,8 +1,8 @@
 # Retrolarium SNES Container Contract v1
 
-This document defines the first versioned SNES/Super Famicom component passed
-from Retrolarium Kit to later analysis, source-emission and Qt integration
-stages. The machine-readable document uses `schema: retrolarium.snes.image`,
+This document defines the first versioned SNES/Super Famicom component: what
+inspecting a cartridge image hands to analysis and source emission. The
+machine-readable document uses `schema: retrolarium.snes.image`,
 `schema_version: 1`; its distributable JSON Schema ships with retrolarium-core
 as `schemas/snes-image-v1.schema.json`.
 
@@ -182,6 +182,5 @@ opaque source assets. Blind LoROM and HiROM runs each recover one six-byte
 program at SPC RAM `$0200`, decode three SPC700 instructions, and still rebuild
 the complete cartridge exactly with a valid checksum.
 
-The completed project manifest, Qt API, operation and blind holdout boundary is
-specified in
-[`Retrolarium_SNES_Integration_Contract.md`](Retrolarium_SNES_Integration_Contract.md).
+The project manifest, its operations and the blind holdout boundary are
+specified in [`snes_disassembly.md`](snes_disassembly.md).

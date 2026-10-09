@@ -10,8 +10,8 @@ from unittest.mock import patch
 from retrolarium_disassembler.megadrive import pipeline
 from retrolarium_disassembler.m68k.repair.fallthrough import M68kFallthroughRepairs
 from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
-from test_megadrive_pipeline_convergence import _M68kHarness, _StopAfterLoop, _image
-from test_megadrive_z80 import fact
+from megadrive.pipeline_harness import _M68kHarness, _StopAfterLoop, _image
+from megadrive.builders import fact
 
 
 def instruction(address, raw, mnemonic, operands='', **kwargs):

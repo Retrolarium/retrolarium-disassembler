@@ -7,11 +7,11 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from helpers import KIT, needs_kit
 from retrolarium_disassembler.snes.pipeline import disassemble_snes
-from test_snes_pointers import probe_image
+from snes.builders import probe_image
 
 if KIT:
     from retrolarium_kit.core.project import build_project, launch_plan, verify_project

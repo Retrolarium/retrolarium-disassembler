@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import test_ghidra
+from ghidra import test_ghidra
 from retrolarium_disassembler.ghidra import GhidraError, run_megadrive_analysis, run_m68k_overlay_analysis
 
 

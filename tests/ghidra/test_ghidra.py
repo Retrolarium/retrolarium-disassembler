@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from retrolarium_disassembler.ghidra import (
     GhidraError,
@@ -119,7 +119,7 @@ class GhidraBackendTests(unittest.TestCase):
 
         # The script must consume that single argument as a hex address plan.
         source = (
-            Path(__file__).resolve().parents[1]
+            Path(__file__).resolve().parents[2]
             / "src" / "retrolarium_disassembler" / "ghidra" / "scripts" / "SeedNesVectors.java"
         ).read_text(encoding="utf-8")
         self.assertIn("getScriptArgs()", source)

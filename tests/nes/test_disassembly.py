@@ -9,8 +9,8 @@ import unittest
 from unittest import mock
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_disassembler.nes.ca65 import emit_project, prg_source
 from retrolarium_disassembler.nes import pipeline

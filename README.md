@@ -50,7 +50,9 @@ src/retrolarium_disassembler/
   m68k/             68000 passes: dispatch/, callbacks/, frames/, records/, repair/
   z80/              Z80 dispatch tables
   snes/             W65C816 analysis, SPC700 uploads, ca65 emitter
-tests/              unit tests (python -m unittest discover -s tests)
+tests/              python -m unittest discover -s tests; folders mirror the
+                    package, scripts/ covers tools/, builders.py files hold
+                    the shared test images and facts
 tools/              python -m tools.<group>.<name>, from this folder:
   references/       preparing the reference disassemblies (evaluation only)
   benchmarks/       scoring ROM-only disassembly against them
@@ -376,9 +378,8 @@ The modular ca65 emitter has exact rebuild proof for both synthetic mappings and
 two open-game holdouts. The strict project schema, Qt 5.15 importer and common
 build/verify/MAME operations are complete. MAME's SNES driver needs the
 `spc700.rom` device ROM in its ROM path; it is not distributed here. See
-[`Retrolarium_SNES_Container_Contract.md`](docs/Retrolarium_SNES_Container_Contract.md)
-and
-[`Retrolarium_SNES_Integration_Contract.md`](docs/Retrolarium_SNES_Integration_Contract.md).
+[`snes_image.md`](docs/snes_image.md) and
+[`snes_disassembly.md`](docs/snes_disassembly.md).
 
 The output directory contains:
 
@@ -426,10 +427,9 @@ ROM. For mappers not understood by GhidraNes directly, the workspace records the
 exact generated mapper-0 analysis input and its SHA-256.
 
 The versioned manifest contracts consumed by the Studio and the kit are
-[`Retrolarium_NES_Integration_Contract.md`](docs/Retrolarium_NES_Integration_Contract.md),
-[`Retrolarium_MegaDrive_Integration_Contract.md`](docs/Retrolarium_MegaDrive_Integration_Contract.md)
-and
-[`Retrolarium_SNES_Integration_Contract.md`](docs/Retrolarium_SNES_Integration_Contract.md).
+[`nes_disassembly.md`](docs/nes_disassembly.md),
+[`megadrive_disassembly.md`](docs/megadrive_disassembly.md) and
+[`snes_disassembly.md`](docs/snes_disassembly.md).
 
 ## Trust boundary
 

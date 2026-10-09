@@ -2,12 +2,12 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" / "python"))
 from retrolarium_disassembler.m68k.frames.link_continuations import discover_link_continuation_seeds
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
-from test_m68k_unused import instruction
+from megadrive.builders import cartridge
+from m68k.builders import instruction
 
 
 LEA = instruction(0x200, "41fa0004", "LEA", "(0x4,PC)|A0")

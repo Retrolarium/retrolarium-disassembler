@@ -5,13 +5,13 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" / "python"))
 
 from retrolarium_disassembler.m68k.records.ram_copies import discover_descriptor_ram_code_seeds
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
-from test_megadrive_z80 import fact
+from megadrive.builders import cartridge
+from megadrive.builders import fact
 
 
 def descriptor_fixture():

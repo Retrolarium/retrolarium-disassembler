@@ -3,15 +3,15 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" / "python"))
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_disassembler.m68k.dispatch.closure import make_dispatch_closure_validator
 from retrolarium_disassembler.m68k.dispatch.witness import make_dispatch_handler_validator
 from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_disassembler.megadrive.emit import _asm_instruction
-from test_megadrive import cartridge
-from test_m68k_unused import instruction
+from megadrive.builders import cartridge
+from m68k.builders import instruction
 
 
 def call(address, target):
@@ -190,7 +190,7 @@ class DispatchClosureTests(unittest.TestCase):
         self.assertFalse(self.validator(factory=make_dispatch_handler_validator)(0x400))
 
     def test_rooted_inline_trap_abi_in_unknown_callee_and_argument_ownership(self):
-        from test_m68k_dispatch_witness import InlineTrapWitnessTests
+        from m68k.dispatch.test_witness import InlineTrapWitnessTests
         fixture=InlineTrapWitnessTests()
         fixture.setUp()
         self.known=fixture.known

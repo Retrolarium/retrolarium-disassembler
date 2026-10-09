@@ -5,6 +5,12 @@ from pathlib import Path
 import sys
 import unittest
 
+# The package from this checkout, for every test package that imports helpers
+# first (each tests/<folder>/__init__.py does); the package finds the core.
+SOURCE = Path(__file__).resolve().parents[1] / "src"
+if str(SOURCE) not in sys.path:
+    sys.path.insert(0, str(SOURCE))
+
 
 def find_kit() -> bool:
     """Make Retrolarium Kit importable from a checkout beside the disassembler.

@@ -3,14 +3,14 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src'))
 from retrolarium_disassembler.m68k.dispatch.reaching import discover_reaching_word_dispatch_tables as discover
 from retrolarium_disassembler.m68k.dispatch.reaching import discover_reaching_word_dispatch_seeds
 from retrolarium_disassembler.m68k.dispatch.reaching import make_word_index_mask_reader
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
-from test_megadrive_z80 import fact
+from megadrive.builders import cartridge
+from megadrive.builders import fact
 
 def f(address, mnemonic, operands, raw, flow='FALL_THROUGH', targets=()):
     return replace(

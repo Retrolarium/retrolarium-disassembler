@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from retrolarium_disassembler.m68k.repair import overlay
 from retrolarium_disassembler.ghidra import GhidraArtifacts
-from test_m68k_overlay import HEADER, row
+from m68k.repair.builders import HEADER, row
 
 
 class OverlayFallthroughTests(unittest.TestCase):

@@ -3,13 +3,13 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" / "python"))
 from retrolarium_disassembler.m68k.dispatch.record import discover_record_callback_seeds
 from retrolarium_disassembler.m68k.abstract import discover_object_field_handler_candidates
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
-from test_megadrive_z80 import fact
+from megadrive.builders import cartridge
+from megadrive.builders import fact
 
 
 class RecordCallbackTests(unittest.TestCase):

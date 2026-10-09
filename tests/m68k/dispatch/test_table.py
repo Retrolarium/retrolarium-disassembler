@@ -3,14 +3,14 @@ from pathlib import Path
 import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" / "python"))
 from retrolarium_disassembler.m68k.dispatch.table import (
     discover_lea_indexed_call_seeds, discover_trap_relative_dispatch_seeds,
 )
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
-from test_megadrive_z80 import fact
+from megadrive.builders import cartridge
+from megadrive.builders import fact
 
 
 class TableDispatchTests(unittest.TestCase):

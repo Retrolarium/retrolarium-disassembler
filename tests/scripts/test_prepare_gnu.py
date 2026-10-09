@@ -3,7 +3,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.references.prepare_gnu import normalize_listing, prepare, section_bases
 from tools.benchmarks.source import read_listing
 

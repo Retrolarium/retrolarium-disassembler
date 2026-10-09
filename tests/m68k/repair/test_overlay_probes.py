@@ -8,8 +8,8 @@ from unittest.mock import patch
 from retrolarium_disassembler.m68k.repair import overlay
 from retrolarium_disassembler.ghidra import GhidraArtifacts
 from retrolarium_disassembler.m68k.repair.probe_requests import M68kProbeRequests
-from test_m68k_overlay import HEADER, row
-from test_megadrive_z80 import fact
+from m68k.repair.builders import HEADER, row
+from megadrive.builders import fact
 from retrolarium_disassembler.facts import InstructionReference
 
 

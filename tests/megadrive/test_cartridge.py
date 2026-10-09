@@ -6,8 +6,8 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_core.megadrive import (
     MegaDriveError,
@@ -23,34 +23,7 @@ from retrolarium_disassembler.facts import (
     load_megadrive_ghidra_facts,
     parse_address,
 )
-
-
-def cartridge(
-    *,
-    size: int = 0x400,
-    declared_end: int | None = None,
-    checksum: bool = True,
-) -> bytes:
-    data = bytearray(size)
-    data[0:4] = (0x01000000).to_bytes(4, "big")
-    data[4:8] = (0x200).to_bytes(4, "big")
-    data[8:12] = (0x01000240).to_bytes(4, "big")
-    data[0x100:0x110] = b"SEGA MEGA DRIVE "
-    data[0x120:0x150] = b"RETROLARIUM PROBE".ljust(48)
-    data[0x150:0x180] = b"RETROLARIUM PROBE".ljust(48)
-    data[0x180:0x18E] = b"GM TEST-001-00"
-    data[0x190:0x1A0] = b"J".ljust(16)
-    data[0x1A0:0x1A4] = (0).to_bytes(4, "big")
-    data[0x1A4:0x1A8] = (
-        size - 1 if declared_end is None else declared_end
-    ).to_bytes(4, "big")
-    data[0x1A8:0x1AC] = (0xFF0000).to_bytes(4, "big")
-    data[0x1AC:0x1B0] = (0xFFFFFF).to_bytes(4, "big")
-    data[0x1F0:0x200] = b"JUE".ljust(16)
-    data[0x200:] = bytes(index & 0xFF for index in range(size - 0x200))
-    if checksum:
-        data[0x18E:0x190] = cartridge_checksum(data).to_bytes(2, "big")
-    return bytes(data)
+from megadrive.builders import cartridge
 
 
 class MegaDriveTests(unittest.TestCase):

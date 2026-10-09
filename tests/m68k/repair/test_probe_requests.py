@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'src'))
 from retrolarium_disassembler.m68k.repair.probe_requests import M68kProbeRequests
 from retrolarium_disassembler.megadrive import pipeline
-from test_megadrive_pipeline_convergence import _M68kHarness, _StopAfterLoop
+from megadrive.pipeline_harness import _M68kHarness, _StopAfterLoop
 
 
 class ProbeRequestTests(unittest.TestCase):

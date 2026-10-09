@@ -5,8 +5,8 @@ from pathlib import Path
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_disassembler.m68k.seeds import (
     discover_dense_branch_table_seeds,
@@ -17,7 +17,7 @@ from retrolarium_disassembler.m68k.seeds import (
     discover_vector_seeds,
 )
 from retrolarium_core.megadrive import parse_megadrive
-from test_megadrive import cartridge
+from megadrive.builders import cartridge
 
 
 def image_with(payload: dict[int, bytes], *, size: int = 0x500):

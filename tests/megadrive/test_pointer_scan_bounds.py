@@ -8,7 +8,7 @@ from retrolarium_disassembler.megadrive import pointers
 from retrolarium_disassembler.m68k import seeds
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_disassembler.m68k.repair.overlay import address_view
-from test_megadrive_z80 import fact
+from megadrive.builders import fact
 
 
 class PointerScanBoundTests(unittest.TestCase):

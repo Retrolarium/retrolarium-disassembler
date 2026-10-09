@@ -1,9 +1,9 @@
 # Retrolarium SNES Integration Contract v1
 
-This document defines the machine boundary between Retrolarium Kit and the Qt
-5.15 application for Super Nintendo / Super Famicom disassembly projects. The
-root document uses `schema: retrolarium.snes.disassembly` and
-`schema_version: 1`; unknown schemas and versions are rejected.
+This contract defines the machine boundary between a disassembled Super Nintendo
+/ Super Famicom project and the tools that consume it. The root document uses
+`schema: retrolarium.snes.disassembly` and `schema_version: 1`; unknown schemas
+and versions are rejected.
 
 ## Address and CPU identity
 
@@ -76,30 +76,25 @@ The default build operation resolves ca65/ld65 from the installed
 `retrolarium-kit` wheel and executes the fixed `ca65-ld65-v1` recipe without
 Make or Docker. A pinned compatibility image remains an explicit override via
 `project build --container IMAGE`. Launch accepts only MAME `snes` and `snespal`
-machines. `launch-plan` returns a versioned `retrolarium.process-spec`; the Qt
-bridge checks its platform, machine, executable and separate argument array
-before passing it to `QProcess`.
+machines. `launch-plan` returns a versioned `retrolarium.process-spec` with its
+platform, machine, executable and separate argument array; the caller starts it
+as program + argv, never through a shell.
 
 MAME's SNES driver requires the 64-byte `spc700.rom` device ROM in its ROM path;
 Retrolarium does not distribute it. A smoke run that reports
 `spc700.rom NOT FOUND` proves process wiring only, not a successful runtime
 test. The result reports this condition as `status: missing-dependency` with a
 structured `failure.kind: mame-required-roms` and the missing filenames, so CI
-and the Qt application do not confuse an incomplete MAME installation with a
-cartridge failure.
+and the studio do not confuse an incomplete MAME installation with a cartridge
+failure.
 
-## Qt consumer
+## Consumers
 
-`retrolarium::SnesDisassemblyProject::load()` imports the image identity,
-W65C816 and SPC700 programs, instructions, symbols, pointer candidates,
-cross-CPU edges, assets, source units and operation descriptors. It
-independently checks schemas, canonical paths and SHA-256 records. The UI
-presents every CPU program separately and preserves the evidence edge between
-the cartridge and APU RAM.
-
-`retrolarium.exe --studio-smoke retrolarium-project.json` exercises the same
-loader as **File -> Open generated project**. Build, verify and MAME actions use
-the common Retrolarium Kit bridge shared with NES and Mega Drive.
+The kit's `project` commands read this manifest, and a Retrolarium Studio
+project (`.rlj`) names it as the disassembly it builds on. Consumers keep every
+CPU program separate and preserve the evidence edge between the cartridge and
+APU RAM. Build, verify and MAME operations are the fixed ones above, shared with
+NES and Mega Drive.
 
 ## Blind validation baseline
 

@@ -7,8 +7,8 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_disassembler.facts import FactError, InstructionFact, InstructionReference, load_z80_ghidra_facts
 from retrolarium_core.megadrive import parse_megadrive
@@ -16,33 +16,8 @@ from retrolarium_disassembler.megadrive.z80 import (
     CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
     group_z80_copies, z80_im1_handler_seed,
 )
-from test_megadrive import cartridge
-
-
-def fact(
-    address: int,
-    mnemonic: str,
-    operands: str,
-    *,
-    flows: tuple[int, ...] = (),
-    references: tuple[InstructionReference, ...] = (),
-) -> InstructionFact:
-    return InstructionFact(
-        physical_offset=address,
-        bank=0,
-        cpu_address=address,
-        length=2,
-        raw=b"\0\0",
-        mnemonic=mnemonic,
-        operands=operands,
-        flows=flows,
-        flow_type="FALL_THROUGH",
-        backend_space="ram",
-        backend_block="ROM",
-        backend_symbol="",
-        backend_function="",
-        references=references,
-    )
+from megadrive.builders import cartridge
+from megadrive.builders import fact
 
 
 COPY_ROUTINE = (

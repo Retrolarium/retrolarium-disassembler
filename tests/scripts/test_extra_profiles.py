@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.benchmarks.extra_reference import benchmark, comparable
 from tools.references.extra_profiles import (
     PROFILES, TJE_SHA1, Identity, classify_build, confirm_existing, genesis_checksum,
@@ -19,7 +19,7 @@ from tools.references.prepare_extra import PROFILES as FIRST_BATCH
 from tools.benchmarks.source import read_listing
 
 
-REFERENCES = Path(__file__).resolve().parents[2] / "references"
+REFERENCES = Path(__file__).resolve().parents[3] / "references"
 
 
 def make_rom(serial="GM 00001234-00", region="JUE", size=0x1000, *, valid=True, swap=False, patch=None):

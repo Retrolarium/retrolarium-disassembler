@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from retrolarium_disassembler.ghidra import find_headless
 
-KIT=Path(__file__).resolve().parents[1]
+KIT=Path(__file__).resolve().parents[2]
 
 
 @unittest.skipUnless(os.environ.get('RETROLARIUM_RUN_GHIDRA_TESTS')=='1','real Ghidra smoke is opt-in')
@@ -55,7 +55,7 @@ class FallthroughIntegrationTests(unittest.TestCase):
                     plan=root/f'plan{i}.tsv';plan.write_text(text);plans.append(str(plan))
                 scripts=root/'scripts';scripts.mkdir()
                 shutil.copy2(KIT/'src/retrolarium_disassembler/ghidra/scripts/RestoreM68kFallthrough.java',scripts)
-                shutil.copy2(KIT/'tests/ghidra_scripts/VerifyM68kFallthrough.java',scripts)
+                shutil.copy2(KIT/'tests/ghidra/scripts/VerifyM68kFallthrough.java',scripts)
                 command=[str(find_headless(ghidra)),str(root),'fallthrough_smoke','-import',str(rom),
                     '-loader','BinaryLoader','-loader-blockName',block,'-loader-baseAddr',f'0x{base:X}',
                     '-processor','68000:BE:32:default','-noanalysis','-scriptPath',str(scripts),

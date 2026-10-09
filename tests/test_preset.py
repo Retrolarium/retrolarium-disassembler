@@ -158,10 +158,10 @@ class StudioPresetTests(unittest.TestCase):
             self.assertEqual(2, verify_mock.call_count)
             self.assertEqual([], list(root.glob(".studio.rlj-stage-*")))
 
-    def test_creates_castle_studio_preset(self) -> None:
+    def test_creates_castle_excellent_studio_preset(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            rom = root / "castle.nes"
+            rom = root / "castle-excellent.nes"
             rom.write_bytes(b"ROM")
             output = root / "studio"
 
@@ -184,7 +184,7 @@ class StudioPresetTests(unittest.TestCase):
 
             verified = {
                 "status": "current",
-                "artifact": {"path": "build/castle-edited.nes"},
+                "artifact": {"path": "build/castle-excellent-edited.nes"},
             }
             with (
                 patch("retrolarium_disassembler.preset.inspect_game",
@@ -232,14 +232,14 @@ class StudioPresetTests(unittest.TestCase):
             self.assertEqual(1, build_mock.call_count)
             self.assertEqual(2, verify_mock.call_count)
 
-    def test_imports_validated_legacy_castle_levels_without_reextracting(self) -> None:
+    def test_imports_validated_legacy_castle_excellent_levels_without_reextracting(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            rom = root / "castle.nes"
+            rom = root / "castle-excellent.nes"
             rom.write_bytes(b"ROM")
             legacy = root / "old-levels.json"
             legacy.write_text(
-                '{"schema": "retrolarium.castle-levels", "legacy": "edited rooms"}\n',
+                '{"schema": "retrolarium.castle-excellent-levels", "legacy": "edited rooms"}\n',
                 encoding="utf-8",
             )
             output = root / "studio"
@@ -276,7 +276,7 @@ class StudioPresetTests(unittest.TestCase):
             ):
                 result = create_game_studio_preset(
                     rom, output, ghidra_home=root / "ghidra", build=False,
-                    legacy_castle_levels=legacy,
+                    legacy_castle_excellent_levels=legacy,
                 )
             validate.assert_called_once_with(rom.resolve(), legacy.resolve())
             self.assertEqual(3, extract_mock.call_count)
@@ -289,7 +289,7 @@ class StudioPresetTests(unittest.TestCase):
                 with self.assertRaisesRegex(StudioProjectError, "only be imported"):
                     create_game_studio_preset(
                         rom, root / "wrong", ghidra_home=root / "ghidra",
-                        build=False, legacy_castle_levels=legacy,
+                        build=False, legacy_castle_excellent_levels=legacy,
                     )
             self.assertFalse((root / "wrong").exists())
 

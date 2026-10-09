@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.references.extract_sega_cd import SYNC, data_track_from_cue, mode1_raw_to_iso
 
 

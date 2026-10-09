@@ -12,8 +12,8 @@ import unittest
 from unittest.mock import patch
 
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" / "python"))
 
 from retrolarium_core.contracts import (
     ContractError,
@@ -268,7 +268,7 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
     def test_cached_emission_rejects_another_rom_and_tampered_facts(self) -> None:
         from retrolarium_disassembler.megadrive import pipeline
         from retrolarium_disassembler.megadrive.emit import MegaDriveEmitError
-        from test_megadrive import cartridge
+        from megadrive.builders import cartridge
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
