@@ -4,8 +4,8 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from retrolarium_kit.m68k_constructor_records import discover_tail_allocator_callback_seeds
-from retrolarium_kit.facts import InstructionReference
+from retrolarium_disasm.m68k.records.constructor import discover_tail_allocator_callback_seeds
+from retrolarium_disasm.facts import InstructionReference
 from test_m68k_constructor_records import fixture as constructor_fixture, instruction
 from test_m68k_unused import instruction as encoded_instruction
 

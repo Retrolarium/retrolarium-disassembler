@@ -10,13 +10,13 @@ from collections import deque
 from dataclasses import dataclass
 import re
 
-from retrolarium_kit.m68k_abstract import _register_list
-from retrolarium_kit.m68k_call_frame import _STACK
-from retrolarium_kit.m68k_constructor_records import _writes, _unsupported_frame_or_exception, _preserved_registers
-from retrolarium_kit.m68k_fallthrough_repair import _direct_data_ranges
-from retrolarium_kit.m68k_seeds import DecoderSeed
-from retrolarium_kit.megadrive_emit import _asm_instruction
-from retrolarium_kit.megadrive_symbols import pc_displacement_target
+from retrolarium_disasm.m68k.abstract import _register_list
+from retrolarium_disasm.m68k.frames.call_frame import _STACK
+from retrolarium_disasm.m68k.records.constructor import _writes, _unsupported_frame_or_exception, _preserved_registers
+from retrolarium_disasm.m68k.repair.fallthrough import _direct_data_ranges
+from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disasm.megadrive.emit import _asm_instruction
+from retrolarium_disasm.megadrive.symbols import pc_displacement_target
 
 
 def _backed(image, fact):

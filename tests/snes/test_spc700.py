@@ -8,8 +8,8 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.snes_analysis import analyze_snes
-from retrolarium_kit.snes_spc700 import detect_spc700_copies, payload_for_copy
+from retrolarium_disasm.snes.analysis import analyze_snes
+from retrolarium_disasm.snes.spc700 import detect_spc700_copies, payload_for_copy
 from test_snes_pointers import probe_image
 
 

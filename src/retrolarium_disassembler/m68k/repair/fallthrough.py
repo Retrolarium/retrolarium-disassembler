@@ -7,10 +7,10 @@ they do not permit clearing data or following an unproved call return.
 """
 from dataclasses import dataclass
 
-from retrolarium_kit.m68k_abstract import _register_list
-from retrolarium_kit.m68k_constructor_records import _unsupported_frame_or_exception
-from retrolarium_kit.megadrive_emit import _asm_instruction
-from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses
+from retrolarium_disasm.m68k.abstract import _register_list
+from retrolarium_disasm.m68k.records.constructor import _unsupported_frame_or_exception
+from retrolarium_disasm.megadrive.emit import _asm_instruction
+from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
 
 
 def _intersects(start, end, ranges):

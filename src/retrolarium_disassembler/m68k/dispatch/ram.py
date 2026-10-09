@@ -4,11 +4,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from retrolarium_kit.facts import InstructionFact
-from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
-from retrolarium_kit.megadrive_symbols import pc_displacement_target
+from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
+from retrolarium_disasm.megadrive.symbols import pc_displacement_target
 
 
 @dataclass(frozen=True)
@@ -78,9 +78,9 @@ def discover_inline_trap_calls(image, facts) -> tuple[InlineTrapCall, ...]:
             continue
         result.append(InlineTrapCall(call.cpu_address, call.cpu_address + 2,
                                      call.cpu_address + 4, target, handler))
-    from retrolarium_kit.m68k_trap_frame import discover_frame_inline_trap_calls
+    from retrolarium_disasm.m68k.frames.trap_frame import discover_frame_inline_trap_calls
     result.extend(discover_frame_inline_trap_calls(image, facts))
-    from retrolarium_kit.m68k_variable_traps import discover_variable_inline_trap_calls
+    from retrolarium_disasm.m68k.repair.variable_traps import discover_variable_inline_trap_calls
     result.extend(discover_variable_inline_trap_calls(image, facts))
     return tuple({call.call_address: call for call in result}.values())
 

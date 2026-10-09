@@ -7,8 +7,8 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit import megadrive_pointers as pointers
-from retrolarium_kit.facts import InstructionReference
+from retrolarium_disasm.megadrive import pointers
+from retrolarium_disasm.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact

@@ -8,7 +8,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.m68k_seeds import (
+from retrolarium_disasm.m68k.seeds import (
     discover_dense_branch_table_seeds,
     discover_indexed_branch_table_seeds,
     discover_ram_copy_regions,

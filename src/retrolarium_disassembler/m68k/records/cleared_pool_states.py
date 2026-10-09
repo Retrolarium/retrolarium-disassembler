@@ -9,15 +9,15 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 import re
 
-from retrolarium_kit.m68k_abstract import OrphanCandidate, _register_list
-from retrolarium_kit.m68k_constructor_records import _writes, _unsupported_frame_or_exception
-from retrolarium_kit.m68k_call_frame import _STACK
-from retrolarium_kit.m68k_dispatch_closure import logical_image, make_dispatch_closure_validator, _balanced_body
-from retrolarium_kit.m68k_leaf_dispatch import _body, _schema
-from retrolarium_kit.m68k_packed import _complete_cfg
-from retrolarium_kit.m68k_seeds import DecoderSeed
-from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses
-from retrolarium_kit.megadrive_symbols import pc_displacement_target, pc_indexed_target
+from retrolarium_disasm.m68k.abstract import OrphanCandidate, _register_list
+from retrolarium_disasm.m68k.records.constructor import _writes, _unsupported_frame_or_exception
+from retrolarium_disasm.m68k.frames.call_frame import _STACK
+from retrolarium_disasm.m68k.dispatch.closure import logical_image, make_dispatch_closure_validator, _balanced_body
+from retrolarium_disasm.m68k.dispatch.leaf import _body, _schema
+from retrolarium_disasm.m68k.records.packed import _complete_cfg
+from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
+from retrolarium_disasm.megadrive.symbols import pc_displacement_target, pc_indexed_target
 
 
 def _field(text):

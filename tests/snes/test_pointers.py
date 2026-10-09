@@ -14,12 +14,12 @@ from retrolarium_core.snes import (
     cartridge_checksum,
     parse_snes,
 )
-from retrolarium_kit.snes_analysis import analyze_snes
-from retrolarium_kit.snes_pointers import (
+from retrolarium_disasm.snes.analysis import analyze_snes
+from retrolarium_disasm.snes.pointers import (
     accepted_pointer_tables,
     detect_pointer_candidates,
 )
-from retrolarium_kit.snes_symbols import generate_symbols
+from retrolarium_disasm.snes.symbols import generate_symbols
 from helpers import cartridge
 
 

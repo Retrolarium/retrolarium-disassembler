@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.m68k_leaf_dispatch import discover_leaf_word_dispatch_seeds
+from retrolarium_disasm.m68k.dispatch.leaf import discover_leaf_word_dispatch_seeds
 from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
@@ -239,7 +239,7 @@ class LeafDispatchTests(unittest.TestCase):
         self.assertEqual([0x406, 0x420], [s.address for s in seeds])
 
     def test_boundary_inside_word_prevents_cross_object_slot(self):
-        from retrolarium_kit.facts import InstructionReference
+        from retrolarium_disasm.facts import InstructionReference
         self.items.append(replace(fact(0x500, 'LEA', '(0x403).l|A2'),
             references=(InstructionReference(0x403, 'DATA', 0),)))
         self.assertFalse(self.seeds())

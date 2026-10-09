@@ -5,8 +5,8 @@ import unittest
 from unittest import mock
 
 from test_megadrive_pipeline_convergence import _M68kHarness, _StopAfterLoop, pipeline
-from retrolarium_kit.m68k_seeds import DecoderSeed
-from retrolarium_kit.m68k_ram_dispatch import InlineTrapCall
+from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disasm.m68k.dispatch.ram import InlineTrapCall
 
 
 class NormalReturnPlanTests(unittest.TestCase):

@@ -91,7 +91,7 @@ The 65816 processor definition is pinned independently from cartridge parsing:
 - source archive size and SHA-256: recorded in
   `kit/src/retrolarium_kit/toolchains/disassembly.lock.json`.
 
-`rltool ghidra install` extracts only the upstream `data/languages` processor
+`rldisasm ghidra install` extracts only the upstream `data/languages` processor
 material, compiles `65816.slaspec` with the pinned Ghidra SLEIGH compiler and
 installs it as `Retrolarium65816`. The upstream Java cartridge loader is not
 installed: Retrolarium creates explicit per-bank raw analysis inputs from the
@@ -105,7 +105,7 @@ state, flow and physical-byte facts before publishing them.
 
 ## Independent W65C816 state analysis
 
-`rltool snes analyze` now runs a Retrolarium-owned decoder covering all 256
+`rldisasm snes analyze` now runs a Retrolarium-owned decoder covering all 256
 W65C816 opcodes. Entry states come from the validated native/emulation vectors;
 RESET starts with `E=M=X=1`, `PBR=DBR=DP=0`. The worklist propagates E, M, X,
 carry, PBR, DBR, Direct Page and limited accumulator/stack evidence. It handles
@@ -146,7 +146,7 @@ logical symbols while retaining different physical offsets.
 
 ## Exact-first source emission
 
-`rltool snes disassemble` emits a complete ca65 project with one source unit
+`rldisasm snes disassemble` emits a complete ca65 project with one source unit
 per physical 32 KiB LoROM bank or 64 KiB HiROM bank. `header.asm` owns the
 internal header, stored checksum/complement and symbolic vectors;
 `symbols.inc` separates stable 24-bit logical names from physical source
@@ -164,7 +164,7 @@ byte-for-byte with their original SHA-256 and a valid SNES checksum.
 
 ## SPC700 program boundary
 
-`rltool ghidra install` also pins the MIT-licensed
+`rldisasm ghidra install` also pins the MIT-licensed
 `Raikaru/ghidra-spc700` processor at commit
 `af628ce1a8e86ae1382dcec4c03d4412e013890c`, installs it as
 `RetrolariumSPC700`, and compiles language `SPC700:LE:16:default` with the

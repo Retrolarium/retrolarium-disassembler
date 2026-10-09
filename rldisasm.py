@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run Retrolarium Kit directly from a source checkout."""
+"""Run Retrolarium Disassembler directly from a source checkout."""
 
 from pathlib import Path
 import sys
@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from retrolarium_kit.cli import main  # noqa: E402
+from retrolarium_disasm.cli import main  # noqa: E402
 
 
 if __name__ == "__main__":

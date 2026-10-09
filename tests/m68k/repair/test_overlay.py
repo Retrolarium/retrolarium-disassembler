@@ -6,8 +6,8 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from retrolarium_kit.ghidra import GhidraArtifacts
-from retrolarium_kit.m68k_overlay import analyze_overlay, address_view
+from retrolarium_disasm.ghidra import GhidraArtifacts
+from retrolarium_disasm.m68k.repair.overlay import analyze_overlay, address_view
 
 
 HEADER = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\treferences\tflow_type\tsymbol\tfunction\n"
@@ -33,7 +33,7 @@ class OverlayTests(unittest.TestCase):
                                  + row(0x1004, "0E040C04", "MOVES.B", "D0b|D4b", flow="FALL_THROUGH"))
                 return GhidraArtifacts(facts, workspace / "report", workspace / "log", probes)
 
-            with patch("retrolarium_kit.m68k_overlay.run_m68k_overlay_analysis", decode):
+            with patch("retrolarium_disasm.m68k.repair.overlay.run_m68k_overlay_analysis", decode):
                 result = analyze_overlay(source, root / "analysis", root, root,
                                          base_address=0x1000, entry_addresses=(0x1000,))
             with result.facts.open() as stream:
@@ -63,7 +63,7 @@ class OverlayTests(unittest.TestCase):
                 probes.write_text(HEADER)
                 return GhidraArtifacts(facts, workspace / "report.json", workspace / "log", probes)
 
-            with patch("retrolarium_kit.m68k_overlay.run_m68k_overlay_analysis", decode):
+            with patch("retrolarium_disasm.m68k.repair.overlay.run_m68k_overlay_analysis", decode):
                 result = analyze_overlay(source, root / "analysis", root, root,
                                          base_address=0x1000, entry_addresses=(0x1000,))
             self.assertEqual([(0x1000,), (0x1000, 0x1008)], calls)
@@ -84,7 +84,7 @@ class OverlayTests(unittest.TestCase):
                 probes.write_text(HEADER)
                 return GhidraArtifacts(facts, workspace / "report", workspace / "log", probes)
 
-            with patch("retrolarium_kit.m68k_overlay.run_m68k_overlay_analysis", decode):
+            with patch("retrolarium_disasm.m68k.repair.overlay.run_m68k_overlay_analysis", decode):
                 result = analyze_overlay(source, root / "analysis", root, root,
                                          base_address=0x1000, entry_addresses=(0x1000,))
             with result.facts.open() as stream:

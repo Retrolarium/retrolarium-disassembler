@@ -4,14 +4,14 @@ import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.m68k_bytecode_cursor import (
+from retrolarium_disasm.m68k.bytecode_cursor import (
     discover_bytecode_callbacks as discover, _absolute_address as absolute,
     discover_bytecode_cursor_seeds,
 )
 from test_m68k_unused import instruction
 from test_megadrive import cartridge
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.facts import InstructionReference
+from retrolarium_disasm.facts import InstructionReference
 
 
 def fixture():

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import re
 
-from retrolarium_kit.m68k_seeds import DecoderSeed
-from retrolarium_kit.megadrive_pointers import _instruction_sets
-from retrolarium_kit.megadrive_symbols import pc_displacement_target
-from retrolarium_kit.m68k_abstract import _register_list
+from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disasm.megadrive.pointers import _instruction_sets
+from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.abstract import _register_list
 
 
 def _direct(fact):

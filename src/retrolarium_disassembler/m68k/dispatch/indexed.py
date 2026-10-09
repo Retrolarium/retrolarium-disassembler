@@ -1,10 +1,10 @@
 """Recover pointer tables addressed by a proven byte index and LEA base."""
 import re
 
-from retrolarium_kit.facts import InstructionFact
+from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_kit.m68k_seeds import DecoderSeed
-from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses, _instruction_sets
+from retrolarium_disasm.m68k.seeds import DecoderSeed
+from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
 
 
 _LOAD = re.compile(r"\((-?0x[0-9a-f]+),(A[0-6]),(D[0-7])w\*0x1\)\|(A[0-6])", re.I)

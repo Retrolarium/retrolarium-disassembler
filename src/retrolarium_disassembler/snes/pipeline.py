@@ -8,20 +8,20 @@ from pathlib import Path
 import subprocess
 
 from retrolarium_core.contracts import validate_snes_disassembly_manifest
-from retrolarium_kit.facts import InstructionFact, load_spc700_ghidra_facts
-from retrolarium_kit.ghidra import run_spc700_analysis
-from retrolarium_kit.pipeline import verify_exact
+from retrolarium_disasm.facts import InstructionFact, load_spc700_ghidra_facts
+from retrolarium_disasm.ghidra import run_spc700_analysis
+from retrolarium_disasm.verify import verify_exact
 from retrolarium_core.snes import image_manifest, load_snes
-from retrolarium_kit.snes_analysis import analysis_manifest, analyze_snes
-from retrolarium_kit.snes_emit import EmissionResult, emit_project
-from retrolarium_kit.snes_pointers import (
+from retrolarium_disasm.snes.analysis import analysis_manifest, analyze_snes
+from retrolarium_disasm.snes.emit import EmissionResult, emit_project
+from retrolarium_disasm.snes.pointers import (
     accepted_pointer_tables,
     detect_pointer_candidates,
     write_pointer_report,
 )
-from retrolarium_kit.snes_symbols import generate_symbols, write_symbol_report
-from retrolarium_kit.snes_spc700 import CrossCpuCopy, detect_spc700_copies, payload_for_copy
-from retrolarium_kit.toolchain import toolchain_status
+from retrolarium_disasm.snes.symbols import generate_symbols, write_symbol_report
+from retrolarium_disasm.snes.spc700 import CrossCpuCopy, detect_spc700_copies, payload_for_copy
+from retrolarium_disasm.toolchain import toolchain_status
 
 
 class SnesPipelineError(RuntimeError):
@@ -175,7 +175,7 @@ def _extract_spc700_programs(
     assets: list[dict[str, object]] = []
     if ghidra_home is not None and copies:
         toolchain_status(ghidra_home.resolve())
-    scripts = Path(__file__).resolve().parent / "ghidra_scripts"
+    scripts = Path(__file__).resolve().parents[1] / "ghidra" / "scripts"
     for index, copy in enumerate(copies):
         cpu_id = f"spc700.{index:02d}"
         root = output / "spc700" / f"program{index:02d}"

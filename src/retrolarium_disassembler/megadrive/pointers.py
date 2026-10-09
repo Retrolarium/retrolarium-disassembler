@@ -11,9 +11,9 @@ import re
 import sys
 from typing import Callable
 
-from retrolarium_kit.facts import InstructionFact
+from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_kit.m68k_seeds import (
+from retrolarium_disasm.m68k.seeds import (
     DecoderSeed,
     RamCopyRegion,
     discover_ram_copy_regions,
@@ -817,7 +817,7 @@ def _weak_absolute_lea_boundaries(facts: dict[int, InstructionFact]) -> set[int]
     These remain boundaries globally. A PC word dispatcher may supersede one
     only after independently proving its complete table and a handler CFG.
     """
-    from retrolarium_kit.m68k_abstract import _register_use
+    from retrolarium_disasm.m68k.abstract import _register_use
 
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     strong = {}
@@ -1079,13 +1079,13 @@ def discover_dispatch_table_seeds(
     *, handler_validator: Callable[[int], bool] | None = None, entrypoints=(),
 ) -> tuple[DecoderSeed, ...]:
     """Turn instruction-proven absolute and relative dispatch tables into seeds."""
-    from retrolarium_kit.m68k_record_dispatch import discover_record_callback_seeds
-    from retrolarium_kit.m68k_callback_abi import discover_callback_abi_seeds
-    from retrolarium_kit.m68k_ram_dispatch import discover_ram_stub_dispatch_seeds
-    from retrolarium_kit.m68k_table_dispatch import discover_lea_indexed_call_seeds, discover_trap_relative_dispatch_seeds
-    from retrolarium_kit.m68k_word_callbacks import discover_nested_word_resolver_seeds
-    from retrolarium_kit.m68k_leaf_dispatch import discover_leaf_word_dispatch_seeds
-    from retrolarium_kit.m68k_indexed_dispatch import (
+    from retrolarium_disasm.m68k.dispatch.record import discover_record_callback_seeds
+    from retrolarium_disasm.m68k.callbacks.abi import discover_callback_abi_seeds
+    from retrolarium_disasm.m68k.dispatch.ram import discover_ram_stub_dispatch_seeds
+    from retrolarium_disasm.m68k.dispatch.table import discover_lea_indexed_call_seeds, discover_trap_relative_dispatch_seeds
+    from retrolarium_disasm.m68k.callbacks.word import discover_nested_word_resolver_seeds
+    from retrolarium_disasm.m68k.dispatch.leaf import discover_leaf_word_dispatch_seeds
+    from retrolarium_disasm.m68k.dispatch.indexed import (
         discover_register_indexed_dispatch_seeds, discover_added_index_dispatch_seeds,
         discover_nested_word_dispatch_seeds,
     )
@@ -1373,7 +1373,7 @@ def _pc_word_dispatch_tables(
     skip_conflicting_targets: bool = False,
 ) -> tuple[_DispatchTable, ...]:
     """Recover signed offsets loaded from a table then used by PC-indexed JMP/JSR."""
-    from retrolarium_kit.m68k_abstract import _register_list
+    from retrolarium_disasm.m68k.abstract import _register_list
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     occupied, interiors, instruction_starts = _instruction_sets(facts)
     boundaries = _absolute_referenced_addresses(facts)

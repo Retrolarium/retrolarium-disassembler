@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retrolarium-disassembler"
+version = "0.5.0"
+description = "Exact-rebuild disassembler for NES, Mega Drive and SNES images"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "GPL-3.0-or-later"}
+classifiers = [
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
+dependencies = ["retrolarium-core"]
+
+[project.optional-dependencies]
+# `rldisasm preset` turns a recognized game into a Studio project.
+studio = ["retrolarium-kit"]
+
+[project.scripts]
+rldisasm = "retrolarium_disasm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+retrolarium_disasm = [
+  "ghidra/scripts/*.java",
+  "toolchains/*.json",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

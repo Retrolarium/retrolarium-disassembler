@@ -53,10 +53,10 @@ rebuilt artifact.
 ## Commands and operations
 
 ```powershell
-python retrolarium-kit/rltool.py megadrive inspect game.bin
-python retrolarium-kit/rltool.py megadrive analyze game.bin `
+python retrolarium-disassembler/rldisasm.py megadrive inspect game.bin
+python retrolarium-disassembler/rldisasm.py megadrive analyze game.bin `
   --output retrolarium-kit/build/game-analysis
-python retrolarium-kit/rltool.py megadrive disassemble game.bin `
+python retrolarium-disassembler/rldisasm.py megadrive disassemble game.bin `
   --output retrolarium-kit/build/game-disassembly
 python retrolarium-kit/rltool.py project validate `
   retrolarium-kit/build/game-disassembly/retrolarium-project.json

@@ -5,7 +5,7 @@ from dataclasses import replace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.m68k_returns import discover_returning_call_seeds
+from retrolarium_disasm.m68k.returns import discover_returning_call_seeds
 from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_m68k_unused import instruction

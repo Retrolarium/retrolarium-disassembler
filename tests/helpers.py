@@ -1,6 +1,30 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
+import sys
+import unittest
+
+
+def find_kit() -> bool:
+    """Make Retrolarium Kit importable from a checkout beside the disassembler.
+
+    False when neither an installed kit nor a checkout is around; the tests
+    that build through the kit's assemblers or make Studio projects then skip.
+    """
+    if importlib.util.find_spec("retrolarium_kit") is not None:
+        return True
+    root = Path(__file__).resolve().parents[2]
+    for base in (root, root.parent):
+        candidate = base / "retrolarium-kit" / "src"
+        if (candidate / "retrolarium_kit").is_dir():
+            sys.path.append(str(candidate))
+            return True
+    return False
+
+
+KIT = find_kit()
+needs_kit = unittest.skipUnless(KIT, "needs Retrolarium Kit")
 
 
 def nrom16_image() -> bytes:

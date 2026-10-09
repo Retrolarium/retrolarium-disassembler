@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import struct
 
-from retrolarium_kit.facts import InstructionFact
+from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.ines import (
     InesImage,
     canonical_prg_start,

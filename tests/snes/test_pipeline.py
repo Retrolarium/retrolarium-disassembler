@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from retrolarium_kit.snes_pipeline import disassemble_snes
+from retrolarium_disasm.snes.pipeline import disassemble_snes
 from test_snes_pointers import probe_image
 
 

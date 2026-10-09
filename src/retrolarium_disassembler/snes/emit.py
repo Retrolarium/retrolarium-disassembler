@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from retrolarium_core.snes import SnesImage, snes_to_rom_offset
-from retrolarium_kit.snes_analysis import AnalysisResult, Instruction
-from retrolarium_kit.snes_pointers import PointerCandidate
-from retrolarium_kit.snes_symbols import TechnicalSymbol
+from retrolarium_disasm.snes.analysis import AnalysisResult, Instruction
+from retrolarium_disasm.snes.pointers import PointerCandidate
+from retrolarium_disasm.snes.symbols import TechnicalSymbol
 
 
 class SnesEmitError(RuntimeError):

@@ -5,8 +5,8 @@ import unittest
 from test_m68k_unused import instruction
 from test_megadrive import cartridge
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.m68k_fallthrough_repair import M68kFallthroughRepairs, _direct_data_ranges
+from retrolarium_disasm.facts import InstructionReference
+from retrolarium_disasm.m68k.repair.fallthrough import M68kFallthroughRepairs, _direct_data_ranges
 
 
 class FallthroughRepairTests(unittest.TestCase):

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 
-from retrolarium_kit.facts import InstructionFact
-from retrolarium_kit.m68k_seeds import DecoderSeed
+from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_kit.megadrive_symbols import pc_displacement_target
+from retrolarium_disasm.megadrive.symbols import pc_displacement_target
 
 
 _POST_LOAD = re.compile(r"\((A[0-7])\)\+\|(A[0-7])", re.I)

@@ -1,21 +1,47 @@
-"""Transactional creation of a ready-to-open Studio workspace from a game ROM."""
+"""Transactional creation of a ready-to-open Studio workspace from a game ROM.
+
+The one place the disassembler meets Retrolarium Kit: the ROM is disassembled
+here, then the kit extracts the game's resources and makes the Studio project.
+Only `rldisasm preset` imports this module, so the rest of the disassembler
+works without the kit installed.
+"""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import sys
 import tempfile
 from typing import Any
 
-from retrolarium_kit.games import extract_game, inspect_game, validate_game
-from retrolarium_kit.pipeline import disassemble_nes
-from retrolarium_kit.studio_project import (
+from retrolarium_disasm.nes.pipeline import disassemble_nes
+
+
+def _find_kit() -> None:
+    # An installed kit is used as is; a source checkout finds it beside the
+    # disassembler (monorepo or repositories cloned side by side).
+    if importlib.util.find_spec("retrolarium_kit") is not None:
+        return
+    here = Path(__file__).resolve()
+    for root in (here.parents[3], here.parents[3].parent):
+        candidate = root / "retrolarium-kit" / "src"
+        if (candidate / "retrolarium_kit").is_dir():
+            sys.path.append(str(candidate))
+            return
+    raise ImportError("rldisasm preset needs Retrolarium Kit: install retrolarium-disassembler[studio]")
+
+
+_find_kit()
+
+from retrolarium_kit.games.catalog import extract_game, inspect_game, validate_game  # noqa: E402
+from retrolarium_kit.studio.create import create_studio_project  # noqa: E402
+from retrolarium_kit.studio.project import (  # noqa: E402
     StudioProjectError,
     build_studio_project,
-    create_studio_project,
     load_studio_project,
     validate_studio_project,
     verify_studio_project,

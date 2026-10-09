@@ -20,7 +20,10 @@ from retrolarium_core.contracts import (
     load_disassembly_manifest,
     validate_megadrive_disassembly_manifest,
 )
-from retrolarium_kit.project import build_project, launch_plan, verify_project
+from helpers import KIT, needs_kit
+
+if KIT:
+    from retrolarium_kit.core.project import build_project, launch_plan, verify_project
 
 
 def digest(payload: bytes) -> str:
@@ -187,6 +190,7 @@ def write_megadrive_project(root: Path) -> Path:
 
 class MegaDriveContractTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "bundled PE smoke runs on Windows")
+    @needs_kit
     def test_bundled_runner_builds_as_source_without_docker(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -238,12 +242,13 @@ class MegaDriveContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, "SHA-256"):
                 validate_megadrive_disassembly_manifest(manifest, root)
 
+    @needs_kit
     def test_operations_use_declared_argv_and_megadrive_machine_set(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path = write_megadrive_project(root)
             completed = subprocess.CompletedProcess([], 0)
-            with patch("retrolarium_kit.project.subprocess.run", return_value=completed) as run:
+            with patch("retrolarium_kit.core.project.subprocess.run", return_value=completed) as run:
                 self.assertEqual("built", build_project(path)["status"])
             self.assertEqual(
                 ["asm68k", "/p", "main.68k,rebuilt.bin"],
@@ -261,8 +266,8 @@ class MegaDriveContractTests(unittest.TestCase):
 
 class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
     def test_cached_emission_rejects_another_rom_and_tampered_facts(self) -> None:
-        from retrolarium_kit import megadrive_pipeline as pipeline
-        from retrolarium_kit.megadrive_emit import MegaDriveEmitError
+        from retrolarium_disasm.megadrive import pipeline
+        from retrolarium_disasm.megadrive.emit import MegaDriveEmitError
         from test_megadrive import cartridge
 
         with tempfile.TemporaryDirectory() as directory:
@@ -288,8 +293,8 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
                 emit.assert_not_called()
 
     def _disassemble(self, root: Path, *, build_container: str | None):
-        from retrolarium_kit import megadrive_pipeline as pipeline
-        from retrolarium_kit.z80_dispatch import Z80DispatchTable
+        from retrolarium_disasm.megadrive import pipeline
+        from retrolarium_disasm.z80.dispatch import Z80DispatchTable
 
         analysis = root / "out" / "analysis"
         (analysis / "m68k").mkdir(parents=True)
@@ -377,7 +382,7 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
                 patch.object(pipeline, "validate_megadrive_disassembly_manifest"), \
                 patch.object(pipeline, "_build_emitted_project",
                              return_value=rebuilt) as build, \
-                patch("retrolarium_kit.pipeline.verify_exact",
+                patch("retrolarium_disasm.verify.verify_exact",
                       return_value={"status": "exact"}):
             manifest = pipeline.disassemble_megadrive(
                 root / "rom.bin", root / "out", root / "ghidra",

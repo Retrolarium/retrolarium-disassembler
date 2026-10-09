@@ -1,0 +1,92 @@
+"""The disassembler's import rules, checked on the source.
+
+It builds on retrolarium-core alone: only preset.py, which turns a game into a
+Studio project, reaches for Retrolarium Kit. The shared modules (facts, the
+Ghidra bridge, toolchains, verification, benchmarks) know no platform. Each
+platform package keeps to itself, except that the Mega Drive pipeline drives
+the 68000 passes and the Z80 dispatch, and the 68000 passes use the Mega
+Drive instruction helpers: those three are one console.
+"""
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+import unittest
+
+PACKAGE = Path(__file__).resolve().parents[1] / "src" / "retrolarium_disasm"
+PLATFORMS = {"nes", "megadrive", "m68k", "z80", "snes"}
+SHARED = {"facts", "ghidra", "toolchain", "verify", "benchmark"}
+ALLOWED = {("megadrive", "m68k"), ("megadrive", "z80"), ("m68k", "megadrive")}
+
+
+def imports() -> list[tuple[tuple[str, ...], tuple[str, ...], int]]:
+    found = []
+    for path in sorted(PACKAGE.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        module = path.relative_to(PACKAGE).with_suffix("").parts
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            names = []
+            if isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module]
+                if node.module == "retrolarium_disasm":
+                    names += [f"{node.module}.{alias.name}" for alias in node.names]
+            elif isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            for name in names:
+                found.append((module, tuple(name.split(".")), node.lineno))
+    return found
+
+
+class LayerTests(unittest.TestCase):
+    def test_only_the_preset_imports_the_kit(self) -> None:
+        importers = sorted({"/".join(module) for module, target, _line in imports()
+                            if target[0] == "retrolarium_kit"})
+        self.assertEqual(["preset"], importers)
+
+    def test_shared_modules_know_no_platform(self) -> None:
+        offenders = [f"{'.'.join(module)}:{line} imports {'.'.join(target)}"
+                     for module, target, line in imports()
+                     if module[0] in SHARED and target[0] == "retrolarium_disasm" and len(target) > 1
+                     and target[1] in PLATFORMS | {"cli", "preset"}]
+        self.assertEqual([], offenders)
+
+    def test_platforms_keep_to_themselves(self) -> None:
+        offenders = []
+        for module, target, line in imports():
+            if module[0] not in PLATFORMS or target[0] != "retrolarium_disasm" or len(target) < 2:
+                continue
+            other = target[1]
+            if other in {"cli", "preset"} or (
+                    other in PLATFORMS and other != module[0] and (module[0], other) not in ALLOWED):
+                offenders.append(f"{'.'.join(module)}:{line} imports {'.'.join(target)}")
+        self.assertEqual([], offenders)
+
+    def test_the_package_imports_without_the_kit(self) -> None:
+        # Everything but the preset loads in an interpreter that cannot see
+        # Retrolarium Kit.
+        import os
+        import subprocess
+        import sys
+
+        script = (
+            "import importlib, pkgutil, sys\n"
+            "class NoKit:\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
+            "        if name == 'retrolarium_kit' or name.startswith('retrolarium_kit.'):\n"
+            "            raise ImportError('no kit here')\n"
+            "sys.meta_path.insert(0, NoKit())\n"
+            "import retrolarium_disasm\n"
+            "for info in pkgutil.walk_packages(retrolarium_disasm.__path__, 'retrolarium_disasm.'):\n"
+            "    if info.name.rsplit('.', 1)[-1] not in ('preset', '__main__'):\n"
+            "        importlib.import_module(info.name)\n"
+            "print('ok')\n"
+        )
+        environment = {"PYTHONPATH": str(PACKAGE.parent), "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
+        result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                                env=environment)
+        self.assertEqual("ok", result.stdout.strip(), result.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

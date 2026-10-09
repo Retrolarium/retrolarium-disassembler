@@ -10,10 +10,10 @@ from collections import deque
 import re
 from types import SimpleNamespace
 
-from retrolarium_kit.m68k_abstract import OrphanCandidate, _register_list
-from retrolarium_kit.m68k_constructor_records import _unsupported_frame_or_exception
-from retrolarium_kit.m68k_packed import _complete_cfg
-from retrolarium_kit.megadrive_pointers import _absolute_referenced_addresses
+from retrolarium_disasm.m68k.abstract import OrphanCandidate, _register_list
+from retrolarium_disasm.m68k.records.constructor import _unsupported_frame_or_exception
+from retrolarium_disasm.m68k.records.packed import _complete_cfg
+from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
 
 
 def logical_image(image):

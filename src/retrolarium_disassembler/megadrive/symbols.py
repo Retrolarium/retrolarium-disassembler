@@ -7,10 +7,10 @@ import json
 from pathlib import Path
 import re
 
-from retrolarium_kit.facts import InstructionFact
+from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_kit.megadrive_pointers import PointerCandidate
-from retrolarium_kit.megadrive_structures import (
+from retrolarium_disasm.megadrive.pointers import PointerCandidate
+from retrolarium_disasm.megadrive.structures import (
     discover_long_ff_padding,
     discover_standard_boot_setups,
 )

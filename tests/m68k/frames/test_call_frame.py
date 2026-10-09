@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from retrolarium_kit.m68k_call_frame import make_trap_call_frame_validator
+from retrolarium_disasm.m68k.frames.call_frame import make_trap_call_frame_validator
 from test_m68k_unused import instruction
 
 

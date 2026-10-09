@@ -20,7 +20,9 @@ from sonic_corpus_benchmark import annotate_groups, below_source_recall_target, 
 from source_benchmark import read_listing
 
 
-KIT = Path(__file__).resolve().parents[1]
+DISASSEMBLER = Path(__file__).resolve().parents[1]
+# The kit builds and verifies the generated projects.
+KIT = DISASSEMBLER.parent / "retrolarium-kit"
 
 
 def comparable(unit: dict) -> str | None:
@@ -44,7 +46,7 @@ def original_rom(unit: dict) -> Path:
 
 
 def disassemble(rom: Path, project: Path, ghidra_home: Path | None) -> None:
-    command = [sys.executable, str(KIT / "rltool.py"), "megadrive", "disassemble", str(rom), "--output", str(project)]
+    command = [sys.executable, str(DISASSEMBLER / "rldisasm.py"), "megadrive", "disassemble", str(rom), "--output", str(project)]
     if ghidra_home:
         command += ["--ghidra-home", str(ghidra_home)]
     project.parent.mkdir(parents=True, exist_ok=True)
@@ -72,7 +74,7 @@ def evaluate(unit: dict, project: Path, dest: Path, toolchain_cache: Path, resul
     manifest = project / "retrolarium-project.json"
     if not manifest.is_file():
         raise ValueError(f"ROM disassembly did not produce a project: {project}")
-    from retrolarium_kit.project import build_project, verify_project
+    from retrolarium_kit.core.project import build_project, verify_project
     build_project(manifest, toolchain_cache=toolchain_cache)
     verification = verify_project(manifest)
     result["rebuild_status"] = verification["status"]
@@ -143,7 +145,7 @@ def benchmark(corpus: Path, projects: Path, output: Path, *, only: frozenset[str
             result["error"] = str(error)
         cases.append(result)
         (dest / "comparison.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=KIT, capture_output=True, text=True)
+    revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=DISASSEMBLER, capture_output=True, text=True)
     report = {"schema": "retrolarium.extra-reference-benchmark", "schema_version": 1,
               "measured_at": datetime.now(timezone.utc).isoformat(),
               "checkout_commit": revision.stdout.strip() if revision.returncode == 0 else None,
@@ -176,7 +178,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("build/extra-comparison"))
     parser.add_argument("--only", action="append", default=[])
     parser.add_argument("--run-disassembly", action="store_true",
-                        help="run 'rltool.py megadrive disassemble' for units without a project")
+                        help="run 'rldisasm.py megadrive disassemble' for units without a project")
     parser.add_argument("--ghidra-home", type=Path)
     parser.add_argument("--minimum-source-recall", type=Decimal, metavar="PERCENT",
                         help="optional gate; no floor is applied unless given")

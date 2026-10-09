@@ -10,9 +10,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.facts import FactError, InstructionFact, InstructionReference, load_z80_ghidra_facts
+from retrolarium_disasm.facts import FactError, InstructionFact, InstructionReference, load_z80_ghidra_facts
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.megadrive_z80 import (
+from retrolarium_disasm.megadrive.z80 import (
     CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
     group_z80_copies, z80_im1_handler_seed,
 )

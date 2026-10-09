@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.m68k_table_dispatch import (
+from retrolarium_disasm.m68k.dispatch.table import (
     discover_lea_indexed_call_seeds, discover_trap_relative_dispatch_seeds,
 )
 from retrolarium_core.megadrive import parse_megadrive

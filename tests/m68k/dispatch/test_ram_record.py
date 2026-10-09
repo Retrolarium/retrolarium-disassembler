@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.m68k_ram_record_dispatch import discover_ram_record_dispatch_seeds
+from retrolarium_disasm.m68k.dispatch.ram_record import discover_ram_record_dispatch_seeds
 from retrolarium_core.megadrive import parse_megadrive
 from test_megadrive import cartridge
 from test_m68k_unused import instruction

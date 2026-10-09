@@ -5,8 +5,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from retrolarium_kit.studio_project import StudioProjectError
-from retrolarium_kit.studio_preset import create_game_studio_preset
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from helpers import KIT
+
+if not KIT:
+    raise unittest.SkipTest("rldisasm preset needs Retrolarium Kit")
+
+from retrolarium_kit.studio.project import StudioProjectError  # noqa: E402
+from retrolarium_disasm.preset import create_game_studio_preset  # noqa: E402
 
 
 def inspection(game: str = "smb1") -> dict[str, object]:
@@ -66,21 +75,21 @@ class StudioPresetTests(unittest.TestCase):
                 project.write_text("project", encoding="utf-8")
 
             with (
-                patch("retrolarium_kit.studio_preset.inspect_game",
+                patch("retrolarium_disasm.preset.inspect_game",
                       return_value=inspection("solomons-key")),
-                patch("retrolarium_kit.studio_preset.disassemble_nes",
+                patch("retrolarium_disasm.preset.disassemble_nes",
                       side_effect=disassemble),
-                patch("retrolarium_kit.studio_preset.extract_game",
+                patch("retrolarium_disasm.preset.extract_game",
                       side_effect=extract),
-                patch("retrolarium_kit.studio_preset.create_studio_project",
+                patch("retrolarium_disasm.preset.create_studio_project",
                       side_effect=create),
-                patch("retrolarium_kit.studio_preset.validate_studio_project",
+                patch("retrolarium_disasm.preset.validate_studio_project",
                       return_value={"enabled_tabs": [
                           "rooms", "mirrors", "special", "room-art",
                           "animations", "audio", "screens", "demo",
                           "graphics", "palettes", "code"
                       ]}),
-                patch("retrolarium_kit.studio_preset.load_studio_project",
+                patch("retrolarium_disasm.preset.load_studio_project",
                       return_value={"workspace": {"tabs": []}}),
             ):
                 result = create_game_studio_preset(
@@ -117,21 +126,21 @@ class StudioPresetTests(unittest.TestCase):
                 "artifact": {"path": "build/smb1-ju-edited.nes"},
             }
             with (
-                patch("retrolarium_kit.studio_preset.inspect_game",
+                patch("retrolarium_disasm.preset.inspect_game",
                     return_value=inspection()),
-                patch("retrolarium_kit.studio_preset.disassemble_nes",
+                patch("retrolarium_disasm.preset.disassemble_nes",
                     side_effect=disassemble),
-                patch("retrolarium_kit.studio_preset.extract_game",
+                patch("retrolarium_disasm.preset.extract_game",
                     side_effect=extract),
-                patch("retrolarium_kit.studio_preset.create_studio_project",
+                patch("retrolarium_disasm.preset.create_studio_project",
                     side_effect=create) as create_mock,
-                patch("retrolarium_kit.studio_preset.validate_studio_project",
+                patch("retrolarium_disasm.preset.validate_studio_project",
                     return_value={"enabled_tabs": ["world", "levels", "code"]}),
-                patch("retrolarium_kit.studio_preset.build_studio_project",
+                patch("retrolarium_disasm.preset.build_studio_project",
                     return_value={"status": "built"}) as build_mock,
-                patch("retrolarium_kit.studio_preset.verify_studio_project",
+                patch("retrolarium_disasm.preset.verify_studio_project",
                     return_value=verified) as verify_mock,
-                patch("retrolarium_kit.studio_preset.load_studio_project",
+                patch("retrolarium_disasm.preset.load_studio_project",
                     return_value={"workspace": {"tabs": []}}),
             ):
                 result = create_game_studio_preset(
@@ -178,23 +187,23 @@ class StudioPresetTests(unittest.TestCase):
                 "artifact": {"path": "build/castle-edited.nes"},
             }
             with (
-                patch("retrolarium_kit.studio_preset.inspect_game",
+                patch("retrolarium_disasm.preset.inspect_game",
                     return_value=inspection("castle-excellent")),
-                patch("retrolarium_kit.studio_preset.disassemble_nes",
+                patch("retrolarium_disasm.preset.disassemble_nes",
                     side_effect=disassemble),
-                patch("retrolarium_kit.studio_preset.extract_game",
+                patch("retrolarium_disasm.preset.extract_game",
                     side_effect=extract),
-                patch("retrolarium_kit.studio_preset.create_studio_project",
+                patch("retrolarium_disasm.preset.create_studio_project",
                     side_effect=create) as create_mock,
-                patch("retrolarium_kit.studio_preset.validate_studio_project",
+                patch("retrolarium_disasm.preset.validate_studio_project",
                     return_value={
                         "enabled_tabs": ["rooms", "graphics", "palettes", "code"]
                     }),
-                patch("retrolarium_kit.studio_preset.build_studio_project",
+                patch("retrolarium_disasm.preset.build_studio_project",
                     return_value={"status": "built"}) as build_mock,
-                patch("retrolarium_kit.studio_preset.verify_studio_project",
+                patch("retrolarium_disasm.preset.verify_studio_project",
                     return_value=verified) as verify_mock,
-                patch("retrolarium_kit.studio_preset.load_studio_project",
+                patch("retrolarium_disasm.preset.load_studio_project",
                     return_value={"workspace": {"tabs": []}}),
             ):
                 result = create_game_studio_preset(
@@ -250,19 +259,19 @@ class StudioPresetTests(unittest.TestCase):
                 project.write_text("project", encoding="utf-8")
 
             with (
-                patch("retrolarium_kit.studio_preset.inspect_game",
+                patch("retrolarium_disasm.preset.inspect_game",
                       return_value=inspection("castle-excellent")),
-                patch("retrolarium_kit.studio_preset.validate_game",
+                patch("retrolarium_disasm.preset.validate_game",
                       return_value={"status": "valid"}) as validate,
-                patch("retrolarium_kit.studio_preset.disassemble_nes",
+                patch("retrolarium_disasm.preset.disassemble_nes",
                       side_effect=disassemble),
-                patch("retrolarium_kit.studio_preset.extract_game",
+                patch("retrolarium_disasm.preset.extract_game",
                       side_effect=extract) as extract_mock,
-                patch("retrolarium_kit.studio_preset.create_studio_project",
+                patch("retrolarium_disasm.preset.create_studio_project",
                       side_effect=create),
-                patch("retrolarium_kit.studio_preset.validate_studio_project",
+                patch("retrolarium_disasm.preset.validate_studio_project",
                       return_value={"enabled_tabs": ["rooms", "code"]}),
-                patch("retrolarium_kit.studio_preset.load_studio_project",
+                patch("retrolarium_disasm.preset.load_studio_project",
                       return_value={"workspace": {"tabs": []}}),
             ):
                 result = create_game_studio_preset(
@@ -275,7 +284,7 @@ class StudioPresetTests(unittest.TestCase):
                              (output / "documents/levels.json").read_bytes())
             self.assertEqual("ready", result["status"])
 
-            with patch("retrolarium_kit.studio_preset.inspect_game",
+            with patch("retrolarium_disasm.preset.inspect_game",
                        return_value=inspection("pacman")):
                 with self.assertRaisesRegex(StudioProjectError, "only be imported"):
                     create_game_studio_preset(
@@ -296,9 +305,9 @@ class StudioPresetTests(unittest.TestCase):
                 raise OSError("analysis failed")
 
             with (
-                patch("retrolarium_kit.studio_preset.inspect_game",
+                patch("retrolarium_disasm.preset.inspect_game",
                     return_value=inspection("pacman")),
-                patch("retrolarium_kit.studio_preset.disassemble_nes",
+                patch("retrolarium_disasm.preset.disassemble_nes",
                     side_effect=fail),
             ):
                 with self.assertRaisesRegex(OSError, "analysis failed"):
@@ -329,17 +338,17 @@ class StudioPresetTests(unittest.TestCase):
                 project.write_text("project", encoding="utf-8")
 
             with (
-                patch("retrolarium_kit.studio_preset.inspect_game",
+                patch("retrolarium_disasm.preset.inspect_game",
                     return_value=inspection()),
-                patch("retrolarium_kit.studio_preset.disassemble_nes",
+                patch("retrolarium_disasm.preset.disassemble_nes",
                     side_effect=disassemble),
-                patch("retrolarium_kit.studio_preset.extract_game",
+                patch("retrolarium_disasm.preset.extract_game",
                     side_effect=extract),
-                patch("retrolarium_kit.studio_preset.create_studio_project",
+                patch("retrolarium_disasm.preset.create_studio_project",
                     side_effect=create),
-                patch("retrolarium_kit.studio_preset.validate_studio_project",
+                patch("retrolarium_disasm.preset.validate_studio_project",
                     return_value={"enabled_tabs": ["world"]}),
-                patch("retrolarium_kit.studio_preset.load_studio_project",
+                patch("retrolarium_disasm.preset.load_studio_project",
                     side_effect=StudioProjectError("relocation failed")),
             ):
                 with self.assertRaisesRegex(StudioProjectError, "relocation failed"):
@@ -362,7 +371,7 @@ class StudioPresetTests(unittest.TestCase):
                     rom, existing, ghidra_home=root / "ghidra"
                 )
 
-            with patch("retrolarium_kit.studio_preset.inspect_game",
+            with patch("retrolarium_disasm.preset.inspect_game",
                     return_value=inspection("honkeypong")):
                 with self.assertRaisesRegex(StudioProjectError, "limited"):
                     create_game_studio_preset(

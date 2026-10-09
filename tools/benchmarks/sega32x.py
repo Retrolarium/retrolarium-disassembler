@@ -55,14 +55,14 @@ def main():
     parser.add_argument("--rom", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--ghidra-home", type=Path, default=Path("retrolarium-kit/.tools/ghidra"))
+    parser.add_argument("--ghidra-home", type=Path, default=Path("retrolarium-disassembler/.tools/ghidra"))
     parser.add_argument("--reuse-analysis", action="store_true")
     parser.add_argument("--minimum-source-recall", type=float, default=0)
     args = parser.parse_args()
     if not 0 <= args.minimum_source_recall <= 100:
         parser.error("minimum source recall must be between 0 and 100")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from retrolarium_kit.m68k_overlay import analyze_overlay
+    from retrolarium_disasm.m68k.repair.overlay import analyze_overlay
     data = args.rom.read_bytes()
     base, size, entries = fixed_window_entries(data)
     args.output.mkdir(parents=True, exist_ok=True)
@@ -71,7 +71,7 @@ def main():
     tsv = args.output / "analysis/instructions.tsv"
     if not args.reuse_analysis:
         analyze_overlay(payload, args.output / "analysis", args.ghidra_home,
-                        Path(__file__).resolve().parents[1] / "src/retrolarium_kit/ghidra_scripts",
+                        Path(__file__).resolve().parents[1] / "src/retrolarium_disasm/ghidra/scripts",
                         base_address=base, entry_addresses=tuple(sorted(entries)))
     actual, text = generated_instructions(tsv, data[:size], base)
     emitted, project = emit_overlay_project(

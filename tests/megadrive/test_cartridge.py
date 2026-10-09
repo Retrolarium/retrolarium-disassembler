@@ -18,7 +18,7 @@ from retrolarium_core.megadrive import (
     rom_offset_to_m68k,
     stamp_cartridge_checksum,
 )
-from retrolarium_kit.facts import (
+from retrolarium_disasm.facts import (
     FactError,
     load_megadrive_ghidra_facts,
     parse_address,

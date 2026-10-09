@@ -4,7 +4,7 @@ import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.m68k_constructor_records import (
+from retrolarium_disasm.m68k.records.constructor import (
     discover_constructor_record_tables as discover,
     discover_constructor_record_seeds,
     _preserved_registers as preserved_registers,
@@ -14,7 +14,7 @@ from retrolarium_kit.m68k_constructor_records import (
 from test_megadrive_z80 import fact
 from test_megadrive import cartridge
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.facts import InstructionReference
+from retrolarium_disasm.facts import InstructionReference
 
 def instruction(*args, **kwargs):
     address, mnemonic, *rest = args
@@ -226,7 +226,7 @@ class ConstructorRecordTests(unittest.TestCase):
 
     def test_exceptions_or_stack_bank_changes_block_each_proof_walk(self):
         image, original = fixture()
-        from retrolarium_kit.m68k_constructor_records import (
+        from retrolarium_disasm.m68k.records.constructor import (
             _callback_parameter_stores, _fixed_pool_at,
         )
         for opcode, operands in (

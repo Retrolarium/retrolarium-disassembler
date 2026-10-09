@@ -12,10 +12,9 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.build_toolchains import materialize_build_toolchain
-from retrolarium_kit.facts import InstructionReference
+from retrolarium_disasm.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.megadrive_emit import (
+from retrolarium_disasm.megadrive.emit import (
     MegaDriveEmitError,
     _asm_instruction,
     _pointer_lines,
@@ -23,21 +22,26 @@ from retrolarium_kit.megadrive_emit import (
     _emit_z80_source,
     emit_project,
 )
-from retrolarium_kit.megadrive_pointers import (
+from retrolarium_disasm.megadrive.pointers import (
     PointerCandidate,
     PointerEntry,
     detect_pointer_candidates,
 )
-from retrolarium_kit.megadrive_symbols import TechnicalSymbol, generate_symbols
-from retrolarium_kit.megadrive_z80 import CrossCpuCopy
-from retrolarium_kit.project import _asl_build
-from retrolarium_kit.z80_dispatch import Z80DispatchTable
+from retrolarium_disasm.megadrive.symbols import TechnicalSymbol, generate_symbols
+from retrolarium_disasm.megadrive.z80 import CrossCpuCopy
+from retrolarium_disasm.z80.dispatch import Z80DispatchTable
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 from test_megadrive_pointers import word_dispatch_image
+from helpers import KIT, needs_kit
+
+if KIT:
+    from retrolarium_kit.core.build_toolchains import materialize_build_toolchain
+    from retrolarium_kit.core.project import _asl_build
 
 
 class MegaDriveEmitTests(unittest.TestCase):
+    @needs_kit
     def test_overlapping_z80_sources_build_complete_programs_emit_shared_byte_once(self):
         from retrolarium_core.contracts import _validate_megadrive_assets, ContractError
         data = bytearray(cartridge(size=0x600))
@@ -92,6 +96,7 @@ class MegaDriveEmitTests(unittest.TestCase):
                               raw=bytes.fromhex("14 FC 05 16"), length=4)
         self.assertIsNone(_asm_instruction(instruction))
 
+    @needs_kit
     def test_nonzero_z80_payload_rebuilds_without_ram_address_prefix(self):
         payload = bytes.fromhex("C3 00 1C C9")
         instruction = replace(fact(0, "JP", "0x1c00"), cpu_address=0x1C00,
@@ -531,6 +536,7 @@ class MegaDriveEmitTests(unittest.TestCase):
                 )
                 self.assertEqual(expected, _asm_instruction(instruction))
 
+    @needs_kit
     def test_ff_tail_uses_org_and_rebuilds_exactly(self) -> None:
         data = bytearray(cartridge(size=0x800))
         data[0x300:] = b"\xFF" * (len(data) - 0x300)
@@ -576,6 +582,7 @@ class MegaDriveEmitTests(unittest.TestCase):
             )
             self.assertEqual(0, result.raw_bytes)
 
+    @needs_kit
     def test_emits_modules_relocatable_tables_and_z80_include(self) -> None:
         data = bytearray(cartridge())
         targets = (0x200, 0x206, 0x23C, 0x23E)

@@ -5,12 +5,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from retrolarium_kit import m68k_overlay as overlay
-from retrolarium_kit.ghidra import GhidraArtifacts
-from retrolarium_kit.m68k_probe_requests import M68kProbeRequests
+from retrolarium_disasm.m68k.repair import overlay
+from retrolarium_disasm.ghidra import GhidraArtifacts
+from retrolarium_disasm.m68k.repair.probe_requests import M68kProbeRequests
 from test_m68k_overlay import HEADER, row
 from test_megadrive_z80 import fact
-from retrolarium_kit.facts import InstructionReference
+from retrolarium_disasm.facts import InstructionReference
 
 
 class OverlayProbeTests(unittest.TestCase):

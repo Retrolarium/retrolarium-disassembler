@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import hashlib
 
 from retrolarium_core.snes import SnesError, SnesImage, snes_to_rom_offset
-from retrolarium_kit.snes_analysis import AnalysisResult, Instruction
+from retrolarium_disasm.snes.analysis import AnalysisResult, Instruction
 
 
 APU_IO0 = 0x2140

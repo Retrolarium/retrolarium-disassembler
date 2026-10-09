@@ -56,10 +56,10 @@ invariants and the exact rebuilt artifact.
 ## Commands and operations
 
 ```powershell
-python retrolarium-kit/rltool.py snes inspect game.sfc
-python retrolarium-kit/rltool.py snes analyze game.sfc `
+python retrolarium-disassembler/rldisasm.py snes inspect game.sfc
+python retrolarium-disassembler/rldisasm.py snes analyze game.sfc `
   --output retrolarium-kit/build/game-analysis
-python retrolarium-kit/rltool.py snes disassemble game.sfc `
+python retrolarium-disassembler/rldisasm.py snes disassemble game.sfc `
   --output retrolarium-kit/build/game-disassembly
 python retrolarium-kit/rltool.py project validate `
   retrolarium-kit/build/game-disassembly/retrolarium-project.json

@@ -6,11 +6,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" 
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.megadrive_emit import _asm_instruction
-from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.m68k_abstract import OrphanCandidate
-from retrolarium_kit.m68k_packed import _complete_cfg
-from retrolarium_kit.m68k_finite_records import (
+from retrolarium_disasm.megadrive.emit import _asm_instruction
+from retrolarium_disasm.facts import InstructionReference
+from retrolarium_disasm.m68k.abstract import OrphanCandidate
+from retrolarium_disasm.m68k.records.packed import _complete_cfg
+from retrolarium_disasm.m68k.records.finite import (
  _discover_models as discover, Engine, State, Rejected,
  discover_finite_record_callback_seeds, put_pointer,
 )

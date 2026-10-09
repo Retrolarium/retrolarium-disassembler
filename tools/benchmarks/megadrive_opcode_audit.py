@@ -17,9 +17,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.facts import load_megadrive_ghidra_facts
+from retrolarium_disasm.facts import load_megadrive_ghidra_facts
 from retrolarium_core.megadrive import load_megadrive
-from retrolarium_kit.m68k_abstract import discover_packed_orphan_candidates
+from retrolarium_disasm.m68k.abstract import discover_packed_orphan_candidates
 from megadrive_reference_benchmark import _group_missed, _modules
 from source_benchmark import instruction_quality, read_listing, same_instruction
 

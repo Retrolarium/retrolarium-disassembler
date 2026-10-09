@@ -5,11 +5,11 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.m68k_dispatch_closure import make_dispatch_closure_validator
-from retrolarium_kit.m68k_dispatch_witness import make_dispatch_handler_validator
+from retrolarium_disasm.facts import InstructionReference
+from retrolarium_disasm.m68k.dispatch.closure import make_dispatch_closure_validator
+from retrolarium_disasm.m68k.dispatch.witness import make_dispatch_handler_validator
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.megadrive_emit import _asm_instruction
+from retrolarium_disasm.megadrive.emit import _asm_instruction
 from test_megadrive import cartridge
 from test_m68k_unused import instruction
 
@@ -141,7 +141,7 @@ class DispatchClosureTests(unittest.TestCase):
         self.assertFalse(self.validator()(0x400))
 
     def test_supervisor_immediate_is_only_a_normal_path_code_witness(self):
-        from retrolarium_kit.m68k_constructor_records import _unsupported_frame_or_exception
+        from retrolarium_disasm.m68k.records.constructor import _unsupported_frame_or_exception
         self.decoded.pop(0x306)
         self.decoded[0x304] = call(0x304, 0x900)
         self.decoded[0x30a] = instruction(0x30a, '4e75', 'RTS', flow='TERMINATOR')
@@ -163,7 +163,7 @@ class DispatchClosureTests(unittest.TestCase):
         self.assertFalse(self.validator()(0x400))
 
     def test_supervisor_witness_rejects_mismatching_metadata(self):
-        from retrolarium_kit.m68k_dispatch_closure import _supervisor_immediate_in_code
+        from retrolarium_disasm.m68k.dispatch.closure import _supervisor_immediate_in_code
         fact = instruction(0x300, '46fc2700', 'MOVE', '#0x2700|SR')
         self.assertTrue(_supervisor_immediate_in_code(fact))
         for changed in (replace(fact, operands='#0x2000|SR'),

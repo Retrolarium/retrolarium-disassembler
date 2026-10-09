@@ -276,8 +276,9 @@ def benchmark(
     only: frozenset[str] = frozenset(),
 ) -> dict:
     manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from retrolarium_kit.project import build_project, verify_project
+    # The kit builds and verifies the generated projects.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-kit" / "src"))
+    from retrolarium_kit.core.project import build_project, verify_project
     reports = []
     for unit in manifest["units"]:
         if not unit.get("matching_original_roms"):

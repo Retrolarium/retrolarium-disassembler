@@ -12,21 +12,22 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
 
-from retrolarium_kit.build_toolchains import materialize_build_toolchain
-from retrolarium_kit.ca65 import emit_project, prg_source
-from retrolarium_kit import pipeline
-from retrolarium_kit.facts import load_ghidra_facts
-from retrolarium_kit.ghidra import GhidraArtifacts
+from retrolarium_disasm.nes.ca65 import emit_project, prg_source
+from retrolarium_disasm.nes import pipeline
+from retrolarium_disasm.facts import load_ghidra_facts
+from retrolarium_disasm.ghidra import GhidraArtifacts
 from retrolarium_core.ines import InesError, parse_ines
-from retrolarium_kit.pipeline import (
-    PipelineError,
+from retrolarium_disasm.nes.pipeline import (
     asset_manifest,
     disassemble_nrom,
-    verify_exact,
 )
-from retrolarium_kit.pointers import detect_banked_pointer_candidates
-from retrolarium_kit.project import _ca65_build
-from helpers import nrom16_image, write_facts
+from retrolarium_disasm.verify import VerificationError, verify_exact
+from retrolarium_disasm.nes.pointers import detect_banked_pointer_candidates
+from helpers import KIT, needs_kit, nrom16_image, write_facts
+
+if KIT:
+    from retrolarium_kit.core.build_toolchains import materialize_build_toolchain
+    from retrolarium_kit.core.project import _ca65_build
 
 
 class DisassemblyTests(unittest.TestCase):
@@ -133,6 +134,7 @@ class DisassemblyTests(unittest.TestCase):
         self.assertIn("NmiVector:", source)
         self.assertIn(".addr Func_B00_C000", source)
 
+    @needs_kit
     def test_project_externalizes_container_and_chr(self) -> None:
         image = parse_ines(nrom16_image())
         with tempfile.TemporaryDirectory() as directory:
@@ -298,7 +300,7 @@ class DisassemblyTests(unittest.TestCase):
             right = Path(directory) / "right.nes"
             left.write_bytes(nrom16_image())
             right.write_bytes(nrom16_image()[:-1] + b"x")
-            with self.assertRaises(PipelineError):
+            with self.assertRaises(VerificationError):
                 verify_exact(left, right)
 
 

@@ -11,7 +11,7 @@ import unittest
 
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT / "src"))
-from retrolarium_kit.ghidra import find_headless
+from retrolarium_disasm.ghidra import find_headless
 
 
 @unittest.skipUnless(os.environ.get("RETROLARIUM_RUN_GHIDRA_TESTS") == "1", "real Ghidra smoke is opt-in")
@@ -38,7 +38,7 @@ class PlannedSeedRestoreIntegrationTests(unittest.TestCase):
                                 0x2E0, 0x300, 0x343, 0x360, 0x380, 0x382, 0x384)) + "\n")
             scripts = root / "scripts"
             scripts.mkdir()
-            shutil.copy2(KIT / "src/retrolarium_kit/ghidra_scripts/RestoreM68kPlannedSeeds.java", scripts)
+            shutil.copy2(KIT / "src/retrolarium_disasm/ghidra/scripts/RestoreM68kPlannedSeeds.java", scripts)
             shutil.copy2(KIT / "tests/ghidra_scripts/VerifyM68kPlannedSeeds.java", scripts)
             command = [str(find_headless(ghidra)), str(root), "restore_smoke", "-import", str(rom),
                        "-loader", "BinaryLoader", "-loader-blockName", "ROM", "-loader-baseAddr", "0",

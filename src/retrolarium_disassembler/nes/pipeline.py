@@ -8,10 +8,10 @@ import json
 from pathlib import Path
 import subprocess
 
-from retrolarium_kit.ca65 import emit_project
+from retrolarium_disasm.nes.ca65 import emit_project
 from retrolarium_core.contracts import validate_disassembly_manifest
-from retrolarium_kit.facts import InstructionFact, load_ghidra_facts
-from retrolarium_kit.ghidra import GhidraArtifacts, _run_analysis, run_nes_analysis
+from retrolarium_disasm.facts import InstructionFact, load_ghidra_facts
+from retrolarium_disasm.ghidra import GhidraArtifacts, _run_analysis, run_nes_analysis
 from retrolarium_core.ines import (
     InesImage,
     PrgAnalysisTarget,
@@ -22,14 +22,15 @@ from retrolarium_core.ines import (
     nrom_projections,
     prg_analysis_targets,
 )
-from retrolarium_kit.pointers import (
+from retrolarium_disasm.nes.pointers import (
     PointerCandidate,
     accepted_code_entry_tables,
     accepted_pointer_tables,
     detect_banked_pointer_candidates,
     write_pointer_report,
 )
-from retrolarium_kit.toolchain import toolchain_status
+from retrolarium_disasm.toolchain import toolchain_status
+from retrolarium_disasm.verify import verify_exact
 
 
 class PipelineError(RuntimeError):
@@ -42,36 +43,6 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             checksum.update(block)
     return checksum.hexdigest()
-
-
-def first_difference(left: bytes, right: bytes) -> int | None:
-    for index, (first, second) in enumerate(zip(left, right)):
-        if first != second:
-            return index
-    if len(left) != len(right):
-        return min(len(left), len(right))
-    return None
-
-
-def verify_exact(original: Path, rebuilt: Path) -> dict[str, object]:
-    original_bytes = original.read_bytes()
-    rebuilt_bytes = rebuilt.read_bytes()
-    difference = first_difference(original_bytes, rebuilt_bytes)
-    result: dict[str, object] = {
-        "schema_version": 1,
-        "status": "exact" if difference is None else "mismatch",
-        "original_size": len(original_bytes),
-        "rebuilt_size": len(rebuilt_bytes),
-        "original_sha256": hashlib.sha256(original_bytes).hexdigest(),
-        "rebuilt_sha256": hashlib.sha256(rebuilt_bytes).hexdigest(),
-        "first_difference": difference,
-    }
-    if difference is not None:
-        raise PipelineError(
-            f"rebuilt image differs at file offset {difference:#x}: "
-            f"{result['original_sha256']} != {result['rebuilt_sha256']}"
-        )
-    return result
 
 
 def build_in_container(project: Path, image: str) -> Path:
@@ -218,7 +189,7 @@ MAX_ENTRY_SEEDS_PER_BANK = 256
 
 
 def _script_directory() -> Path:
-    return Path(__file__).resolve().parent / "ghidra_scripts"
+    return Path(__file__).resolve().parents[1] / "ghidra" / "scripts"
 
 
 def _run_seeded_nes_analysis(

@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import test_ghidra
-from retrolarium_kit.ghidra import GhidraError, run_megadrive_analysis, run_m68k_overlay_analysis
+from retrolarium_disasm.ghidra import GhidraError, run_megadrive_analysis, run_m68k_overlay_analysis
 
 
 def complete(command, **kwargs):
@@ -28,7 +28,7 @@ class GhidraFallthroughTests(unittest.TestCase):
             returns.write_text('000200 000206\n')
             repairs = root / 'fallthrough-repairs.tsv'
             repairs.write_text('REPAIR\t000300\t7001\t000302\t4e75\t-\n')
-            with patch('retrolarium_kit.ghidra.subprocess.run',side_effect=complete) as backend:
+            with patch('retrolarium_disasm.ghidra.subprocess.run',side_effect=complete) as backend:
                 run_megadrive_analysis(image,root/'out',home,scripts,
                                       seed_plan=seeds,fallthrough_repairs=repairs)
             command = backend.call_args.args[0]
@@ -54,7 +54,7 @@ class GhidraFallthroughTests(unittest.TestCase):
             image, home, scripts = test_ghidra.GhidraBackendTests.fake_layout(root)
             repairs = root / 'fallthrough-repairs.tsv'
             repairs.write_text('REPAIR\tFF2000\t7001\tFF2002\t4e75\t-\n')
-            with patch('retrolarium_kit.ghidra.subprocess.run',side_effect=complete) as backend:
+            with patch('retrolarium_disasm.ghidra.subprocess.run',side_effect=complete) as backend:
                 run_m68k_overlay_analysis(image,root/'out',home,scripts,base_address=0xFF1F00,
                                           entry_addresses=(0xFF2000,),fallthrough_repairs=repairs)
             command = backend.call_args.args[0]
@@ -75,7 +75,7 @@ class GhidraFallthroughTests(unittest.TestCase):
             seeds.write_text('000200\n')
             for overlay in (False,True):
                 with self.subTest(overlay=overlay):
-                    with patch('retrolarium_kit.ghidra._run_analysis') as backend:
+                    with patch('retrolarium_disasm.ghidra._run_analysis') as backend:
                         with self.assertRaisesRegex(GhidraError,'fallthrough repair plan not found'):
                             if overlay:
                                 run_m68k_overlay_analysis(root/'game.bin',root/'out',root,root,

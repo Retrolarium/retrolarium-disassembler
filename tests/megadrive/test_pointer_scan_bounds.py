@@ -4,10 +4,10 @@ from dataclasses import replace
 from unittest.mock import patch
 import unittest
 
-from retrolarium_kit import megadrive_pointers as pointers
-from retrolarium_kit import m68k_seeds as seeds
-from retrolarium_kit.facts import InstructionReference
-from retrolarium_kit.m68k_overlay import address_view
+from retrolarium_disasm.megadrive import pointers
+from retrolarium_disasm.m68k import seeds
+from retrolarium_disasm.facts import InstructionReference
+from retrolarium_disasm.m68k.repair.overlay import address_view
 from test_megadrive_z80 import fact
 
 

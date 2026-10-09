@@ -4,10 +4,10 @@ from dataclasses import replace
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
-from retrolarium_kit.m68k_register_callbacks import discover_register_callback_seeds
-from retrolarium_kit.m68k_returns import discover_returning_call_seeds
+from retrolarium_disasm.m68k.callbacks.register import discover_register_callback_seeds
+from retrolarium_disasm.m68k.returns import discover_returning_call_seeds
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_kit.facts import InstructionReference
+from retrolarium_disasm.facts import InstructionReference
 from test_m68k_unused import instruction
 from test_megadrive import cartridge
 
