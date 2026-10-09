@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
-import re
 
 from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disasm.m68k.instructions import pc_displacement_target, pc_indexed_target
 from retrolarium_core.megadrive import MegaDriveImage
 from retrolarium_disasm.megadrive.pointers import PointerCandidate
 from retrolarium_disasm.megadrive.structures import (
@@ -40,61 +40,6 @@ class TechnicalSymbol:
             "aliases": list(self.aliases),
             "evidence": list(self.evidence),
         }
-
-
-def pc_indexed_target(fact: InstructionFact) -> tuple[int, int, str, str] | None:
-    """Decode and validate a 68000 brief indexed PC-relative operand."""
-    if len(fact.raw) < 4:
-        return None
-    source = fact.operands.split("|", 1)[0]
-    operand = re.fullmatch(
-        r"\(0x([0-9a-f]+),PC,([DA])([0-7])([wl]?)\*0x1\)", source, re.I
-    )
-    if operand is None:
-        return None
-    extension = int.from_bytes(fact.raw[2:4], "big")
-    if extension & 0x0700:  # Scale/full-extension bits require a 68020+.
-        return None
-    kind = "A" if extension & 0x8000 else "D"
-    register = (extension >> 12) & 7
-    size = "l" if extension & 0x0800 else "w"
-    displacement = int.from_bytes(fact.raw[3:4], "big", signed=True)
-    target = (fact.cpu_address + 2 + displacement) & 0xFFFFFF
-    if (int(operand.group(1), 16) != target
-            or operand.group(2).upper() != kind
-            or int(operand.group(3)) != register
-            or (operand.group(4).lower() or "l") != size):
-        return None
-    return target, register, kind.lower(), size
-
-
-def pc_displacement_target(fact: InstructionFact) -> int | None:
-    """Decode and validate a 68000 d16(PC) source operand."""
-    extension_offset = 4 if fact.mnemonic.upper().startswith("MOVEM.") else 2
-    if len(fact.raw) < extension_offset + 2:
-        return None
-    source = fact.operands.split("|", 1)[0]
-    operand = re.fullmatch(r"\((-?0x[0-9a-f]+),PC\)", source, re.I)
-    if operand is None:
-        return None
-    displacement = int.from_bytes(
-        fact.raw[extension_offset:extension_offset + 2], "big", signed=True
-    )
-    if displacement != int(operand.group(1), 0):
-        return None
-    return (fact.cpu_address + extension_offset + displacement) & 0xFFFFFF
-
-
-def pc_indexed_jsr_target(fact: InstructionFact) -> tuple[int, int] | None:
-    """Decode a 68000 JSR (d8,PC,Dn.W) and validate Ghidra's target."""
-    indexed = pc_indexed_target(fact)
-    if (fact.mnemonic.upper() != "JSR" or fact.flow_type != "COMPUTED_CALL"
-            or fact.raw[:2] != b"\x4e\xbb" or indexed is None):
-        return None
-    target, register, kind, size = indexed
-    if kind != "d" or size != "w":
-        return None
-    return target, register
 
 
 def _vector_alias(name: str, address: int) -> str:

@@ -4,8 +4,8 @@ import re
 
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_disasm.m68k.frames.call_frame import _STACK
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
-from retrolarium_disasm.megadrive.pointers import _instruction_sets, _absolute_referenced_addresses
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import instruction_sets, absolute_referenced_addresses
 
 
 def _rom_lea(fact, register):
@@ -109,8 +109,8 @@ def _returned_bases(image, facts, entry, register, occupied):
 def discover_ram_record_dispatch_seeds(image, facts):
     facts = {f.cpu_address: f for f in facts.values()}
     ends = {f.cpu_address + f.length: f for f in facts.values()}
-    occupied, interiors, starts = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, starts = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     origins = {}
     # The constructor saves the requested register immediately after a direct
     # machine call whose complete return paths establish the ROM bases.

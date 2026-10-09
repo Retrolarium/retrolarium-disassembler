@@ -6,8 +6,8 @@ import re
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 from retrolarium_disasm.m68k.abstract import _register_list
 
 
@@ -22,8 +22,8 @@ def _lea_base(fact, register):
 
 
 def _targets(image, facts, table, width):
-    occupied, interiors, starts = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, starts = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     origin, data = image.header.rom_start, image.data
     start = table - origin
     limit = min(len(data), start + width * 1024)

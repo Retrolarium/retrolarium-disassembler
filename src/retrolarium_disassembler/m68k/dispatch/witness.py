@@ -11,7 +11,7 @@ from retrolarium_disasm.m68k.dispatch.ram import discover_inline_trap_calls
 from retrolarium_disasm.m68k.frames.call_frame import make_trap_call_frame_validator
 from retrolarium_disasm.m68k.dispatch.closure import logical_image, make_dispatch_closure_validator
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
 
 
 def make_dispatch_handler_validator(
@@ -36,7 +36,7 @@ def make_dispatch_handler_validator(
     starts = sorted(known)
     origin, rom_end = image.header.rom_start, image.header.rom_start + len(image.data)
     byte_image = logical_image(image)
-    data = tuple(sorted(_absolute_referenced_addresses(known)))
+    data = tuple(sorted(absolute_referenced_addresses(known)))
     # Only trap sites may come from speculative decoding. Every instruction
     # proving the exception handler's inline-argument ABI must be rooted.
     trap_sites = {a: f for a, f in decoded.items() if f.mnemonic.upper() == "TRAP"}

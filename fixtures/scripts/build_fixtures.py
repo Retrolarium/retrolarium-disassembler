@@ -17,7 +17,6 @@ from typing import Any, Iterable
 
 
 FIXTURES_ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY_ROOT = FIXTURES_ROOT.parents[1]
 CONFIG_PATH = FIXTURES_ROOT / "projects.json"
 LOCK_PATH = FIXTURES_ROOT / "upstreams.lock.json"
 STATE_PATH = FIXTURES_ROOT / ".state" / "build-results.json"
@@ -380,12 +379,18 @@ def prepare_workspace(project: dict[str, Any], source: Path) -> Path:
     if workspace.exists():
         shutil.rmtree(workspace)
     shutil.copytree(source, workspace, ignore=shutil.ignore_patterns(".git"))
-    workspace_directory = workspace.relative_to(REPOSITORY_ROOT).as_posix()
+    # git apply takes --directory relative to the top of the checkout the
+    # fixtures live in (the disassembler's repository, or a larger one).
+    repository_root = Path(subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=FIXTURES_ROOT,
+        check=True, capture_output=True, text=True,
+    ).stdout.strip())
+    workspace_directory = workspace.resolve().relative_to(repository_root.resolve()).as_posix()
     for relative_patch in project.get("patches", []):
         patch = within(FIXTURES_ROOT, relative_patch)
         run(
             ["git", "apply", f"--directory={workspace_directory}", str(patch)],
-            cwd=REPOSITORY_ROOT,
+            cwd=repository_root,
         )
     for adapter in project.get("adapters", []):
         if adapter == "asm68k-clownassembler":

@@ -11,8 +11,8 @@ import re
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 
 
 ABS = re.compile(r"\((-?0x[0-9a-f]+)\)\.[wl]", re.I)
@@ -73,7 +73,7 @@ def discover_word_ram_callback_seeds(
         slots.setdefault(slot, {})[load.cpu_address] = call.cpu_address
     if not slots:
         return ()
-    _, interiors, _ = _instruction_sets(facts)
+    _, interiors, _ = instruction_sets(facts)
     writers = {slot: [] for slot in slots}
     rejected = set()
     for fact in facts.values():
@@ -169,8 +169,8 @@ def discover_nested_word_resolver_seeds(
         if table is None:
             continue
         if interiors is None:
-            _, interiors, starts = _instruction_sets(facts)
-            boundaries = _absolute_referenced_addresses(facts)
+            _, interiors, starts = instruction_sets(facts)
+            boundaries = absolute_referenced_addresses(facts)
         secondary = []
         limit = min(len(data), table - origin + 4 * 256)
         for at in range(table - origin, limit, 4):

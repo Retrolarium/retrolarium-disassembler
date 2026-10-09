@@ -12,7 +12,7 @@ from typing import Callable
 
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
 
 
 MAX_UNUSED_GAP = 2048
@@ -94,7 +94,7 @@ def validate_unused_fragment(
         if base in {"MOVEM", "LINK", "UNLK"} and (
                 "SP" in fact.operands.upper() or "A7" in fact.operands.upper()):
             signatures.add("stack_frame")
-        if any(start <= address < end for address in _absolute_referenced_addresses({0: fact})):
+        if any(start <= address < end for address in absolute_referenced_addresses({0: fact})):
             return "fragment_read_as_data", ()
         flow = fact.flow_type.upper()
         targets = {target & 0xFFFFFF for target in fact.flows}
@@ -167,7 +167,7 @@ def discover_validated_unused_candidates(
     known = {fact.cpu_address: fact for fact in known.values()}
     decoded = {fact.cpu_address: fact for fact in decoded.values()}
     addresses = sorted(known)
-    data_addresses = _absolute_referenced_addresses(known)
+    data_addresses = absolute_referenced_addresses(known)
     accepted = []
     rejected = []
     data_sorted = sorted(data_addresses)

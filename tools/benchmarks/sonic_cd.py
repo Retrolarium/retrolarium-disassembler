@@ -245,7 +245,7 @@ def main() -> None:
     parser.add_argument("--disc-files", type=Path, default=Path("build/sonic-cd/disc-files"))
     parser.add_argument("--corpus", type=Path, default=Path("build/sonic-references"))
     parser.add_argument("--output", type=Path, default=Path("build/sonic-cd/comparison"))
-    parser.add_argument("--ghidra-home", type=Path, default=Path("retrolarium-disassembler/.tools/ghidra"))
+    parser.add_argument("--ghidra-home", type=Path, default=Path(__file__).resolve().parents[1] / ".tools" / "ghidra")
     parser.add_argument("--unit", action="append", help="limit to a reference unit name; repeat as needed")
     parser.add_argument("--report-only", action="store_true",
                         help="rebuild summary from existing per-module comparisons")

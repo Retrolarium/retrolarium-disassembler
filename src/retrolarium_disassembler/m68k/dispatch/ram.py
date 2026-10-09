@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 
 
 @dataclass(frozen=True)
@@ -90,8 +90,8 @@ def discover_ram_stub_dispatch_seeds(
 ) -> tuple[DecoderSeed, ...]:
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
-    occupied, interiors, starts = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, starts = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     result = {}
     for load in facts.values():
         match = re.fullmatch(r"\(0x0,(A[0-6]),D[0-7]w\*0x1\)\|(A[0-6])", load.operands, re.I)

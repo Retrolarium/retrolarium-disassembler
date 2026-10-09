@@ -17,8 +17,8 @@ from retrolarium_core.megadrive import MegaDriveImage
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_disasm.m68k.abstract import _register_name, _register_list
 from retrolarium_disasm.m68k.callbacks.abi import _executed_fields
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 
 
 def _nonzero_immediate_word_division(fact):
@@ -331,8 +331,8 @@ def discover_constructor_record_tables(
     if not fields or not pools:
         return ()
     ends = {f.cpu_address + f.length: f for f in rooted.values()}
-    occupied, interiors, _ = _instruction_sets(facts)
-    data_addresses = _absolute_referenced_addresses(rooted)
+    occupied, interiors, _ = instruction_sets(facts)
+    data_addresses = absolute_referenced_addresses(rooted)
     cache, results = {}, []
     for read in rooted.values():
         load = re.fullmatch(r'\((A[0-6])\)\+\|(A[0-6])', read.operands, re.I)
@@ -518,9 +518,9 @@ def discover_tail_allocator_callback_seeds(
     fields = {field for _, field in pools}
     # The LEA that names the callback is address construction, not a data
     # read. Other absolute data uses still prevent promotion of the target.
-    data = _absolute_referenced_addresses({a: f for a, f in rooted.items()
+    data = absolute_referenced_addresses({a: f for a, f in rooted.items()
                                           if f.mnemonic.upper() != 'LEA'})
-    _, interiors, _ = _instruction_sets(facts)
+    _, interiors, _ = instruction_sets(facts)
     stores_cache, pool_cache, seeds = {}, {}, {}
     for lea in rooted.values():
         if lea.mnemonic.upper() != 'LEA' or lea.flow_type.upper() != 'FALL_THROUGH':

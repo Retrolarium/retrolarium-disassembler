@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from retrolarium_disasm.m68k.abstract import _register_list
 from retrolarium_disasm.m68k.records.constructor import _unsupported_frame_or_exception
 from retrolarium_disasm.megadrive.emit import _asm_instruction
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
 
 
 def _intersects(start, end, ranges):
@@ -42,7 +42,7 @@ def _direct_data_ranges(image, facts):
         # Register, immediate and inferred (An) references are not direct ROM
         # reads. In particular, inferred values cannot turn operand bytes into
         # protected objects. MOVEM reads protect every register's scalar.
-        for address in _absolute_referenced_addresses({fact.cpu_address: fact}):
+        for address in absolute_referenced_addresses({fact.cpu_address: fact}):
             address &= 0xffffff
             if origin <= address < origin + len(image.data):
                 ranges.add((address, address + width))

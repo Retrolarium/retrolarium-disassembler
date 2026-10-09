@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from retrolarium_disasm.m68k.abstract import OrphanCandidate, _register_list
 from retrolarium_disasm.m68k.records.constructor import _unsupported_frame_or_exception
 from retrolarium_disasm.m68k.records.packed import _complete_cfg
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
 
 
 def logical_image(image):
@@ -178,7 +178,7 @@ def make_dispatch_closure_validator(image, known, decoded, *, protected_ranges=(
     origin, rom_end = image.header.rom_start, image.header.rom_start + len(image.data)
     byte_image = logical_image(image)
     occupied = {byte for f in known.values() for byte in range(f.cpu_address, f.cpu_address + f.length)}
-    data = tuple(sorted(_absolute_referenced_addresses(known)))
+    data = tuple(sorted(absolute_referenced_addresses(known)))
     completed, depths, checked = {}, {}, {}
     inline_traps = dict(inline_traps or {})
     longest_span = max((max(f.length, inline_traps[a].continuation - a

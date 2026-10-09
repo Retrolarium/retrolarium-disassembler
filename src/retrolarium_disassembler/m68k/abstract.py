@@ -10,7 +10,7 @@ import re
 
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.symbols import pc_indexed_target
+from retrolarium_disasm.m68k.instructions import pc_indexed_target
 
 
 MAX_SMALL_SET = 32
@@ -892,10 +892,10 @@ def discover_object_field_handler_candidates(
     RAM list head, so overloaded offsets in unrelated structures do not match.
     """
     from retrolarium_disasm.m68k.dispatch.record import executed_stack_fields
-    from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
+    from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
     stack_fields = executed_stack_fields(facts)
-    _, interiors, _ = _instruction_sets(facts)
-    data_addresses = _absolute_referenced_addresses(execution_facts or {})
+    _, interiors, _ = instruction_sets(facts)
+    data_addresses = absolute_referenced_addresses(execution_facts or {})
     linked = _linked_list_callback_assignments(image, {
         fact.cpu_address: fact for fact in execution_facts.values()
     }) if execution_facts is not None else {}

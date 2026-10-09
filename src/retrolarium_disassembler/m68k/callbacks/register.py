@@ -4,8 +4,8 @@ from __future__ import annotations
 import re
 
 from retrolarium_disasm.m68k.seeds import DecoderSeed
-from retrolarium_disasm.megadrive.pointers import _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 from retrolarium_disasm.m68k.abstract import _register_list
 
 
@@ -54,7 +54,7 @@ def discover_register_callback_seeds(image, facts, *, execution_facts=None):
     """
     execution = facts if execution_facts is None else execution_facts
     rooted = {f.cpu_address: f for f in execution.values()}
-    _, interiors, _ = _instruction_sets(facts)
+    _, interiors, _ = instruction_sets(facts)
     reads = {r.address & 0xFFFFFF for f in execution.values()
              if f.mnemonic.upper() != 'LEA' for r in f.references
              if r.reference_type.upper() == 'READ'

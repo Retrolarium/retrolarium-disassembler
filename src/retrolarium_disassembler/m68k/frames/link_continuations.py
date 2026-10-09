@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_disasm.m68k.abstract import _register_use
 

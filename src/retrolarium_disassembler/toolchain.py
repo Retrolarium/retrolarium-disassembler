@@ -70,7 +70,7 @@ def download(expected: dict[str, object], cache: Path) -> Path:
         return destination
     temporary = destination.with_suffix(destination.suffix + ".part")
     request = urllib.request.Request(
-        str(expected["url"]), headers={"User-Agent": "retrolarium-kit/0.1"}
+        str(expected["url"]), headers={"User-Agent": "retrolarium-disassembler/0.1"}
     )
     try:
         with urllib.request.urlopen(request) as response, temporary.open("wb") as output:

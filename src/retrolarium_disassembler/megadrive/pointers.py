@@ -12,6 +12,7 @@ import sys
 from typing import Callable
 
 from retrolarium_disasm.facts import InstructionFact
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
 from retrolarium_core.megadrive import MegaDriveImage
 from retrolarium_disasm.m68k.seeds import (
     DecoderSeed,
@@ -78,21 +79,6 @@ class PointerCandidate:
             "evidence": list(self.evidence),
             "contradictions": list(self.contradictions),
         }
-
-
-def _instruction_sets(
-    facts: dict[int, InstructionFact],
-) -> tuple[set[int], set[int], set[int]]:
-    occupied: set[int] = set()
-    interiors: set[int] = set()
-    starts: set[int] = set()
-    for fact in facts.values():
-        starts.add(fact.cpu_address)
-        occupied.update(range(fact.physical_offset, fact.physical_offset + fact.length))
-        interiors.update(
-            range(fact.physical_offset + 1, fact.physical_offset + fact.length)
-        )
-    return occupied, interiors, starts
 
 
 def _referenced_addresses(facts: dict[int, InstructionFact]) -> set[int]:
@@ -242,7 +228,7 @@ def _absolute_candidates(
     *,
     scan_start: int = 0x200,
 ) -> list[PointerCandidate]:
-    occupied, interiors, instruction_starts = _instruction_sets(facts)
+    occupied, interiors, instruction_starts = instruction_sets(facts)
     referenced = _referenced_addresses(facts)
     indexed_long_reads = _indexed_long_read_addresses(facts)
     candidates: list[PointerCandidate] = []
@@ -297,7 +283,7 @@ def _relative_candidates(
     *,
     scan_start: int = 0x200,
 ) -> list[PointerCandidate]:
-    occupied, interiors, instruction_starts = _instruction_sets(facts)
+    occupied, interiors, instruction_starts = instruction_sets(facts)
     referenced = _referenced_addresses(facts)
     indexed_word_reads = _indexed_word_read_addresses(facts)
     candidates: list[PointerCandidate] = []
@@ -415,7 +401,7 @@ def _ram_trampoline_candidates(
     image: MegaDriveImage, facts: dict[int, InstructionFact], *, scan_start: int = 0x200,
 ) -> tuple[PointerCandidate, ...]:
     """Promote loader-proven counted u16 function tables."""
-    _, interiors, instruction_starts = _instruction_sets(facts)
+    _, interiors, instruction_starts = instruction_sets(facts)
     candidates = []
     for table in discover_ram_trampoline_tables(image, scan_start=scan_start):
         start = table.table_address
@@ -651,7 +637,7 @@ def _animation_candidates(
         return ()
     roots = _animation_roots(facts, fields, absolute_candidates)
     referenced = _referenced_addresses(facts)
-    occupied, _, _ = _instruction_sets(facts)
+    occupied, _, _ = instruction_sets(facts)
     candidates: list[PointerCandidate] = []
     root_boundaries = set(roots) | referenced
     for root in sorted(roots):
@@ -740,9 +726,6 @@ _PC_DATA_WORD_INDEX = re.compile(r",(D[0-7])w\*0x1\)\|A[0-7]$", re.I)
 _PC_WORD_TO_DATA = re.compile(
     r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x1\)\|(D[0-7])w$", re.I
 )
-_PC_INDEXED_OPERAND = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x[1248]\)$", re.I
-)
 _PC_WORD_BRANCH = re.compile(
     r"\((-?0x[0-9a-f]+|-?\d+),PC,(D[0-7])w\*0x1\)$", re.I
 )
@@ -757,58 +740,6 @@ class _DispatchTable:
     seed_kind: str = "indexed_pointer_table_target"
     seed_confidence: str = "high"
     excluded_targets: frozenset[int] = frozenset()
-
-
-_ADDRESS_REGISTER = re.compile(r"\b(?:A[0-7]|SP)\b", re.I)
-
-
-def _absolute_referenced_addresses(
-    facts: dict[int, InstructionFact],
-) -> set[int]:
-    """Return data references that name an absolute address.
-
-    Struct displacements, literal immediates, and backend-inferred effective
-    addresses of ``(An)`` accesses do not identify a separate ROM object.
-    Inspect each referenced operand, so an absolute destination still
-    qualifies when the source is indirect or an immediate scalar.
-    """
-    addresses: set[int] = set()
-    for fact in facts.values():
-        operands = fact.operands.split("|")
-        for reference in fact.references:
-            if not (
-                "DATA" in reference.reference_type
-                or "READ" in reference.reference_type
-            ):
-                continue
-            operand = (
-                operands[reference.operand_index]
-                if 0 <= reference.operand_index < len(operands)
-                else fact.operands
-            )
-            if operand.startswith("#"):
-                # A DATA annotation on #size/#flags does not mean the value
-                # addresses ROM. Dispatch bases are proven separately from
-                # the indexed reader; literal constants alone cannot cut it.
-                continue
-            indexed = _PC_INDEXED_OPERAND.fullmatch(operand)
-            if indexed is not None and int(indexed[1], 0) != reference.address:
-                # Only the base of (d8,PC,Xn) is explicit. Ghidra adds element
-                # addresses from inferred index values; they are not objects.
-                continue
-            if re.fullmatch(r"(?:[DA][0-7][bwl]?|SP|SR|CCR|USP)", operand, re.I):
-                # Ghidra can attach a DATA reference to a register's inferred
-                # scalar value. It is not an explicit address and must not
-                # split a table which happens to contain the same number.
-                continue
-            if (
-                "(" in operand
-                and _ADDRESS_REGISTER.search(operand)
-                and "PC" not in operand.upper()
-            ):
-                continue
-            addresses.add(reference.address)
-    return addresses
 
 
 def _weak_absolute_lea_boundaries(facts: dict[int, InstructionFact]) -> set[int]:
@@ -830,7 +761,7 @@ def _weak_absolute_lea_boundaries(facts: dict[int, InstructionFact]) -> set[int]
                                   operands[1].upper()) != "data"):
             continue
         strong[key] = fact
-    return _absolute_referenced_addresses(facts) - _absolute_referenced_addresses(strong)
+    return absolute_referenced_addresses(facts) - absolute_referenced_addresses(strong)
 
 
 def _index_register_from_data_register(
@@ -926,7 +857,7 @@ def _dispatch_tables(
     callback field is allowed between the load and call. Entries stop at the first odd, unmapped,
     self-referencing, code-overlapping or structurally invalid target.
     """
-    occupied, interiors, instruction_starts = _instruction_sets(facts)
+    occupied, interiors, instruction_starts = instruction_sets(facts)
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     def indirect_call(load: InstructionFact, register: str) -> InstructionFact | None:
         next_fact = by_address.get(load.cpu_address + load.length)
@@ -942,7 +873,7 @@ def _dispatch_tables(
 
     # Tables end at another dispatch base or an absolute data reference;
     # base-register displacements are never treated as boundaries.
-    boundaries = _absolute_referenced_addresses(facts)
+    boundaries = absolute_referenced_addresses(facts)
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
     for fact in facts.values():
         match = (_DISPLACEMENT_ADDRESS.fullmatch(fact.operands)
@@ -1144,7 +1075,7 @@ def _object_callback_tables(
     """
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
     ordered = sorted(facts.values(), key=lambda item: item.cpu_address)
-    occupied, _, starts = _instruction_sets(facts)
+    occupied, _, starts = instruction_sets(facts)
     ram_bases: dict[int, set[int]] = {}
     immediate = re.compile(r"#(0x[0-9a-f]+)\|(D[0-7])$", re.I)
     ram_store = re.compile(r"(D[0-7])\|\((0x[0-9a-f]+)\)\.w$", re.I)
@@ -1252,8 +1183,8 @@ def _word_dispatch_tables(
     a forward code base also bounds the table before the first handler.
     """
     by_address = {fact.cpu_address: fact for fact in facts.values()}
-    occupied, interiors, instruction_starts = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, instruction_starts = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     rom_start = image.header.rom_start
     data = image.data
     tables: dict[int, _DispatchTable] = {}
@@ -1375,8 +1306,8 @@ def _pc_word_dispatch_tables(
     """Recover signed offsets loaded from a table then used by PC-indexed JMP/JSR."""
     from retrolarium_disasm.m68k.abstract import _register_list
     by_address = {fact.cpu_address: fact for fact in facts.values()}
-    occupied, interiors, instruction_starts = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, instruction_starts = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     weak_boundaries = None
     rom_start, data = image.header.rom_start, image.data
     tables = {}

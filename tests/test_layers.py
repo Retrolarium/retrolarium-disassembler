@@ -4,8 +4,9 @@ It builds on retrolarium-core alone: only preset.py, which turns a game into a
 Studio project, reaches for Retrolarium Kit. The shared modules (facts, the
 Ghidra bridge, toolchains, verification, benchmarks) know no platform. Each
 platform package keeps to itself, except that the Mega Drive pipeline drives
-the 68000 passes and the Z80 dispatch, and the 68000 passes use the Mega
-Drive instruction helpers: those three are one console.
+the 68000 passes and the Z80 dispatch. The 68000 passes take their
+instruction helpers from m68k/instructions.py; from megadrive/ they still use
+only the ASM68K instruction text and the dispatch-table detectors, by name.
 """
 from __future__ import annotations
 
@@ -17,6 +18,16 @@ PACKAGE = Path(__file__).resolve().parents[1] / "src" / "retrolarium_disasm"
 PLATFORMS = {"nes", "megadrive", "m68k", "z80", "snes"}
 SHARED = {"facts", "ghidra", "toolchain", "verify", "benchmark"}
 ALLOWED = {("megadrive", "m68k"), ("megadrive", "z80"), ("m68k", "megadrive")}
+# What the 68000 passes may still take from megadrive/ (moving these into
+# m68k/ waits for a second 68000 platform, Sega CD or 32X, to shape them).
+M68K_FROM_MEGADRIVE = {
+    ("retrolarium_disasm.megadrive.emit", "_asm_instruction"),
+    ("retrolarium_disasm.megadrive.pointers", "_pc_word_dispatch_tables"),
+    ("retrolarium_disasm.megadrive.pointers", "_word_dispatch_tables"),
+    ("retrolarium_disasm.megadrive.pointers", "discover_dispatch_table_seeds"),
+    ("retrolarium_disasm.megadrive.pointers", "can_bootstrap_dispatch_seeds"),
+    ("retrolarium_disasm.megadrive.pointers", "detect_pointer_candidates"),
+}
 
 
 def imports() -> list[tuple[tuple[str, ...], tuple[str, ...], int]]:
@@ -60,6 +71,21 @@ class LayerTests(unittest.TestCase):
             if other in {"cli", "preset"} or (
                     other in PLATFORMS and other != module[0] and (module[0], other) not in ALLOWED):
                 offenders.append(f"{'.'.join(module)}:{line} imports {'.'.join(target)}")
+        self.assertEqual([], offenders)
+
+    def test_m68k_takes_only_the_listed_names_from_megadrive(self) -> None:
+        offenders = []
+        for path in sorted((PACKAGE / "m68k").rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Import):
+                    offenders += [f"{path.name}:{node.lineno} imports {alias.name}" for alias in node.names
+                                  if alias.name.startswith("retrolarium_disasm.megadrive")]
+                if not (isinstance(node, ast.ImportFrom) and node.module
+                        and node.module.startswith("retrolarium_disasm.megadrive")):
+                    continue
+                offenders += [f"{path.name}:{node.lineno} imports {node.module}.{alias.name}"
+                              for alias in node.names
+                              if (node.module, alias.name) not in M68K_FROM_MEGADRIVE]
         self.assertEqual([], offenders)
 
     def test_the_package_imports_without_the_kit(self) -> None:

@@ -4,7 +4,7 @@ import re
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_core.megadrive import MegaDriveImage
 from retrolarium_disasm.m68k.seeds import DecoderSeed
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
 
 
 _LOAD = re.compile(r"\((-?0x[0-9a-f]+),(A[0-6]),(D[0-7])w\*0x1\)\|(A[0-6])", re.I)
@@ -44,8 +44,8 @@ def discover_dense_absolute_jump_seeds(image: MegaDriveImage, *, scan_start: int
 def discover_register_indexed_dispatch_seeds(image: MegaDriveImage, facts: dict[int, InstructionFact]) -> tuple[DecoderSeed, ...]:
     by_address = {f.cpu_address: f for f in facts.values()}
     ends = {f.cpu_address + f.length: f for f in facts.values()}
-    occupied, interiors, _ = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, _ = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     seeds = []
     for load in facts.values():
         match = _LOAD.fullmatch(load.operands)
@@ -108,8 +108,8 @@ def discover_nested_word_dispatch_seeds(image: MegaDriveImage, facts: dict[int, 
     table stops at its first forward handler, code, or an explicit data base.
     """
     by_address = {f.cpu_address: f for f in facts.values()}
-    occupied, interiors, _ = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, _ = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     data = image.data
     origin = image.header.rom_start
     result = []
@@ -181,8 +181,8 @@ def discover_nested_word_dispatch_seeds(image: MegaDriveImage, facts: dict[int, 
 def discover_added_index_dispatch_seeds(image: MegaDriveImage, facts: dict[int, InstructionFact]) -> tuple[DecoderSeed, ...]:
     """LEA / ADDA.W index / pointer load or entry-relative ADDA.W / JMP."""
     by_address = {f.cpu_address: f for f in facts.values()}
-    occupied, interiors, _ = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, _ = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     result = []
     for lea in facts.values():
         if lea.mnemonic.upper() != "LEA" or len(lea.raw) < 4:

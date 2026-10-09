@@ -15,8 +15,8 @@ from retrolarium_disasm.megadrive.structures import (
     StandardBootSetup,
     discover_standard_boot_setups,
 )
-from retrolarium_disasm.megadrive.symbols import (
-    TechnicalSymbol,
+from retrolarium_disasm.megadrive.symbols import TechnicalSymbol
+from retrolarium_disasm.m68k.instructions import (
     pc_displacement_target,
     pc_indexed_target,
     pc_indexed_jsr_target,

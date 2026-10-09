@@ -12,8 +12,8 @@ import re
 
 from retrolarium_disasm.m68k.records.constructor import _writes, _unsupported_frame_or_exception
 from retrolarium_disasm.m68k.seeds import DecoderSeed
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
 
 
 @dataclass(frozen=True)
@@ -240,8 +240,8 @@ def discover_reaching_word_dispatch_tables(image, facts, *, entrypoints=(), hand
     incoming = _predecessors(facts)
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
     roots = frozenset(entrypoints) | {vector.address for vector in image.vector_table[1:]}
-    occupied, interiors, starts = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, starts = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     results = []
     validated = {}
 

@@ -11,8 +11,8 @@ import re
 
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 
-from retrolarium_disasm.megadrive.symbols import pc_indexed_target
-from retrolarium_disasm.megadrive.pointers import _instruction_sets, _absolute_referenced_addresses
+from retrolarium_disasm.m68k.instructions import pc_indexed_target
+from retrolarium_disasm.m68k.instructions import instruction_sets, absolute_referenced_addresses
 from retrolarium_disasm.m68k.records.constructor import _unsupported_frame_or_exception
 
 
@@ -206,8 +206,8 @@ def discover_bytecode_callbacks(image, facts, *, execution_facts=None, protected
     rooted = {f.cpu_address: f for f in execution_facts.values()
               if 0 <= f.cpu_address - origin <= len(image.data) - f.length
               and image.data[f.cpu_address-origin:f.cpu_address-origin+f.length] == f.raw}
-    occupied, interiors, _ = _instruction_sets(facts)
-    data_targets = _absolute_referenced_addresses(rooted)
+    occupied, interiors, _ = instruction_sets(facts)
+    data_targets = absolute_referenced_addresses(rooted)
 
     def rom_span(address, length, *, no_code=False, protected=()):
         physical = address - origin

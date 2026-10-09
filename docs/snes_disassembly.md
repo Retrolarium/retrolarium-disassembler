@@ -8,8 +8,8 @@ root document uses `schema: retrolarium.snes.disassembly` and
 ## Address and CPU identity
 
 W65C816 cartridge code and recovered SPC700 programs never share an implicit
-address namespace. Every instruction, symbol, flow and evidence endpoint uses
-an explicit CPU and address space:
+address namespace. Every instruction, symbol, flow and evidence endpoint uses an
+explicit CPU and address space:
 
 ```text
 (platform=snes, cpu_id, address_space, logical_address, physical_offset?)
@@ -17,9 +17,9 @@ an explicit CPU and address space:
 
 The main program uses `cpu_id=w65c816`, `address_space=snes-rom` and language
 `65816:LE:24:snes`. Every statically proven APU upload becomes a separate
-little-endian `SPC700:LE:16:default` Program in `spc700-ram`. Its
-`derived_from` field names exactly one cross-CPU evidence edge. Bytes lacking
-complete static copy evidence remain ordinary ROM data.
+little-endian `SPC700:LE:16:default` Program in `spc700-ram`. Its `derived_from`
+field names exactly one cross-CPU evidence edge. Bytes lacking complete static
+copy evidence remain ordinary ROM data.
 
 ## Project artifacts
 
@@ -43,46 +43,45 @@ complete static copy evidence remain ordinary ROM data.
 - `verification` records independent size/SHA-256 equality and the parsed SNES
   checksum status.
 
-All paths are relative to the project or declared analysis root. Absolute
-paths, parent traversal and symlink escapes are rejected. The root manifest
-does not retain the host path of the original ROM.
+All paths are relative to the project or declared analysis root. Absolute paths,
+parent traversal and symlink escapes are rejected. The root manifest does not
+retain the host path of the original ROM.
 
-The distributable structural schema is
-`kit/src/retrolarium_kit/schemas/snes-disassembly-v1.schema.json`. The Python
-validator additionally verifies nested artifact hashes, architecture and byte
-order, exact ROM slices for cross-CPU edges, source coverage totals, operation
-invariants and the exact rebuilt artifact.
+The distributable structural schema ships with retrolarium-core as
+`schemas/snes-disassembly-v1.schema.json`. The Python validator additionally
+verifies nested artifact hashes, architecture and byte order, exact ROM slices
+for cross-CPU edges, source coverage totals, operation invariants and the exact
+rebuilt artifact.
 
 ## Commands and operations
 
 ```powershell
-python retrolarium-disassembler/rldisasm.py snes inspect game.sfc
-python retrolarium-disassembler/rldisasm.py snes analyze game.sfc `
-  --output retrolarium-kit/build/game-analysis
-python retrolarium-disassembler/rldisasm.py snes disassemble game.sfc `
-  --output retrolarium-kit/build/game-disassembly
-python retrolarium-kit/rltool.py project validate `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project build `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project verify `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project launch `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json `
-  --mame mame_testing/mame/consoles.exe --machine snes --seconds 2
+python rldisasm.py snes inspect game.sfc
+python rldisasm.py snes analyze game.sfc `
+  --output build/game-analysis
+python rldisasm.py snes disassemble game.sfc `
+  --output build/game-disassembly
+rltool project validate `
+  build/game-disassembly/retrolarium-project.json
+rltool project build `
+  build/game-disassembly/retrolarium-project.json
+rltool project verify `
+  build/game-disassembly/retrolarium-project.json
+rltool project launch `
+  build/game-disassembly/retrolarium-project.json `
+  --mame path/to/mame.exe --machine snes --seconds 2
 ```
 
 The default build operation resolves ca65/ld65 from the installed
 `retrolarium-kit` wheel and executes the fixed `ca65-ld65-v1` recipe without
 Make or Docker. A pinned compatibility image remains an explicit override via
-`project build --container IMAGE`. Launch accepts only MAME `snes` and
-`snespal` machines. `launch-plan` returns a versioned
-`retrolarium.process-spec`; the Qt bridge checks its platform, machine,
-executable and separate argument array before passing it to `QProcess`.
+`project build --container IMAGE`. Launch accepts only MAME `snes` and `snespal`
+machines. `launch-plan` returns a versioned `retrolarium.process-spec`; the Qt
+bridge checks its platform, machine, executable and separate argument array
+before passing it to `QProcess`.
 
-MAME's SNES driver requires the 64-byte `spc700.rom` device ROM in its ROM path.
-The hash-pinned project copy is installed into the ignored local MAME checkout
-by `mame_testing/install-required-roms.ps1`. A smoke run that reports
+MAME's SNES driver requires the 64-byte `spc700.rom` device ROM in its ROM path;
+Retrolarium does not distribute it. A smoke run that reports
 `spc700.rom NOT FOUND` proves process wiring only, not a successful runtime
 test. The result reports this condition as `status: missing-dependency` with a
 structured `failure.kind: mame-required-roms` and the missing filenames, so CI
@@ -99,20 +98,20 @@ presents every CPU program separately and preserves the evidence edge between
 the cartridge and APU RAM.
 
 `retrolarium.exe --studio-smoke retrolarium-project.json` exercises the same
-loader as **File -> Open generated project**. Build, verify and MAME actions
-use the common Retrolarium Kit bridge shared with NES and Mega Drive.
+loader as **File -> Open generated project**. Build, verify and MAME actions use
+the common Retrolarium Kit bridge shared with NES and Mega Drive.
 
 ## Blind validation baseline
 
 Source repositories and oracle metadata are excluded from every analysis run.
 All four fixtures produced valid-checksum, byte-identical 131,072-byte rebuilds:
 
-| Fixture | Mapping | Programs | W65C816 instructions | Symbols | Accepted pointers | Result |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| Retrolarium LoROM probe | LoROM | 2 | 38 | 12 | 5 | exact; one proven SPC700 upload |
-| Retrolarium HiROM probe | HiROM | 2 | 38 | 12 | 5 | exact; one proven SPC700 upload |
-| Castle Platformer | LoROM | 1 | 1,641 | 176 | 1 | exact |
-| Horizontal Shooter | HiROM | 1 | 2,420 | 281 | 7 | exact |
+| Fixture                 | Mapping | Programs | W65C816 instructions | Symbols | Accepted pointers | Result                          |
+| ----------------------- | ------- | -------: | -------------------: | ------: | ----------------: | ------------------------------- |
+| Retrolarium LoROM probe | LoROM   |        2 |                   38 |      12 |                 5 | exact; one proven SPC700 upload |
+| Retrolarium HiROM probe | HiROM   |        2 |                   38 |      12 |                 5 | exact; one proven SPC700 upload |
+| Castle Platformer       | LoROM   |        1 |                1,641 |     176 |                 1 | exact                           |
+| Horizontal Shooter      | HiROM   |        1 |                2,420 |     281 |                 7 | exact                           |
 
 All four exact rebuilds complete a two-second MAME `snes` smoke run with exit
 code zero and a captured frame. The two open games additionally pass the
@@ -122,9 +121,8 @@ share. The synthetic mapping probes intentionally draw no scene and therefore
 use process completion rather than the visual-content gate.
 
 The open-game hashes are respectively
-`1f674609e2fb05cb3e062796a10798a11e8bb0859e1b461f1a26727720c4bdf0`
-and
-`9214dfb43a96f187d88aa12a6bf661a32521c0de9fc6870cbccba9653cb67a6e`.
-An exact rebuild proves byte ownership and encoding, not that every code/data
+`1f674609e2fb05cb3e062796a10798a11e8bb0859e1b461f1a26727720c4bdf0` and
+`9214dfb43a96f187d88aa12a6bf661a32521c0de9fc6870cbccba9653cb67a6e`. An exact
+rebuild proves byte ownership and encoding, not that every code/data
 classification is semantically correct; consumers must retain confidence,
 contradictions and local instruction fallbacks.

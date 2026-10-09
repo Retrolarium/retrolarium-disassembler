@@ -29,7 +29,7 @@ binary assets. A whole-ROM `.incbin` fallback is never used.
 
 The disassembler builds on `retrolarium-core` only (container parsers, the
 disassembly manifest contract). Generated projects are built, verified and
-launched by [Retrolarium Kit](../retrolarium-kit/README.md)
+launched by [Retrolarium Kit](https://github.com/Retrolarium/retrolarium-kit)
 (`rltool project ...`), whose bundled assemblers need no Docker.
 `rldisasm preset`, which turns a recognized game into a ready-to-open Studio
 project, is the one command that needs the kit installed
@@ -82,46 +82,45 @@ Run the source-checkout launcher from the repository root. Python 3.11+, Java 21
 and Docker are required for the complete verified path.
 
 ```powershell
-python retrolarium-disassembler/fixtures/scripts/build_fixtures.py toolchain nes
-python retrolarium-disassembler/fixtures/scripts/build_fixtures.py build `
+python fixtures/scripts/build_fixtures.py toolchain nes
+python fixtures/scripts/build_fixtures.py build `
   nes.honkeypong nes.rhde nes.cnrom_probe nes.gnrom_probe
-python retrolarium-disassembler/rldisasm.py ghidra install
-python retrolarium-disassembler/rldisasm.py nes disassemble `
-  retrolarium-disassembler/fixtures/nes/bin/HonkeyPong.nes `
+python rldisasm.py ghidra install
+python rldisasm.py nes disassemble `
+  fixtures/nes/bin/HonkeyPong.nes `
   --output build/honkey-disassembly
-python retrolarium-kit/rltool.py project build `
+rltool project build `
   build/honkey-disassembly/manifest.json
-python retrolarium-kit/rltool.py project verify `
+rltool project verify `
   build/honkey-disassembly/manifest.json
 ```
 
 `ghidra install` downloads the versions recorded in
 `src/retrolarium_disasm/toolchains/disassembly.lock.json`, verifies the archive
 sizes and SHA-256 values, rejects unsafe ZIP members and installs into the
-ignored `retrolarium-disassembler/.tools/` directory. An existing compatible
-install can be selected with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`. The
-same command installs the pinned MIT W65C816 and SPC700 languages as
-`Retrolarium65816` and `RetrolariumSPC700`, compiles them with Ghidra's SLEIGH
-compiler and preserves their upstream licenses; it does not install the upstream
-SNES cartridge loader.
+ignored `.tools/` directory. An existing compatible install can be selected with
+`--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`. The same command installs the
+pinned MIT W65C816 and SPC700 languages as `Retrolarium65816` and
+`RetrolariumSPC700`, compiles them with Ghidra's SLEIGH compiler and preserves
+their upstream licenses; it does not install the upstream SNES cartridge loader.
 
 ### Mega Drive / Genesis
 
 ```powershell
-python retrolarium-disassembler/fixtures/scripts/build_fixtures.py toolchain megadrive
-python retrolarium-disassembler/fixtures/scripts/build_fixtures.py build `
+python fixtures/scripts/build_fixtures.py toolchain megadrive
+python fixtures/scripts/build_fixtures.py build `
   megadrive.dualcpu_probe megadrive.5stars megadrive.dragons_castle `
   megadrive.miniplanets
-python retrolarium-disassembler/rldisasm.py megadrive disassemble `
-  retrolarium-disassembler/fixtures/megadrive/bin/megadrive-dualcpu-probe.bin `
+python rldisasm.py megadrive disassemble `
+  fixtures/megadrive/bin/megadrive-dualcpu-probe.bin `
   --output build/megadrive-disassembly
-python retrolarium-kit/rltool.py project build `
+rltool project build `
   build/megadrive-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project verify `
+rltool project verify `
   build/megadrive-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project launch `
+rltool project launch `
   build/megadrive-disassembly/retrolarium-project.json `
-  --mame mame_testing/mame/consoles.exe --machine genesis --seconds 2
+  --mame path/to/mame.exe --machine genesis --seconds 2
 ```
 
 Mega Drive source is emitted below `generated/src/`, with `main.s` as the
@@ -167,12 +166,11 @@ proven decoder seed, proven indirect target, or an accepted structural code-use
 hypothesis. A backend function label alone is insufficient. This removes
 isolated instruction-shaped data without using reference source. The discarded
 addresses are recorded in `analysis/m68k/abstract-analysis.json`. The bounded
-probe and repair protocols, their protections and audit files are documented in
-[Mega Drive unused-code analysis](docs/Mega_Drive_Unused_Code.md). The
-interpreter updates `X/N/Z/V/C` for modeled move, logical, arithmetic, compare,
-test, and bit-test operations. It records each conditional branch as true,
-false, or unknown in the abstract report while retaining both CFG edges; known
-flags therefore add evidence without hiding alternate game states.
+probe and repair protocols record their protections and audit files beside it.
+The interpreter updates `X/N/Z/V/C` for modeled move, logical, arithmetic,
+compare, test, and bit-test operations. It records each conditional branch as
+true, false, or unknown in the abstract report while retaining both CFG edges;
+known flags therefore add evidence without hiding alternate game states.
 
 Generic pointer scans are advisory until code or data references the table
 start. Unreferenced sequences whose values merely happen to land on instruction
@@ -239,7 +237,7 @@ coordination tables.
 For an independent Flicky source benchmark, run this after disassembly:
 
 ```powershell
-python retrolarium-disassembler/tools/source_benchmark.py `
+python tools/source_benchmark.py `
   --reference path\to\flicky_src `
   --generated build/megadrive-disassembly/generated `
   --output build/flicky-benchmark `
@@ -275,13 +273,13 @@ In the current Flicky benchmark, the 68000 instruction analysis matches
 recall, 99.29% precision). The generated Z80 source emits 1646/1683 reference
 instructions as mnemonics (97.8%). The assembled ROM is byte exact.
 
-For additional independent games, see the
-[Sonic Retro reference corpus](docs/sonic-reference-corpus.md).
-`tools/prepare_sonic_references.py` exports unified assembly units, preserves
-build profiles, and verifies them against upstream builds and original ROMs. The
-references are evaluation inputs only; they never seed the ROM analyzer.
+For additional independent games, the Sonic Retro reference corpus is pinned in
+`docs/sonic-reference-corpus.lock.json`. `tools/prepare_sonic_references.py`
+exports unified assembly units, preserves build profiles, and verifies them
+against upstream builds and original ROMs. The references are evaluation inputs
+only; they never seed the ROM analyzer.
 
-The [Sonic disassembly benchmark](docs/sonic-disassembly-baseline.md) runs
+The Sonic disassembly benchmark (`tools/sonic_corpus_benchmark.py`) runs
 ROM-only analysis against those verified references, measures opcode recall and
 precision, verifies exact rebuilds, and produces differences-only HTML.
 
@@ -289,7 +287,7 @@ For side-by-side editing, export the two ROM-aligned reference files after
 disassembly:
 
 ```powershell
-python retrolarium-disassembler/tools/export_flicky_reference.py `
+python tools/export_flicky_reference.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated
 ```
@@ -302,7 +300,7 @@ the cartridge vectors and header. These comparison files are not assembled.
 For a standalone address-aligned HTML view, build both projects and run:
 
 ```powershell
-python retrolarium-disassembler/tools/flicky_html_diff.py `
+python tools/flicky_html_diff.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison\flicky-source-diff.html
@@ -323,7 +321,7 @@ analysis. It requires the rebuilt ROM to match the reference byte for byte.
 For an actionable text and JSON report of the same build, run:
 
 ```powershell
-python retrolarium-disassembler/tools/flicky_diff_report.py `
+python tools/flicky_diff_report.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison
@@ -337,7 +335,7 @@ emission and differences limited to names or formatting.
 To turn the source differences into contiguous regions for heuristic work, run:
 
 ```powershell
-python retrolarium-disassembler/tools/flicky_discrepancy_groups.py `
+python tools/flicky_discrepancy_groups.py `
   --reference path\to\flicky_src `
   --generated path\to\flicky_src_kit_test\project\generated `
   --output path\to\flicky_src_kit_test\comparison
@@ -352,19 +350,19 @@ group links to the matching row in the HTML report.
 ### SNES / Super Famicom foundation
 
 ```powershell
-python retrolarium-disassembler/fixtures/scripts/build_fixtures.py build `
+python fixtures/scripts/build_fixtures.py build `
   snes.lorom_probe snes.hirom_probe
-python retrolarium-disassembler/rldisasm.py snes inspect `
-  retrolarium-disassembler/fixtures/snes/bin/snes-lorom-probe.sfc
-python retrolarium-disassembler/rldisasm.py snes analyze `
-  retrolarium-disassembler/fixtures/snes/bin/snes-lorom-probe.sfc `
+python rldisasm.py snes inspect `
+  fixtures/snes/bin/snes-lorom-probe.sfc
+python rldisasm.py snes analyze `
+  fixtures/snes/bin/snes-lorom-probe.sfc `
   --output build/snes-lorom-analysis
-python retrolarium-disassembler/rldisasm.py snes disassemble `
-  retrolarium-disassembler/fixtures/snes/bin/snes-lorom-probe.sfc `
+python rldisasm.py snes disassemble `
+  fixtures/snes/bin/snes-lorom-probe.sfc `
   --output build/snes-lorom-disassembly
-python retrolarium-kit/rltool.py project build `
+rltool project build `
   build/snes-lorom-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project verify `
+rltool project verify `
   build/snes-lorom-disassembly/retrolarium-project.json
 ```
 
@@ -372,9 +370,8 @@ Inspection and independent state-aware W65C816 decoding are available. Full
 analysis writes evidence-bearing pointer, stable-symbol and cross-CPU reports.
 The modular ca65 emitter has exact rebuild proof for both synthetic mappings and
 two open-game holdouts. The strict project schema, Qt 5.15 importer and common
-build/verify/MAME operations are complete. The required `spc700.rom` is
-hash-pinned under `mame_testing/roms` and installed into a local MAME checkout
-by `mame_testing/install-required-roms.ps1`. See
+build/verify/MAME operations are complete. MAME's SNES driver needs the
+`spc700.rom` device ROM in its ROM path; it is not distributed here. See
 [`Retrolarium_SNES_Container_Contract.md`](docs/Retrolarium_SNES_Container_Contract.md)
 and
 [`Retrolarium_SNES_Integration_Contract.md`](docs/Retrolarium_SNES_Integration_Contract.md).
@@ -406,16 +403,16 @@ All of these are reproducible build artifacts and should stay below an ignored
 ## Other commands
 
 ```powershell
-python retrolarium-disassembler/rldisasm.py nes inspect game.nes
-python retrolarium-disassembler/rldisasm.py nes analyze game.nes `
+python rldisasm.py nes inspect game.nes
+python rldisasm.py nes analyze game.nes `
   --output build/game-analysis
-python retrolarium-disassembler/rldisasm.py ghidra status
-python retrolarium-disassembler/rldisasm.py verify original.nes rebuilt.nes
-python retrolarium-disassembler/rldisasm.py benchmark pointers `
+python rldisasm.py ghidra status
+python rldisasm.py verify original.nes rebuilt.nes
+python rldisasm.py benchmark pointers `
   build/honkey-disassembly/analysis/pointers.json `
-  retrolarium-disassembler/fixtures/oracles/nes.honkeypong.pointer-tables.json
-python retrolarium-disassembler/rldisasm.py preset game.nes --output build/game-studio
-python -m unittest discover -s retrolarium-disassembler/tests
+  fixtures/oracles/nes.honkeypong.pointer-tables.json
+python rldisasm.py preset game.nes --output build/game-studio
+python -m unittest discover -s tests
 ```
 
 `nes analyze` writes one isolated `banks/bankNN/` workspace per canonical PRG

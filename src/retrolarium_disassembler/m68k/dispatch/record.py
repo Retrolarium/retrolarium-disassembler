@@ -12,8 +12,8 @@ import re
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 
 
 _FIELD = r"\((-?0x[0-9a-f]+),(A[0-6])\)"
@@ -43,8 +43,8 @@ def discover_record_callback_seeds(
     if not fields:
         return ()
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
-    occupied, interiors, starts = _instruction_sets(facts)
-    boundaries = _absolute_referenced_addresses(facts)
+    occupied, interiors, starts = instruction_sets(facts)
+    boundaries = absolute_referenced_addresses(facts)
     data, origin = image.data, image.header.rom_start
     seeds = {}
     for read in facts.values():

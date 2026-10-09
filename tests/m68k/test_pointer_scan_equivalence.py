@@ -7,6 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" / "python"))
+from retrolarium_disasm.m68k.instructions import instruction_sets
 from retrolarium_disasm.megadrive import pointers
 from retrolarium_disasm.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
@@ -15,7 +16,7 @@ from test_megadrive_z80 import fact
 
 
 def exhaustive_relative(image, facts, policy):
-    occupied, interiors, starts = pointers._instruction_sets(facts)
+    occupied, interiors, starts = instruction_sets(facts)
     references = pointers._referenced_addresses(facts)
     indexed = pointers._indexed_word_read_addresses(facts)
     result = []

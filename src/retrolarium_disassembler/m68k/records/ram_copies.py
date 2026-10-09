@@ -7,7 +7,7 @@ import re
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 
 
 _POST_LOAD = re.compile(r"\((A[0-7])\)\+\|(A[0-7])", re.I)

@@ -12,8 +12,8 @@ import re
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 from retrolarium_disasm.m68k.dispatch.record import executed_stack_fields
 from retrolarium_disasm.m68k.abstract import _register_list
 from retrolarium_disasm.m68k.frames.call_frame import _STACK
@@ -94,7 +94,7 @@ def discover_callback_abi_seeds(image: MegaDriveImage, facts: dict[int, Instruct
     fields = _executed_fields(executors)
     if not fields:
         return ()
-    _, interiors, _ = _instruction_sets(facts)
+    _, interiors, _ = instruction_sets(facts)
     seeds = {}
     summaries = {}
     data = {ref.address & 0xFFFFFF for fact in facts.values()

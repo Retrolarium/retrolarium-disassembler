@@ -10,9 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "retrolarium-core" 
 
 from retrolarium_disasm.facts import InstructionReference
 from retrolarium_core.megadrive import parse_megadrive
-from retrolarium_disasm.megadrive.pointers import (
-    _absolute_referenced_addresses, _pc_word_dispatch_tables, discover_dispatch_table_seeds,
-)
+from retrolarium_disasm.megadrive.pointers import _pc_word_dispatch_tables, discover_dispatch_table_seeds
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
 from test_megadrive import cartridge
 from test_megadrive_z80 import fact
 
@@ -53,7 +52,7 @@ class PcWordDispatchBoundaryTests(unittest.TestCase):
                 self.setup_table(suffix)
                 self.facts[0x604] = fact(0x604, "MOVE.L", "A1|D2")
                 self.facts[0x606] = replace(fact(0x606, "RTS", ""), flow_type="TERMINATOR")
-                self.assertIn(0x302, _absolute_referenced_addresses(self.facts))
+                self.assertIn(0x302, absolute_referenced_addresses(self.facts))
                 self.assert_table_closed()
                 self.assert_table_open()
 
@@ -97,7 +96,7 @@ class PcWordDispatchBoundaryTests(unittest.TestCase):
     def test_called_through_register_preserves_global_boundary(self):
         self.setup_table()
         self.facts[0x604] = replace(fact(0x604, "JMP", "(A1)"), flow_type="COMPUTED_JUMP")
-        self.assertIn(0x302, _absolute_referenced_addresses(self.facts))
+        self.assertIn(0x302, absolute_referenced_addresses(self.facts))
         self.assert_table_closed()
 
     def test_no_handler_witness_preserves_boundary(self):
@@ -121,7 +120,7 @@ class PcWordDispatchBoundaryTests(unittest.TestCase):
             with self.subTest(instruction=instruction.operands):
                 self.setup_table()
                 self.facts[0x604] = instruction
-                self.assertIn(0x302, _absolute_referenced_addresses(self.facts))
+                self.assertIn(0x302, absolute_referenced_addresses(self.facts))
                 self.assert_table_closed()
 
     def test_register_use_budget_does_not_remove_global_boundary(self):
@@ -129,7 +128,7 @@ class PcWordDispatchBoundaryTests(unittest.TestCase):
         for address in range(0x604, 0x604 + 128, 2):
             self.facts[address] = fact(address, "NOP", "")
         self.facts[0x684] = fact(0x684, "MOVE.W", "(A1)|D0w")
-        self.assertIn(0x302, _absolute_referenced_addresses(self.facts))
+        self.assertIn(0x302, absolute_referenced_addresses(self.facts))
         self.assert_table_closed()
 
     def test_instruction_overlap_is_not_ignored_by_handler_witness(self):

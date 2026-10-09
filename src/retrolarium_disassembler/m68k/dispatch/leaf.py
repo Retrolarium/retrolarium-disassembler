@@ -7,8 +7,8 @@ from typing import Callable
 from retrolarium_disasm.facts import InstructionFact
 from retrolarium_disasm.m68k.seeds import DecoderSeed
 from retrolarium_core.megadrive import MegaDriveImage
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses, _instruction_sets
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses, instruction_sets
+from retrolarium_disasm.m68k.instructions import pc_displacement_target
 
 
 def _direct(fact):
@@ -178,8 +178,8 @@ def discover_leaf_word_dispatch_seeds(
             # of that same leaf. Longer schemas replace Dn with a memory read.
             masks = masks_before(body[0].cpu_address if inline else caller.cpu_address, register)
         if metadata is None:
-            _, interiors, starts = _instruction_sets(facts)
-            metadata = interiors, starts, _absolute_referenced_addresses(facts)
+            _, interiors, starts = instruction_sets(facts)
+            metadata = interiors, starts, absolute_referenced_addresses(facts)
         interiors, starts, boundaries = metadata
         start, at = table - origin, table - origin
         limit = min(len(data), start + 512)

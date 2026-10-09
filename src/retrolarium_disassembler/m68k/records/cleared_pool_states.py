@@ -16,8 +16,8 @@ from retrolarium_disasm.m68k.dispatch.closure import logical_image, make_dispatc
 from retrolarium_disasm.m68k.dispatch.leaf import _body, _schema
 from retrolarium_disasm.m68k.records.packed import _complete_cfg
 from retrolarium_disasm.m68k.seeds import DecoderSeed
-from retrolarium_disasm.megadrive.pointers import _absolute_referenced_addresses
-from retrolarium_disasm.megadrive.symbols import pc_displacement_target, pc_indexed_target
+from retrolarium_disasm.m68k.instructions import absolute_referenced_addresses
+from retrolarium_disasm.m68k.instructions import pc_displacement_target, pc_indexed_target
 
 
 def _field(text):
@@ -532,7 +532,7 @@ def discover_cleared_pool_state_seeds(image, facts, decoded, *, protected_ranges
     decoded = {f.cpu_address: f for f in decoded.values()}
     origin = image.header.rom_start
     protected = tuple((origin + a, origin + b) for a, b in protected_ranges)
-    data = tuple(sorted(_absolute_referenced_addresses(known)))
+    data = tuple(sorted(absolute_referenced_addresses(known)))
     occupied = {byte for f in known.values() for byte in range(f.cpu_address, f.cpu_address + f.length)}
     starts = sorted(known)
     conflicts = None

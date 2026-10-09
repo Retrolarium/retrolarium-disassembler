@@ -18,14 +18,14 @@ explicit `cpu_id` and/or `address_space`:
 The cartridge ROM is big-endian 68000 input. Each statically proven Z80 copy is
 an independent little-endian Ghidra Program. A Z80 program refers to one
 `cross_cpu_evidence.edges[*].id` through `derived_from`; the edge records the
-68000 ROM source range, Z80 RAM destination range, exact payload SHA-256 and
-the 68000 instructions supporting the copy inference.
+68000 ROM source range, Z80 RAM destination range, exact payload SHA-256 and the
+68000 instructions supporting the copy inference.
 
 ## Project artifacts
 
 - `analysis/analysis.json` enumerates independent 68000 and Z80 programs and
-  hashes their analysis input, neutral instruction facts, raw backend facts
-  and backend report.
+  hashes their analysis input, neutral instruction facts, raw backend facts and
+  backend report.
 - `analysis/pointers.json` contains versioned big-endian absolute and signed
   relative pointer candidates, evidence, contradictions and accepted status.
 - `analysis/symbols.json` contains stable `Entry_`, `Sub_`, `Loc_`, `Tbl_` and
@@ -35,8 +35,8 @@ the 68000 instructions supporting the copy inference.
 - `assets.items` declares the cartridge header and recovered Z80 programs as
   hashed AS `binclude` assets with non-overlapping ROM ranges.
 - `source.units` enumerates the complete modular AS project. Coverage is a
-  partition of the ROM into vectors, instructions, accepted pointers, assets
-  and raw bytes; a whole-ROM fallback is not used.
+  partition of the ROM into vectors, instructions, accepted pointers, assets and
+  raw bytes; a whole-ROM fallback is not used.
 - `verification` records independent size/SHA-256 equality and the parsed Sega
   checksum status.
 
@@ -44,29 +44,28 @@ All paths are relative to the project root (or the declared analysis root).
 Absolute paths, parent traversal and symlink escapes are rejected. The portable
 root manifest deliberately omits the host path of its input ROM.
 
-The distributable structural schema is
-`kit/src/retrolarium_kit/schemas/megadrive-disassembly-v1.schema.json`. The
-Python validator additionally verifies file hashes, program architecture,
-cross-CPU payload slices, coverage totals, operation invariants and an exact
-rebuilt artifact.
+The distributable structural schema ships with retrolarium-core as
+`schemas/megadrive-disassembly-v1.schema.json`. The Python validator
+additionally verifies file hashes, program architecture, cross-CPU payload
+slices, coverage totals, operation invariants and an exact rebuilt artifact.
 
 ## Commands and operations
 
 ```powershell
-python retrolarium-disassembler/rldisasm.py megadrive inspect game.bin
-python retrolarium-disassembler/rldisasm.py megadrive analyze game.bin `
-  --output retrolarium-kit/build/game-analysis
-python retrolarium-disassembler/rldisasm.py megadrive disassemble game.bin `
-  --output retrolarium-kit/build/game-disassembly
-python retrolarium-kit/rltool.py project validate `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project build `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project verify `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json
-python retrolarium-kit/rltool.py project launch `
-  retrolarium-kit/build/game-disassembly/retrolarium-project.json `
-  --mame mame_testing/mame/consoles.exe --machine genesis --seconds 2
+python rldisasm.py megadrive inspect game.bin
+python rldisasm.py megadrive analyze game.bin `
+  --output build/game-analysis
+python rldisasm.py megadrive disassemble game.bin `
+  --output build/game-disassembly
+rltool project validate `
+  build/game-disassembly/retrolarium-project.json
+rltool project build `
+  build/game-disassembly/retrolarium-project.json
+rltool project verify `
+  build/game-disassembly/retrolarium-project.json
+rltool project launch `
+  build/game-disassembly/retrolarium-project.json `
+  --mame path/to/mame.exe --machine genesis --seconds 2
 ```
 
 The default build operation resolves the hash-pinned AS/p2bin suite shipped in
@@ -75,8 +74,8 @@ without a shell. A caller can still select a pinned compatibility container
 explicitly with `project build --container IMAGE`; its argv remains a literal
 array. Launch supports only MAME `genesis` (NTSC) and `megadriv` (PAL).
 `launch-plan` returns a versioned `retrolarium.process-spec`, which the Qt
-bridge checks against the MAME path selected by the user before passing
-program and arguments separately to `QProcess`.
+bridge checks against the MAME path selected by the user before passing program
+and arguments separately to `QProcess`.
 
 ## Qt consumer
 
@@ -96,15 +95,15 @@ Retrolarium Kit.
 
 The blind pipeline has produced byte-identical rebuilds for:
 
-| Fixture | Size | Result |
-| --- | ---: | --- |
-| Retrolarium dual-CPU probe | 1,024 bytes | exact; valid checksum; proven 68000-to-Z80 copy |
-| 5 Stars | 10,967 bytes | exact; absent checksum; recovered Z80 program |
-| Dragon's Castle | 175,708 bytes | exact; absent checksum; recovered Z80 program |
-| Miniplanets REMIX REV04 | 524,288 bytes | exact; valid checksum; recovered Z80 program |
+| Fixture                    |          Size | Result                                          |
+| -------------------------- | ------------: | ----------------------------------------------- |
+| Retrolarium dual-CPU probe |   1,024 bytes | exact; valid checksum; proven 68000-to-Z80 copy |
+| 5 Stars                    |  10,967 bytes | exact; absent checksum; recovered Z80 program   |
+| Dragon's Castle            | 175,708 bytes | exact; absent checksum; recovered Z80 program   |
+| Miniplanets REMIX REV04    | 524,288 bytes | exact; valid checksum; recovered Z80 program    |
 
-The source repositories and oracles are never inputs to blind analysis. They
-are used only after artifact generation to measure known ranges and hashes.
-An exact rebuild proves byte ownership and encoding, not that every code/data
+The source repositories and oracles are never inputs to blind analysis. They are
+used only after artifact generation to measure known ranges and hashes. An exact
+rebuild proves byte ownership and encoding, not that every code/data
 classification is semantically correct; confidence and contradictions remain
 visible to consumers.
