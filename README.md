@@ -448,6 +448,13 @@ tables, it exercises two generic evidence patterns: pointer fields in a record
 reached from an accepted table, and two interleaved monotonic lanes. RHDE
 remains a source-isolated holdout and retains exact rebuild verification.
 
+## Trademarks
+
+The games are named only to say which ones Retrolarium works with. Their titles
+and characters are trademarks of their owners, who have not made or endorsed
+Retrolarium. Retrolarium does not include the games: you need your own copy of
+each.
+
 ## License
 
 Retrolarium Disassembler is free software: you can redistribute it and/or modify
