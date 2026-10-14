@@ -23,7 +23,7 @@ from retrolarium_disassembler.nes.pipeline import (
 )
 from retrolarium_disassembler.verify import VerificationError, verify_exact
 from retrolarium_disassembler.nes.pointers import detect_banked_pointer_candidates
-from helpers import KIT, needs_kit, nrom16_image, write_facts
+from helpers import KIT, needs_kit, needs_kit_assemblers, nrom16_image, write_facts
 
 if KIT:
     from retrolarium_kit.core.build_toolchains import materialize_build_toolchain
@@ -134,7 +134,7 @@ class DisassemblyTests(unittest.TestCase):
         self.assertIn("NmiVector:", source)
         self.assertIn(".addr Func_B00_C000", source)
 
-    @needs_kit
+    @needs_kit_assemblers
     def test_project_externalizes_container_and_chr(self) -> None:
         image = parse_ines(nrom16_image())
         with tempfile.TemporaryDirectory() as directory:

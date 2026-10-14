@@ -20,7 +20,7 @@ from retrolarium_core.contracts import (
     load_disassembly_manifest,
     validate_megadrive_disassembly_manifest,
 )
-from helpers import KIT, needs_kit
+from helpers import KIT, needs_kit, needs_kit_assemblers
 
 if KIT:
     from retrolarium_kit.core.project import build_project, launch_plan, verify_project
@@ -190,7 +190,7 @@ def write_megadrive_project(root: Path) -> Path:
 
 class MegaDriveContractTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "bundled PE smoke runs on Windows")
-    @needs_kit
+    @needs_kit_assemblers
     def test_bundled_runner_builds_as_source_without_docker(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

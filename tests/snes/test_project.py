@@ -9,7 +9,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from helpers import KIT, needs_kit
+from helpers import KIT, needs_kit, needs_kit_assemblers
 from retrolarium_disassembler.snes.pipeline import disassemble_snes
 from snes.builders import probe_image
 
@@ -20,6 +20,7 @@ if KIT:
 @needs_kit
 class SnesProjectTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "bundled PE smoke runs on Windows")
+    @needs_kit_assemblers
     def test_bundled_runner_builds_generated_snes_without_docker(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

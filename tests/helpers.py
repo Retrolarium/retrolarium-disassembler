@@ -33,6 +33,22 @@ KIT = find_kit()
 needs_kit = unittest.skipUnless(KIT, "needs Retrolarium Kit")
 
 
+def kit_assemblers_built() -> bool:
+    """Whether the kit's assemblers for this host are built: a checkout has
+    them only after its tools/build_toolchains.ps1 ran (they are not tracked)."""
+    if not KIT:
+        return False
+    import retrolarium_kit
+    from retrolarium_core.host import normalize_host
+
+    payloads = Path(retrolarium_kit.__file__).resolve().parent / "core" / "toolchains" / "payloads"
+    return (payloads / normalize_host()).is_dir()
+
+
+needs_kit_assemblers = unittest.skipUnless(
+    kit_assemblers_built(), "needs Retrolarium Kit with its assemblers built (tools/build_toolchains.ps1)")
+
+
 def nrom16_image() -> bytes:
     header = b"NES\x1a" + bytes((1, 1, 0, 0)) + bytes(8)
     prg = bytearray(0x4000)

@@ -33,7 +33,7 @@ from retrolarium_disassembler.z80.dispatch import Z80DispatchTable
 from megadrive.builders import cartridge
 from megadrive.builders import fact
 from megadrive.builders import word_dispatch_image
-from helpers import KIT, needs_kit
+from helpers import KIT, needs_kit, needs_kit_assemblers
 
 if KIT:
     from retrolarium_kit.core.build_toolchains import materialize_build_toolchain
@@ -41,7 +41,7 @@ if KIT:
 
 
 class MegaDriveEmitTests(unittest.TestCase):
-    @needs_kit
+    @needs_kit_assemblers
     def test_overlapping_z80_sources_build_complete_programs_emit_shared_byte_once(self):
         from retrolarium_core.contracts import _validate_megadrive_assets, ContractError
         data = bytearray(cartridge(size=0x600))
@@ -96,7 +96,7 @@ class MegaDriveEmitTests(unittest.TestCase):
                               raw=bytes.fromhex("14 FC 05 16"), length=4)
         self.assertIsNone(_asm_instruction(instruction))
 
-    @needs_kit
+    @needs_kit_assemblers
     def test_nonzero_z80_payload_rebuilds_without_ram_address_prefix(self):
         payload = bytes.fromhex("C3 00 1C C9")
         instruction = replace(fact(0, "JP", "0x1c00"), cpu_address=0x1C00,
@@ -536,7 +536,7 @@ class MegaDriveEmitTests(unittest.TestCase):
                 )
                 self.assertEqual(expected, _asm_instruction(instruction))
 
-    @needs_kit
+    @needs_kit_assemblers
     def test_ff_tail_uses_org_and_rebuilds_exactly(self) -> None:
         data = bytearray(cartridge(size=0x800))
         data[0x300:] = b"\xFF" * (len(data) - 0x300)
@@ -582,7 +582,7 @@ class MegaDriveEmitTests(unittest.TestCase):
             )
             self.assertEqual(0, result.raw_bytes)
 
-    @needs_kit
+    @needs_kit_assemblers
     def test_emits_modules_relocatable_tables_and_z80_include(self) -> None:
         data = bytearray(cartridge())
         targets = (0x200, 0x206, 0x23C, 0x23E)
