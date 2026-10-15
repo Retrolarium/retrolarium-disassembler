@@ -1,7 +1,7 @@
 # Fixture oracles
 
-Oracle files contain source-derived structural facts for open fixtures. They
-are versioned test inputs for post-analysis scoring, not inputs to the blind
+Oracle files contain source-derived structural facts for open fixtures. They are
+versioned test inputs for post-analysis scoring, not inputs to the blind
 analyzer.
 
 Every oracle must identify:
