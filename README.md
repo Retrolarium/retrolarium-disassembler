@@ -448,6 +448,13 @@ tables, it exercises two generic evidence patterns: pointer fields in a record
 reached from an accepted table, and two interleaved monotonic lanes. RHDE
 remains a source-isolated holdout and retains exact rebuild verification.
 
+## Checks before a commit
+
+`make hooks`, once per clone, makes Git check every commit and push for stop
+words and run `make lint` and `make format-check` first (see Retrolarium Core's
+README, "Stop words and Git hooks"). The hooks and the Makefile use the
+`retrolarium-core` checkout beside this one.
+
 ## Trademarks
 
 The games are named only to say which ones Retrolarium works with. Their titles

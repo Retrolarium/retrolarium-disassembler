@@ -29,3 +29,6 @@ fixtures/synthetic/**/*.sfc
 
 # The pinned Ghidra install (rldisasm ghidra install)
 .tools/
+
+# The stop-word list (retrolarium_core.stop_words) never enters a repository
+/.stopwords
