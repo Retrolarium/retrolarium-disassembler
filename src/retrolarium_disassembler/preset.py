@@ -37,6 +37,7 @@ def _find_kit() -> None:
 
 _find_kit()
 
+from retrolarium_kit.core.game_profiles import discover_profiles, repository_profile  # noqa: E402
 from retrolarium_kit.games.catalog import extract_game, inspect_game, validate_game  # noqa: E402
 from retrolarium_kit.studio.create import create_studio_project  # noqa: E402
 from retrolarium_kit.studio.project import (  # noqa: E402
@@ -68,8 +69,11 @@ def create_game_studio_preset(
     build_container: str | None = None,
     toolchain_cache: Path | None = None,
     legacy_castle_excellent_levels: Path | None = None,
+    repository: Path | None = None,
 ) -> dict[str, Any]:
-    """Create a complete supported-game Studio without publishing partial output."""
+    """Create a complete supported-game Studio without publishing partial output.
+    The game's profile, which recognizes the ROM, comes from its game
+    repository: `repository`, or the one the ROM lies in."""
 
     rom = rom.resolve()
     if not rom.is_file():
@@ -79,6 +83,9 @@ def create_game_studio_preset(
         raise StudioProjectError(
             f"Studio output directory already exists; choose a new directory: {output}"
         )
+    if repository is not None and repository_profile(repository.resolve()) is None:
+        raise StudioProjectError(f"{repository} keeps no game profile (config/game_profile.json)")
+    discover_profiles(rom)
     output.parent.mkdir(parents=True, exist_ok=True)
 
     inspection = inspect_game(rom)

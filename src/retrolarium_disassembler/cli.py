@@ -217,6 +217,7 @@ def command_preset(args: argparse.Namespace) -> None:
             build_container=args.build_container,
             toolchain_cache=args.toolchain_cache,
             legacy_castle_excellent_levels=args.legacy_castle_excellent_levels,
+            repository=args.repository,
         )
     )
 
@@ -349,6 +350,9 @@ def parser() -> argparse.ArgumentParser:
     preset.add_argument("--toolchain-cache", type=Path)
     preset.add_argument("--legacy-castle-excellent-levels", type=Path,
                         help="import a validated legacy Castle Excellent levels JSON")
+    preset.add_argument("--repository", type=Path,
+                        help="the game's repository, whose profile recognizes the ROM "
+                             "(default: the one the ROM lies in)")
     preset.add_argument(
         "--no-build", action="store_true",
         help="create and validate the workspace without building its first artifact",
