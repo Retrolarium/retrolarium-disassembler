@@ -1131,6 +1131,11 @@ def emit_project(
         )
         for offset in range(start + 1, end)
     }
+    # The vector table is emitted a long word (and a label) a vector, the
+    # header as one binclude: a reference inside a vector or into the header
+    # has no label to name, and keeps its number.
+    consumed_interiors |= {image.header.rom_start + offset for offset in range(0x100, 0x200)}
+    consumed_interiors |= {image.header.rom_start + offset for offset in range(0x100) if offset % 4}
     primary = {
         address: symbol for address, symbol in primary.items()
         if address not in consumed_interiors
@@ -1210,7 +1215,13 @@ def emit_project(
         for fact in m68k_facts.values()
         for reference in fact.references
     }
-    hardware = sorted(address for address in referenced if 0xA00000 <= address <= 0xC0001F)
+    # The standard boot stream names its five device addresses too (dc.l
+    # Io_...), which the code may reach only through registers.
+    boot_devices = {
+        int.from_bytes(image.data[setup.physical_start + 6 + 4 * index:setup.physical_start + 10 + 4 * index], "big")
+        for setup in boot_setups.values() for index in range(5)
+    }
+    hardware = sorted({address for address in referenced if 0xA00000 <= address <= 0xC0001F} | boot_devices)
     work_ram = sorted(address for address in referenced if 0xFF0000 <= address <= 0xFFFFFF)
     (source_root / "memory" / "hardware.inc").write_text(
         "; ROM-referenced Mega Drive hardware addresses.\n"

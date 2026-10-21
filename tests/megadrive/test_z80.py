@@ -115,6 +115,21 @@ class MegaDriveZ80Tests(unittest.TestCase):
                        for item in sequence)
         self.assertEqual((), detect_z80_copies(image, {item.physical_offset: item for item in broken}))
 
+    def test_a_later_write_of_the_source_register_is_not_skipped(self) -> None:
+        # A0 is set again by the MOVEA after its LEA: the copy reads from
+        # $400, which the LEA does not prove.
+        image = parse_megadrive(cartridge())
+        sequence = (
+            fact(0x200, "LEA", "(0x300).l|A0"),
+            fact(0x206, "LEA", "(0x400).l|A2"),
+            fact(0x20C, "MOVEA.L", "A2|A0"),
+            fact(0x20E, "LEA", "(0xa00000).l|A1"),
+            fact(0x214, "MOVE.W", "#0x1f|D0w"),
+            fact(0x218, "MOVE.B", "(A0)+|(A1)+"),
+            fact(0x21A, "DBF", "D0w|0x00000218", flows=(0x218,)),
+        )
+        self.assertEqual((), detect_z80_copies(image, {item.physical_offset: item for item in sequence}))
+
     def test_recovers_driver_passed_to_shared_z80_copy_subroutine(self) -> None:
         image = parse_megadrive(cartridge())
         sequence = (

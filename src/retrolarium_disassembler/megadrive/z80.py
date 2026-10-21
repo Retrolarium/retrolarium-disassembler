@@ -77,6 +77,17 @@ def _writes_register(fact: InstructionFact, register: str) -> bool:
     return destination is not None and destination.rstrip("BWL") == register
 
 
+def _changes_address_register(fact: InstructionFact, register: str) -> bool:
+    """Whether the instruction may leave another address in `register`: a
+    write, an auto-increment or decrement, or a call (which may do either)."""
+    if _writes_register(fact, register):
+        return True
+    if fact.mnemonic in {"JSR", "BSR", "BSR.S", "BSR.W", "TRAP"} or fact.mnemonic.startswith("BSR"):
+        return True
+    operands = fact.operands.upper()
+    return f"({register})+" in operands or f"-({register})" in operands
+
+
 def _nearest_write(prior: list[InstructionFact], register: str) -> InstructionFact | None:
     return next((fact for fact in reversed(prior) if _writes_register(fact, register)), None)
 
@@ -258,22 +269,27 @@ def detect_z80_copies(
         source_fact = None
         target_fact = None
         count_fact = None
+        # The nearest change of each address register must be its LEA: a
+        # later MOVEA, an (An)+ or a call in between leaves another address.
+        source_open = target_open = True
         for previous in reversed(ordered[max(0, index - 10):index]):
             destination = _destination_register(previous)
-            if (
-                source_fact is None
-                and previous.mnemonic == "LEA"
-                and destination == source_register
-                and _source_address(image, previous) is not None
-            ):
-                source_fact = previous
-            if (
-                target_fact is None
-                and previous.mnemonic == "LEA"
-                and destination == target_register
-                and _absolute_address(previous.operands.split("|")[0]) is not None
-            ):
-                target_fact = previous
+            if source_open and _changes_address_register(previous, source_register):
+                source_open = False
+                if (
+                    previous.mnemonic == "LEA"
+                    and destination == source_register
+                    and _source_address(image, previous) is not None
+                ):
+                    source_fact = previous
+            if target_open and _changes_address_register(previous, target_register):
+                target_open = False
+                if (
+                    previous.mnemonic == "LEA"
+                    and destination == target_register
+                    and _absolute_address(previous.operands.split("|")[0]) is not None
+                ):
+                    target_fact = previous
             # Only the nearest write to the DBF counter register counts;
             # intervening hardware writes such as bus requests are ignored.
             if count_fact is None and _writes_register(previous, count_register):

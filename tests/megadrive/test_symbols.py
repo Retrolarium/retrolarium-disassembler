@@ -36,6 +36,14 @@ class MegaDriveSymbolTests(unittest.TestCase):
         self.assertIn(0x260, by_address)
         self.assertNotIn(0x2A0, by_address)
 
+    def test_two_z80_programs_at_one_address_keep_apart(self) -> None:
+        image = parse_megadrive(cartridge())
+        z80 = {0: replace(fact(0, "NOP", ""), raw=b"\x00", length=1)}
+        symbols = generate_symbols(image, {}, (), (("z80.00", 0, z80), ("z80.01", 0, z80)))
+        names = {symbol.name for symbol in symbols}
+        self.assertIn("Entry_Z80_0000", names)
+        self.assertIn("Entry_Z80p1_0000", names)
+
     def test_movem_pc_displacement_skips_register_mask(self) -> None:
         image = parse_megadrive(cartridge(size=0x1000))
         instruction = replace(

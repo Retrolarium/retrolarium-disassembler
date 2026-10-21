@@ -125,7 +125,11 @@ def _symbols_for_program(
         "offset": "off",
     }
     priorities = ("entry", "table", "subroutine", "location", "vector", "offset")
-    cpu_name = "M68K" if cpu_id == "m68k" else "Z80"
+    # Z80 programs uploaded to the same addresses keep apart by number: the
+    # first is Z80, the next Z80p1, Z80p2 and so on.
+    program = cpu_id.partition(".")[2]
+    cpu_name = "M68K" if cpu_id == "m68k" else (
+        "Z80" if not program.isdigit() or int(program) == 0 else f"Z80p{int(program)}")
     symbols: list[TechnicalSymbol] = []
     for address in sorted(claims):
         if not base_address <= address <= end_address:

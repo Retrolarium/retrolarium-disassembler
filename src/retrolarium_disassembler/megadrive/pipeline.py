@@ -6,6 +6,7 @@ from retrolarium_disassembler import AnalysisError
 
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
 import subprocess
@@ -1171,7 +1172,25 @@ def analyze_m68k(
     return analyze_megadrive(rom, output, ghidra_home)
 
 
-def _build_emitted_project(project: Path, container: str) -> Path:
+def _container_script(z80_builds: Sequence[Mapping[str, str]]) -> str:
+    """The whole build in one shell line: each Z80 program assembled into the
+    binary the 68000 source includes (the ROM's bytes put there by the
+    emitter are removed first, so a Z80 program that does not assemble fails
+    the build), then the 68000 source."""
+    steps = ["mkdir -p build"]
+    for item in z80_builds:
+        steps += [
+            f"rm -f {item['object']} {item['output']}",
+            f"asl -xx -n -q -A -L -U -i . -o {item['object']} {item['source']}",
+            f"p2bin {item['object']} {item['output']} -p=FF",
+        ]
+    steps += ["asl -xx -n -q -A -L -U -i . -o build/main.p src/main.s",
+              "p2bin build/main.p rebuilt.bin -p=FF"]
+    return " && ".join(steps)
+
+
+def _build_emitted_project(project: Path, container: str,
+                           z80_builds: Sequence[Mapping[str, str]] = ()) -> Path:
     project = project.resolve()
     command = [
         "docker",
@@ -1184,9 +1203,7 @@ def _build_emitted_project(project: Path, container: str) -> Path:
         container,
         "sh",
         "-lc",
-        "mkdir -p build && asl -xx -n -q -A -L -U -i . "
-        "-o build/main.p src/main.s && "
-        "p2bin build/main.p rebuilt.bin -p=FF",
+        _container_script(z80_builds),
     ]
     result = subprocess.run(command, text=True)
     if result.returncode:
@@ -1285,17 +1302,20 @@ def emit_analyzed_megadrive(
         raise MegaDriveEmitError("cached analysis belongs to a different ROM")
     # The facts and seed plan determine what is emitted. Check their provenance
     # before reusing a cache; imported facts also validate every byte against ROM.
+    def check(path_key: str, relative: object, digest: object) -> None:
+        artifact = (analysis_root / str(relative)).resolve()
+        if (not artifact.is_relative_to(analysis_root)
+                or not artifact.is_file() or _sha256(artifact) != digest):
+            raise MegaDriveEmitError(f"cached analysis artifact changed: {path_key}")
+
     for record in [analysis, *analysis["programs"]]:
-        for key, digest in record.items():
-            if not key.endswith("_sha256"):
-                continue
-            path_key = key.removesuffix("_sha256")
-            if path_key not in record:
-                continue
-            artifact = (analysis_root / record[path_key]).resolve()
-            if (not artifact.is_relative_to(analysis_root)
-                    or not artifact.is_file() or _sha256(artifact) != digest):
-                raise MegaDriveEmitError(f"cached analysis artifact changed: {path_key}")
+        for key, value in record.items():
+            # Flat "<name>" + "<name>_sha256" pairs, and nested
+            # {"path", "sha256"} records (pointers, symbols, evidence).
+            if key.endswith("_sha256") and key.removesuffix("_sha256") in record:
+                check(key.removesuffix("_sha256"), record[key.removesuffix("_sha256")], value)
+            elif isinstance(value, dict) and isinstance(value.get("path"), str) and "sha256" in value:
+                check(key, value["path"], value["sha256"])
     m68k_facts = load_megadrive_ghidra_facts(
         analysis_root / "m68k" / "instructions.tsv", image
     )
@@ -1346,6 +1366,10 @@ def emit_analyzed_megadrive(
         z80_programs.append((cpu_id, copy.target_start, facts))
         z80_dispatch_tables.append(tables)
     symbols = generate_symbols(image, m68k_facts, pointers, tuple(z80_programs))
+    # The manifest names the pointers and symbols of the sources emitted now,
+    # which a newer disassembler may find differently from the analysis's.
+    write_pointer_report(analysis_root / "emitted-pointers.json", image, pointers)
+    write_symbol_report(analysis_root / "emitted-symbols.json", image, symbols)
     generated = output / "generated"
     emitted = emit_project(
         generated, image, m68k_facts, pointers, symbols, copies,
@@ -1355,7 +1379,7 @@ def emit_analyzed_megadrive(
 
     verification: dict[str, object] = {"status": "not-run"}
     if build_container is not None:
-        rebuilt = _build_emitted_project(generated, build_container)
+        rebuilt = _build_emitted_project(generated, build_container, emitted.z80_builds)
         from retrolarium_disassembler.verify import verify_exact
 
         verification = verify_exact(rom, rebuilt)
@@ -1377,12 +1401,12 @@ def emit_analyzed_megadrive(
             "program_count": len(analysis["programs"]),
         },
         "pointers": {
-            "path": "analysis/pointers.json",
-            "sha256": _sha256(analysis_root / "pointers.json"),
+            "path": "analysis/emitted-pointers.json",
+            "sha256": _sha256(analysis_root / "emitted-pointers.json"),
         },
         "symbols": {
-            "path": "analysis/symbols.json",
-            "sha256": _sha256(analysis_root / "symbols.json"),
+            "path": "analysis/emitted-symbols.json",
+            "sha256": _sha256(analysis_root / "emitted-symbols.json"),
         },
         "cross_cpu_evidence": {
             "path": "analysis/cross-cpu-evidence.json",
@@ -1420,13 +1444,11 @@ def emit_analyzed_megadrive(
                 "project_directory": "generated",
                 "source": "src/main.s",
                 "object": "build/main.p",
-                "z80_prebuild": list(emitted.z80_builds),
-                **({"argv": [
-                    "sh", "-lc",
-                    "mkdir -p build && asl -xx -n -q -A -L -U -i . "
-                    "-o build/main.p src/main.s && "
-                    "p2bin build/main.p rebuilt.bin -p=FF",
-                ]} if build_container else {}),
+                # The kit's own toolchain assembles the Z80 programs first; a
+                # container's argv does all of it, as the kit runs it.
+                "z80_prebuild": [] if build_container else list(emitted.z80_builds),
+                **({"argv": ["sh", "-lc", _container_script(emitted.z80_builds)]}
+                   if build_container else {}),
                 "output": "generated/rebuilt.bin",
             },
             "verify": {
