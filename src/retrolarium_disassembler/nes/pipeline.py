@@ -265,7 +265,9 @@ def _analyze_prg_banks(
             ghidra_home.resolve(),
             script_directory,
         )
-        bank_facts = load_ghidra_facts(artifacts.facts, image, bank=target.bank)
+        # A bank of data only (no vector leads into it) may hold no
+        # instructions: its bytes are emitted as they are.
+        bank_facts = load_ghidra_facts(artifacts.facts, image, bank=target.bank, allow_empty=True)
         overlap = set(combined_facts) & set(bank_facts)
         if overlap:
             first = min(overlap)
@@ -274,6 +276,8 @@ def _analyze_prg_banks(
         banks.append(
             _bank_record(image, target, output, analysis_input, artifacts, bank_facts)
         )
+    if not combined_facts:
+        raise PipelineError("Ghidra found no instructions in any PRG bank")
     facts_path = output / "instructions.json"
     output.mkdir(parents=True, exist_ok=True)
     _write_instruction_facts(facts_path, image, combined_facts)

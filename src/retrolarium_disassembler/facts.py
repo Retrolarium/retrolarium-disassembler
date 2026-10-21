@@ -69,7 +69,7 @@ def parse_references(value: str) -> tuple[InstructionReference, ...]:
 
 
 def load_ghidra_facts(
-    path: Path, image: InesImage, *, bank: int = 0
+    path: Path, image: InesImage, *, bank: int = 0, allow_empty: bool = False
 ) -> dict[int, InstructionFact]:
     def project(address: int) -> int:
         try:
@@ -83,6 +83,7 @@ def load_ghidra_facts(
         project,
         bank=bank,
         address_label="CPU",
+        allow_empty=allow_empty,
     )
 
 
