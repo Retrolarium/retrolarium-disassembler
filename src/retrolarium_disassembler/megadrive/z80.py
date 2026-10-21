@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from retrolarium_disassembler import AnalysisError
+
 from dataclasses import dataclass, replace
 import hashlib
 import re
@@ -364,7 +366,7 @@ def copy_payload(image: MegaDriveImage, copy: CrossCpuCopy) -> bytes:
     offset = m68k_to_rom_offset(image, copy.source_start)
     payload = image.data[offset:offset + copy.size]
     if hashlib.sha256(payload).hexdigest() != copy.payload_sha256:
-        raise ValueError(f"Z80 copy payload changed: {copy.edge_id}")
+        raise AnalysisError(f"Z80 copy payload changed: {copy.edge_id}")
     return payload
 
 

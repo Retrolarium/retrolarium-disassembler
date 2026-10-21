@@ -9,7 +9,7 @@ and the result is always verified against the original image.
 
 The Mega Drive pipeline parses cartridge headers and checksums, analyzes the
 68000 and statically recovered Z80 payloads as independent Ghidra Programs,
-emits a complete modular ASM68K project, and proves an exact rebuild. Stable
+emits a complete modular AS (asl) project, and proves an exact rebuild. Stable
 symbols, big-endian/relative pointer candidates and cross-CPU copy evidence are
 published through a versioned project manifest.
 
@@ -46,7 +46,7 @@ src/retrolarium_disassembler/
   toolchain.py      pinned Ghidra + language installs (toolchains/*.lock.json)
   ghidra/           headless Ghidra bridge and its Java scripts (scripts/)
   nes/              iNES bank analysis, pointers, ca65 emitter
-  megadrive/        68000 + Z80 pipeline, ASM68K emitter, pointers, symbols
+  megadrive/        68000 + Z80 pipeline, AS (asl) emitter, pointers, symbols
   m68k/             68000 passes: dispatch/, callbacks/, frames/, records/, repair/
   z80/              Z80 dispatch tables
   snes/             W65C816 analysis, SPC700 uploads, ca65 emitter

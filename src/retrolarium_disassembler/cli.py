@@ -15,7 +15,19 @@ import sys
 from retrolarium_disassembler import __version__
 
 
-DEFAULT_TOOL_ROOT = Path(__file__).resolve().parents[2] / ".tools"
+def _default_tool_root() -> Path:
+    """.tools in a source checkout; installed, a folder of the user's (the
+    package's own folder may not be writable and goes with a reinstall)."""
+    checkout = Path(__file__).resolve().parents[2]
+    if (checkout / "pyproject.toml").is_file():
+        return checkout / ".tools"
+    if os.name == "nt" and os.environ.get("LOCALAPPDATA"):
+        return Path(os.environ["LOCALAPPDATA"]) / "Retrolarium" / "disassembler"
+    base = os.environ.get("XDG_DATA_HOME")
+    return (Path(base) if base else Path.home() / ".local" / "share") / "retrolarium" / "disassembler"
+
+
+DEFAULT_TOOL_ROOT = _default_tool_root()
 
 
 def print_json(value: object) -> None:
@@ -139,7 +151,7 @@ def command_verify(args: argparse.Namespace) -> None:
 def command_ghidra_status(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.toolchain import toolchain_status
 
-    print_json(toolchain_status(args.ghidra_home))
+    print_json(toolchain_status(ghidra_home(args)))
 
 
 def command_ghidra_install(args: argparse.Namespace) -> None:
@@ -221,7 +233,7 @@ def parser() -> argparse.ArgumentParser:
     megadrive_analyze.add_argument("--ghidra-home", type=Path)
     megadrive_analyze.set_defaults(handler=command_megadrive_analyze)
     megadrive_disassemble = megadrive_commands.add_parser(
-        "disassemble", help="emit a complete exact-first ASM68K project"
+        "disassemble", help="emit a complete exact-first AS (asl) project"
     )
     megadrive_disassemble.add_argument("rom", type=Path)
     megadrive_disassemble.add_argument("--output", type=Path, required=True)
@@ -268,9 +280,7 @@ def parser() -> argparse.ArgumentParser:
     install.add_argument("--tool-root", type=Path, default=DEFAULT_TOOL_ROOT)
     install.set_defaults(handler=command_ghidra_install)
     status = ghidra_commands.add_parser("status")
-    status.add_argument(
-        "--ghidra-home", type=Path, default=DEFAULT_TOOL_ROOT / "ghidra"
-    )
+    status.add_argument("--ghidra-home", type=Path, help="default: RETROLARIUM_GHIDRA_HOME, else the tool root's")
     status.set_defaults(handler=command_ghidra_status)
 
     benchmark = commands.add_parser(
@@ -315,6 +325,7 @@ def _expected_errors() -> tuple[type[BaseException], ...]:
         "retrolarium_core.ines": "InesError",
         "retrolarium_core.megadrive": "MegaDriveError",
         "retrolarium_core.snes": "SnesError",
+        "retrolarium_disassembler": "AnalysisError",
         "retrolarium_disassembler.benchmark": "BenchmarkError",
         "retrolarium_disassembler.facts": "FactError",
         "retrolarium_disassembler.ghidra": "GhidraError",

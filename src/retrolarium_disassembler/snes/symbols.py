@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from retrolarium_disassembler import AnalysisError
+
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -141,7 +143,7 @@ def generate_symbols(
     identifiers = [symbol.symbol_id for symbol in symbols]
     names = [symbol.name for symbol in symbols]
     if len(identifiers) != len(set(identifiers)) or len(names) != len(set(names)):
-        raise ValueError("generated SNES technical symbols are not unique")
+        raise AnalysisError("generated SNES technical symbols are not unique")
     return tuple(symbols)
 
 

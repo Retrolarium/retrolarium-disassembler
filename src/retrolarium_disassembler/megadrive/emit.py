@@ -1,4 +1,4 @@
-"""Exact-first ASM68K project emitter for analyzed Mega Drive ROMs."""
+"""Exact-first AS (asl) project emitter for analyzed Mega Drive ROMs."""
 
 from __future__ import annotations
 

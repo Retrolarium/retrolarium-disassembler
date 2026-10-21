@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from retrolarium_disassembler import AnalysisError
+
 from dataclasses import dataclass
 import hashlib
 
@@ -196,5 +198,5 @@ def payload_for_copy(image: SnesImage, copy: CrossCpuCopy) -> bytes:
         copy.source_physical_start:copy.source_physical_end + 1
     ]
     if len(payload) != copy.size or hashlib.sha256(payload).hexdigest() != copy.payload_sha256:
-        raise ValueError("SPC700 copy evidence no longer matches immutable ROM bytes")
+        raise AnalysisError("SPC700 copy evidence no longer matches immutable ROM bytes")
     return payload

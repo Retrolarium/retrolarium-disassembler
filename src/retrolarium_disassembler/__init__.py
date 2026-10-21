@@ -1,6 +1,6 @@
 """Retrolarium Disassembler: whole-ROM disassemblies that rebuild byte for byte.
 
-NES (6502/ca65), Mega Drive (68000 + Z80/ASM68K) and SNES (W65C816 + SPC700/ca65)
+NES (6502/ca65), Mega Drive (68000 + Z80/AS) and SNES (W65C816 + SPC700/ca65)
 images are analyzed with headless Ghidra plus the project's own passes, emitted
 as modular source projects and verified against the original image. The
 package builds on retrolarium_core only; `rldisasm preset`, which turns a
@@ -29,3 +29,8 @@ def _find_core() -> None:
 
 
 _find_core()
+
+
+class AnalysisError(ValueError):
+    """An analysis that cannot go on: it did not converge, or its own results
+    contradict each other. The CLI prints it in one line."""

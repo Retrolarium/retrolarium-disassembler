@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from retrolarium_disassembler import AnalysisError
+
 from dataclasses import dataclass
 from collections import deque
 from enum import Enum
@@ -2034,7 +2036,7 @@ def interpret_trusted_cfg(
         if proven <= roots:
             return TrustedCfg(trusted, result, roots, entry_reached, iteration)
         roots = roots | proven
-    raise ValueError(
+    raise AnalysisError(
         "trusted M68K control flow did not reach a fixpoint after "
         f"{max_iterations} passes"
     )

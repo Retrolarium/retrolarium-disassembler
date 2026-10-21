@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from retrolarium_disassembler import AnalysisError
+
 import hashlib
 import json
 from dataclasses import asdict
@@ -440,7 +442,7 @@ def analyze_megadrive(
         new_inline_data = {call.data_address for call in inline_calls} - inline_data.keys()
         for call in inline_calls:
             if call.data_address in inline_data and inline_data[call.data_address] != call.data_size:
-                raise ValueError("conflicting proven inline argument sizes")
+                raise AnalysisError("conflicting proven inline argument sizes")
             inline_data[call.data_address] = call.data_size
         abstract_candidates = (
             *discover_ram_handler_candidates(image, trusted_facts),
@@ -749,7 +751,7 @@ def analyze_megadrive(
             encoding="ascii", newline="\n",
         )
     if not converged:
-        raise ValueError(
+        raise AnalysisError(
             "M68K abstract analysis did not converge after "
             f"{MAX_ABSTRACT_PASSES} decoder passes"
         )
@@ -980,7 +982,7 @@ def analyze_megadrive(
                     if (table.lookup_address != previous.lookup_address
                             or previous.targets[:len(table.targets)]
                             != table.targets):
-                        raise ValueError(
+                        raise AnalysisError(
                             "Z80 dispatch table changed at "
                             f"0x{table.logical_start:04X}"
                         )
@@ -1035,12 +1037,12 @@ def analyze_megadrive(
                     and fact.cpu_address + fact.length > table.logical_start
                     for fact in z80_facts.values()
                 ):
-                    raise ValueError(
+                    raise AnalysisError(
                         f"Z80 decoder ignored proven word table "
                         f"0x{table.logical_start:04X}..0x{table.logical_end:04X}"
                     )
         else:
-            raise ValueError("Z80 dispatch analysis did not converge")
+            raise AnalysisError("Z80 dispatch analysis did not converge")
         dispatch_tables = tuple(
             dispatch_by_start[address] for address in sorted(dispatch_by_start)
         )
