@@ -34,6 +34,38 @@ def print_json(value: object) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
 
+class OutputError(RuntimeError):
+    """The output folder would lose something: the input ROM, or edits."""
+
+
+# Sources a person may have edited in a generated project (assembler output
+# and builds are the tools' own).
+_SOURCE_SUFFIXES = {".asm", ".s", ".inc", ".cfg", ".68k", ".z80"}
+
+
+def guard_output(rom: Path, output: Path, replace: bool) -> None:
+    """Refuse a run that would write over its own input ROM, or over sources
+    of an earlier run edited since (--replace overwrites them)."""
+    rom = rom.resolve()
+    output = output.resolve()
+    if rom.is_relative_to(output) and rom.parent != output:
+        raise OutputError(f"the ROM lies inside the output folder ({rom}): choose another output folder")
+    generated = output / "generated"
+    marks = [path for path in (output / "retrolarium-project.json", output / "manifest.json") if path.is_file()]
+    if replace or not generated.is_dir() or not marks:
+        return
+    written = max(path.stat().st_mtime for path in marks)
+    edited = sorted(
+        path for path in generated.rglob("*")
+        if path.is_file() and path.suffix.lower() in _SOURCE_SUFFIXES
+        and "build" not in path.relative_to(generated).parts
+        and path.stat().st_mtime > written + 1
+    )
+    if edited:
+        raise OutputError(f"{len(edited)} source file(s) in {generated} changed since the last run "
+                          f"(first: {edited[0].relative_to(generated).as_posix()}); --replace overwrites them")
+
+
 def ghidra_home(args: argparse.Namespace) -> Path:
     home = args.ghidra_home or os.environ.get("RETROLARIUM_GHIDRA_HOME")
     return Path(home) if home else DEFAULT_TOOL_ROOT / "ghidra"
@@ -57,6 +89,7 @@ def command_nes_analyze(args: argparse.Namespace) -> None:
 def command_nes_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.nes.pipeline import disassemble_nes
 
+    guard_output(args.rom, args.output, args.replace)
     print_json(disassemble_nes(args.rom, args.output, ghidra_home(args),
                                build_container=args.build_container))
 
@@ -78,6 +111,7 @@ def command_megadrive_analyze(args: argparse.Namespace) -> None:
 def command_megadrive_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.megadrive.pipeline import disassemble_megadrive
 
+    guard_output(args.rom, args.output, args.replace)
     print_json(disassemble_megadrive(args.rom, args.output, ghidra_home(args),
                                      build_container=args.build_container))
 
@@ -85,6 +119,7 @@ def command_megadrive_disassemble(args: argparse.Namespace) -> None:
 def command_megadrive_emit(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.megadrive.pipeline import emit_analyzed_megadrive
 
+    guard_output(args.rom, args.output, args.replace)
     print_json(emit_analyzed_megadrive(args.rom, args.output))
 
 
@@ -136,6 +171,7 @@ def command_snes_analyze(args: argparse.Namespace) -> None:
 def command_snes_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.snes.pipeline import disassemble_snes
 
+    guard_output(args.rom, args.output, args.replace)
     print_json(disassemble_snes(args.rom, args.output, ghidra_home=ghidra_home(args),
                                 build_container=args.build_container))
 
@@ -207,6 +243,7 @@ def parser() -> argparse.ArgumentParser:
     )
     disassemble.add_argument("rom", type=Path)
     disassemble.add_argument("--output", type=Path, required=True)
+    disassemble.add_argument("--replace", action="store_true", help="overwrite sources edited since the last run")
     disassemble.add_argument("--ghidra-home", type=Path)
     disassemble.add_argument(
         "--build-container",
@@ -237,6 +274,7 @@ def parser() -> argparse.ArgumentParser:
     )
     megadrive_disassemble.add_argument("rom", type=Path)
     megadrive_disassemble.add_argument("--output", type=Path, required=True)
+    megadrive_disassemble.add_argument("--replace", action="store_true", help="overwrite sources edited since the last run")
     megadrive_disassemble.add_argument("--ghidra-home", type=Path)
     megadrive_disassemble.add_argument("--build-container")
     megadrive_disassemble.set_defaults(handler=command_megadrive_disassemble)
@@ -245,6 +283,7 @@ def parser() -> argparse.ArgumentParser:
     )
     megadrive_emit.add_argument("rom", type=Path)
     megadrive_emit.add_argument("--output", type=Path, required=True)
+    megadrive_emit.add_argument("--replace", action="store_true", help="overwrite sources edited since the last run")
     megadrive_emit.set_defaults(handler=command_megadrive_emit)
 
     snes = commands.add_parser("snes", help="SNES cartridge commands")
@@ -265,6 +304,7 @@ def parser() -> argparse.ArgumentParser:
     )
     snes_disassemble.add_argument("rom", type=Path)
     snes_disassemble.add_argument("--output", type=Path, required=True)
+    snes_disassemble.add_argument("--replace", action="store_true", help="overwrite sources edited since the last run")
     snes_disassemble.add_argument("--ghidra-home", type=Path)
     snes_disassemble.add_argument("--build-container")
     snes_disassemble.set_defaults(handler=command_snes_disassemble)
@@ -326,6 +366,7 @@ def _expected_errors() -> tuple[type[BaseException], ...]:
         "retrolarium_core.megadrive": "MegaDriveError",
         "retrolarium_core.snes": "SnesError",
         "retrolarium_disassembler": "AnalysisError",
+        "retrolarium_disassembler.cli": "OutputError",
         "retrolarium_disassembler.benchmark": "BenchmarkError",
         "retrolarium_disassembler.facts": "FactError",
         "retrolarium_disassembler.ghidra": "GhidraError",
