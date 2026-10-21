@@ -78,7 +78,7 @@ class ToolchainTests(unittest.TestCase):
                 return type("Result", (), {"returncode": 0, "stdout": "ok"})()
 
             with patch(
-                "retrolarium_disassembler.toolchain.subprocess.run",
+                "retrolarium_disassembler.ghidra.run_launcher",
                 side_effect=compile_language,
             ):
                 install_snes_backend(
@@ -125,7 +125,7 @@ class ToolchainTests(unittest.TestCase):
                 return type("Result", (), {"returncode": 0, "stdout": "ok"})()
 
             with patch(
-                "retrolarium_disassembler.toolchain.subprocess.run",
+                "retrolarium_disassembler.ghidra.run_launcher",
                 side_effect=compile_language,
             ):
                 install_spc700_backend(

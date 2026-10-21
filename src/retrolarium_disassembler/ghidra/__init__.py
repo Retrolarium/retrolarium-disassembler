@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -21,6 +22,40 @@ class GhidraArtifacts:
     log: Path
     orphan_facts: Path | None = None
 
+
+
+# cmd.exe runs a .bat launcher and splits or expands its line at these
+# characters whatever quoting Python adds.
+_CMD_SPECIAL = set('&|<>^%!"')
+# A Ghidra run that has not ended in this long has hung.
+LAUNCHER_TIMEOUT = 4 * 60 * 60
+
+
+def run_launcher(command: list[str], *, cwd: Path, timeout: float = LAUNCHER_TIMEOUT) -> subprocess.CompletedProcess:
+    """Run a Ghidra launcher (a .bat on Windows) to its end and return its
+    output. Interrupted or out of time, the whole process tree stops: killing
+    cmd.exe alone would leave Ghidra's Java running."""
+    if os.name == "nt" and command[0].lower().endswith(".bat"):
+        for argument in command[1:]:
+            if _CMD_SPECIAL & set(argument):
+                raise GhidraError(
+                    f"cmd.exe cannot pass this path to Ghidra safely (it holds one of {''.join(sorted(_CMD_SPECIAL))}): "
+                    f"{argument}"
+                )
+    process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               text=True, errors="replace")
+    try:
+        output, _ = process.communicate(timeout=timeout)
+    except BaseException as exc:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+        else:
+            process.kill()
+        process.communicate()
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise GhidraError(f"Ghidra did not finish in {int(timeout // 60)} minutes") from None
+        raise
+    return subprocess.CompletedProcess(command, process.returncode, output, None)
 
 def find_headless(ghidra_home: Path) -> Path:
     suffix = ".bat" if os.name == "nt" else ""
@@ -305,8 +340,10 @@ def _run_analysis(
     report = workspace / "program.json"
     log = workspace / "headless.log"
     orphan_facts = workspace / "unused-probes.tsv" if probe_m68k_orphans else None
-    if orphan_facts is not None:
-        orphan_facts.unlink(missing_ok=True)
+    # A run that writes nothing must not leave an earlier run's facts to be read.
+    for stale in (facts, report, orphan_facts):
+        if stale is not None:
+            stale.unlink(missing_ok=True)
     export_arguments = [str(facts.resolve())]
     if export_block is not None:
         export_arguments.append(export_block)
@@ -339,15 +376,12 @@ def _run_analysis(
               if orphan_facts is not None else []),
             "-deleteProject",
         ]
-        result = subprocess.run(
-            command,
-            cwd=workspace,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            errors="replace",
-        )
+        result = run_launcher(command, cwd=workspace)
     log.write_text(result.stdout, encoding="utf-8", newline="\n")
+    # Ghidra stops analysing a file after -analysisTimeoutPerFile and goes on
+    # with what it has: facts that depend on the machine's speed.
+    if re.search(r"(?i)analysis timed out|timed out.*analy", result.stdout):
+        raise GhidraError("Ghidra's analysis timed out, its facts are incomplete; see " + str(log))
     script_error = "REPORT SCRIPT ERROR:" in result.stdout
     if result.returncode or script_error:
         tail = "\n".join(result.stdout.splitlines()[-60:])

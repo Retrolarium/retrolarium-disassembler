@@ -45,7 +45,7 @@ class GhidraProbeRequestTests(unittest.TestCase):
                 self.assertEqual(str(seeds.resolve()), command[command.index('RestoreM68kPlannedSeeds.java') + 1])
                 return subprocess.CompletedProcess(command, 0, 'ok')
 
-            with patch('retrolarium_disassembler.ghidra.subprocess.run', side_effect=complete):
+            with patch('retrolarium_disassembler.ghidra.run_launcher', side_effect=complete):
                 artifacts = run_megadrive_analysis(image, root / 'out', home, scripts,
                     seed_plan=seeds, probe_orphans=True, probe_requests=requests)
             self.assertEqual('000200\n', seeds.read_text())

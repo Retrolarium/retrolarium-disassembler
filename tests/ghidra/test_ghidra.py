@@ -71,7 +71,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 run_nes_analysis(image, workspace, ghidra_home, scripts)
 
@@ -105,7 +105,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 _run_seeded_nes_analysis(
                     image, workspace, ghidra_home, scripts, seed_plan
@@ -138,7 +138,7 @@ class GhidraBackendTests(unittest.TestCase):
             )
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", return_value=result
+                "retrolarium_disassembler.ghidra.run_launcher", return_value=result
             ):
                 with self.assertRaisesRegex(GhidraError, "script error"):
                     run_nes_analysis(image, workspace, ghidra_home, scripts)
@@ -173,7 +173,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 run_megadrive_analysis(
                     image, workspace, ghidra_home, scripts,
@@ -225,7 +225,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 run_megadrive_analysis(
                     image,
@@ -272,7 +272,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 run_z80_analysis(image, workspace, ghidra_home, scripts)
 
@@ -291,7 +291,7 @@ class GhidraBackendTests(unittest.TestCase):
             plan = root / "dispatch-seeds.txt"
             plan.write_text("T 0080 0088\nS 00A0\n", encoding="ascii")
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 run_z80_analysis(
                     image, workspace, ghidra_home, scripts, seed_plan=plan
@@ -324,7 +324,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 run_snes_bank_analysis(
                     image,
@@ -365,7 +365,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch(
-                "retrolarium_disassembler.ghidra.subprocess.run", side_effect=complete
+                "retrolarium_disassembler.ghidra.run_launcher", side_effect=complete
             ) as run:
                 run_spc700_analysis(
                     image,

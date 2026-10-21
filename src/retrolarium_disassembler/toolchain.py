@@ -66,8 +66,12 @@ def download(expected: dict[str, object], cache: Path) -> Path:
     cache.mkdir(parents=True, exist_ok=True)
     destination = cache / str(expected["archive"])
     if destination.is_file():
-        verify_archive(destination, expected)
-        return destination
+        try:
+            verify_archive(destination, expected)
+            return destination
+        except ToolchainError:
+            # A truncated or damaged download: fetched again, not kept.
+            destination.unlink()
     temporary = destination.with_suffix(destination.suffix + ".part")
     request = urllib.request.Request(
         str(expected["url"]), headers={"User-Agent": "retrolarium-disassembler/0.1"}
@@ -95,6 +99,13 @@ def safe_extract(archive: Path, destination: Path) -> None:
             if stat.S_ISLNK(unix_mode):
                 raise ToolchainError(f"symbolic link in toolchain ZIP: {member.filename}")
         bundle.extractall(root)
+        # zipfile drops the Unix modes: the launchers (support/sleigh,
+        # analyzeHeadless, launch.sh) must stay executable on Linux and macOS.
+        if os.name != "nt":
+            for member in bundle.infolist():
+                mode = (member.external_attr >> 16) & 0o777
+                if mode and not member.is_dir():
+                    (root / member.filename).chmod(mode)
 
 
 def property_value(path: Path, key: str) -> str | None:
@@ -241,6 +252,7 @@ def install_processor_backend(
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
+    finished = False
     try:
         safe_extract(archive, staging)
         source = staging / str(expected["source_directory"])
@@ -284,13 +296,10 @@ def install_processor_backend(
             or not language_definition.is_file()
         ):
             raise ToolchainError("Ghidra SLEIGH compiler or processor source is missing")
-        result = subprocess.run(
-            [str(compiler.resolve()), str(specification.resolve())],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            errors="replace",
-        )
+        from retrolarium_disassembler.ghidra import run_launcher
+
+        result = run_launcher([str(compiler.resolve()), str(specification.resolve())],
+                              cwd=destination)
         compiled = specification.with_suffix(".sla")
         if result.returncode or not compiled.is_file():
             tail = "\n".join(result.stdout.splitlines()[-60:])
@@ -298,11 +307,12 @@ def install_processor_backend(
                 f"processor SLEIGH compilation failed with exit code "
                 f"{result.returncode}\n{tail}"
             )
-    except Exception:
-        if destination.exists():
-            shutil.rmtree(destination)
-        raise
+        finished = True
     finally:
+        # Interrupted too (Ctrl+C): a half-built extension would pass for an
+        # installed one next time.
+        if not finished and destination.exists():
+            shutil.rmtree(destination)
         if staging.exists():
             shutil.rmtree(staging)
 
