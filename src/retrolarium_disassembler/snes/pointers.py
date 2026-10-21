@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 
@@ -440,7 +440,7 @@ def detect_pointer_candidates(
             unique[key] = candidate
     return tuple(
         sorted(
-            unique.values(),
+            _resolve_overlaps(list(unique.values())),
             key=lambda item: (
                 item.physical_start,
                 item.schema_id,
@@ -448,6 +448,30 @@ def detect_pointer_candidates(
             ),
         )
     )
+
+
+def _resolve_overlaps(candidates: list[PointerCandidate]) -> list[PointerCandidate]:
+    """Accepted tables claim their bytes alone: the strongest (score, then
+    entries, then the earliest) keeps them, the others are rejected."""
+    accepted = sorted(
+        (candidate for candidate in candidates if candidate.status == "accepted"),
+        key=lambda candidate: (-candidate.score, -len(candidate.entries), candidate.physical_start,
+                               candidate.schema_id),
+    )
+    retained: set[str] = set()
+    occupied: set[int] = set()
+    for candidate in accepted:
+        byte_range = set(range(candidate.physical_start, candidate.physical_end))
+        if occupied & byte_range:
+            continue
+        retained.add(candidate.candidate_id)
+        occupied.update(byte_range)
+    return [
+        replace(candidate, status="rejected", score=max(0, candidate.score - 30),
+                contradictions=candidate.contradictions + ("overlaps_stronger_candidate",))
+        if candidate.status == "accepted" and candidate.candidate_id not in retained else candidate
+        for candidate in candidates
+    ]
 
 
 def accepted_pointer_tables(

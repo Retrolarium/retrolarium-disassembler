@@ -54,6 +54,23 @@ class SnesEmitTests(unittest.TestCase):
                 self.assertTrue((root / "linker.cfg").is_file())
                 self.assertTrue((root / "Makefile").is_file())
 
+    def test_a_hirom_image_ending_in_half_a_bank_is_emitted_whole(self) -> None:
+        from retrolarium_core.snes import parse_snes
+        from helpers import cartridge
+
+        data = bytearray(cartridge("hirom", size=0x18000))
+        data[0x9000] = 0xDB   # STP at the reset vector
+        image = parse_snes(bytes(data))
+        analysis = analyze_snes(image)
+        pointers = detect_pointer_candidates(image, analysis)
+        symbols = generate_symbols(image, analysis, pointers)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = emit_project(root, image, analysis, pointers, symbols)
+            self.assertEqual(2, len(result.bank_units))
+            linker = (root / "linker.cfg").read_text(encoding="utf-8")
+            self.assertIn("size = $8000", linker)
+
 
 if __name__ == "__main__":
     unittest.main()

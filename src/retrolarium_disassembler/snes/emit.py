@@ -208,7 +208,7 @@ def _memory_start(image: SnesImage, bank: int) -> int:
 
 
 def _write_linker(path: Path, image: SnesImage, bank_size: int) -> None:
-    bank_count = len(image.data) // bank_size
+    bank_count = -(-len(image.data) // bank_size)
     memory: list[str] = []
     segments: list[str] = []
     if image.copier_header:
@@ -221,7 +221,7 @@ def _write_linker(path: Path, image: SnesImage, bank_size: int) -> None:
         name = f"BANK{bank:02X}"
         memory.append(
             f"    {name}: start = ${_memory_start(image, bank):06X}, "
-            f"size = ${bank_size:X}, file = %O, fill = no;"
+            f"size = ${min(bank_size, len(image.data) - bank * bank_size):X}, file = %O, fill = no;"
         )
         segments.append(f"    {name}: load = {name}, type = ro;")
     text = (
@@ -289,7 +289,6 @@ def emit_project(
                 f"logical aliases disagree at ROM ${instruction.physical_offset:06X}"
             )
             instructions.pop(instruction.physical_offset, None)
-    instruction_offsets = set(instructions)
 
     pointers: dict[int, PointerCandidate] = {}
     for candidate in pointer_candidates:
@@ -307,25 +306,38 @@ def emit_project(
 
     header_start = image.header_offset
     header_end = header_start + 0x40
+    # Decodes that share bytes (one routine reached through two bus aliases
+    # with different widths) are both guesses: neither is kept, and their
+    # bytes go out as they are. So does one over the internal header.
+    owners: dict[int, int] = {}
+    for instruction in instructions.values():
+        for offset in range(instruction.physical_offset, instruction.physical_offset + instruction.length):
+            owners[offset] = owners.get(offset, 0) + 1
+    for offset in sorted(instructions):
+        instruction = instructions[offset]
+        byte_range = range(offset, offset + instruction.length)
+        if any(owners[item] > 1 for item in byte_range):
+            diagnostics.append(f"instructions overlap at ROM ${offset:06X}: kept as bytes")
+            del instructions[offset]
+        elif any(header_start <= item < header_end for item in byte_range):
+            diagnostics.append(f"instruction at ROM ${offset:06X} runs into the internal header: kept as bytes")
+            del instructions[offset]
+    instruction_offsets = set(instructions)
     claims: set[int] = set(range(header_start, header_end))
     for instruction in instructions.values():
-        byte_range = set(
-            range(
-                instruction.physical_offset,
-                instruction.physical_offset + instruction.length,
-            )
-        )
-        if claims & byte_range:
-            raise SnesEmitError("instruction overlaps SNES internal header")
-        claims.update(byte_range)
-    for candidate in pointers.values():
+        claims.update(range(instruction.physical_offset, instruction.physical_offset + instruction.length))
+    for start in sorted(pointers):
+        candidate = pointers[start]
         byte_range = set(range(candidate.physical_start, candidate.physical_end))
         if claims & byte_range:
-            raise SnesEmitError("accepted pointer table overlaps another source claim")
+            diagnostics.append(f"pointer table at ROM ${start:06X} overlaps another claim: kept as bytes")
+            del pointers[start]
+            continue
         claims.update(byte_range)
 
     bank_size = 0x8000 if image.header.map_mode == "lorom" else 0x10000
-    bank_count = len(image.data) // bank_size
+    # A HiROM image an odd number of 32 KB long ends in half a bank.
+    bank_count = -(-len(image.data) // bank_size)
     units: list[str] = []
     instruction_bytes = 0
     pointer_bytes = 0
@@ -345,7 +357,7 @@ def emit_project(
     classified_starts = set(instructions) | set(pointers) | {header_start}
     for bank in range(bank_count):
         bank_start = bank * bank_size
-        bank_end = bank_start + bank_size
+        bank_end = min(bank_start + bank_size, len(image.data))
         name = f"bank{bank:02X}.asm"
         units.append(f"src/{name}")
         main_lines.extend((f'.segment "BANK{bank:02X}"', f'.include "src/{name}"', ""))

@@ -128,6 +128,18 @@ _ACCUMULATOR_WRITES = {
     "ADC", "AND", "ASL", "DEC", "EOR", "INC", "LDA", "LSR", "ORA",
     "PLA", "ROL", "ROR", "SBC", "TDC", "TSC", "TXA", "TYA", "XBA",
 }
+# Instructions that leave the carry as the data makes it.
+_CARRY_WRITES = {"ADC", "SBC", "CMP", "CPX", "CPY", "ASL", "LSR", "ROL", "ROR"}
+# What a callee may change in its caller's context, by the instructions that
+# change it.
+_CALLEE_CHANGES = {
+    "e": {"XCE"},
+    "m": {"REP", "SEP", "PLP", "RTI", "XCE"},
+    "x": {"REP", "SEP", "PLP", "RTI", "XCE"},
+    "dbr": {"PLB"},
+    "direct_page": {"PLD", "TCD"},
+}
+_RETURNS = {"RTS", "RTL"}
 _STACK_CHANGERS = {
     "BRK", "COP", "JSL", "JSR", "PEA", "PEI", "PER", "PHA", "PHB",
     "PHD", "PHK", "PHP", "PHX", "PHY", "PLA", "PLB", "PLD", "PLP",
@@ -217,6 +229,12 @@ def _apply_state(mnemonic: str, mode: str, raw: bytes, state: CpuState) -> CpuSt
         result = replace(result, e=new_e, carry=new_carry)
         if new_e == 1:
             result = replace(result, m=1, x=1)
+        elif new_e is None:
+            # Emulation forces 8-bit widths; native keeps them: a width is
+            # known only where both agree.
+            result = replace(result, m=1 if result.m == 1 else None, x=1 if result.x == 1 else None)
+    elif mnemonic in _CARRY_WRITES:
+        result = replace(result, carry=None)
     elif mnemonic in {"PLP", "RTI"}:
         result = replace(result, carry=None)
         result = replace(
@@ -329,6 +347,75 @@ def _entry_seeds(image: SnesImage) -> list[tuple[int, CpuState]]:
     return seeds
 
 
+def _call_summaries(instructions: dict[int, Instruction]) -> dict[int, dict[str, int | None]]:
+    """For each called routine, the context values it may change and the
+    value it returns with (None: unknown or differing between its returns).
+    A routine's body is what its entry reaches without following calls; what
+    the routines it calls change counts as its own change."""
+
+    def body(entry: int) -> set[int]:
+        seen: set[int] = set()
+        stack = [entry]
+        while stack:
+            address = stack.pop()
+            if address in seen or address not in instructions:
+                continue
+            seen.add(address)
+            instruction = instructions[address]
+            if instruction.mnemonic in _RETURNS or instruction.mnemonic == "RTI":
+                continue
+            stack.extend(flow.target for flow in instruction.flows
+                         if flow.kind in {"branch", "fallthrough", "jump"} and flow.target is not None)
+        return seen
+
+    bodies: dict[int, set[int]] = {}
+    changed: dict[int, set[str]] = {}
+
+    def changes(entry: int, visiting: set[int]) -> set[str]:
+        if entry in changed:
+            return changed[entry]
+        if entry in visiting:
+            return set()
+        visiting.add(entry)
+        bodies.setdefault(entry, body(entry))
+        fields: set[str] = set()
+        for address in bodies[entry]:
+            instruction = instructions[address]
+            fields |= {field for field, mnemonics in _CALLEE_CHANGES.items() if instruction.mnemonic in mnemonics}
+            if instruction.mnemonic in {"JSR", "JSL"}:
+                for flow in instruction.flows:
+                    if flow.kind == "call" and flow.target is not None:
+                        fields |= changes(flow.target, visiting)
+        changed[entry] = fields
+        return fields
+
+    callees = {flow.target for instruction in instructions.values() if instruction.mnemonic in {"JSR", "JSL"}
+               for flow in instruction.flows if flow.kind == "call" and flow.target is not None}
+    summaries: dict[int, dict[str, int | None]] = {}
+    for entry in sorted(callees):
+        fields = changes(entry, set())
+        exits = [instructions[address].state_after for address in bodies.get(entry, body(entry))
+                 if instructions[address].mnemonic in _RETURNS]
+        summary: dict[str, int | None] = {}
+        for field in sorted(fields):
+            values = {getattr(state, field) for state in exits}
+            summary[field] = values.pop() if len(values) == 1 else None
+        summaries[entry] = summary
+    return summaries
+
+
+def _after_call(state: CpuState, summary: dict[str, int | None] | None) -> CpuState:
+    """The caller's context back from a call: what the callee changes as it
+    returns it, the rest as it was; the carry and accumulator are the
+    callee's to leave."""
+    state = replace(state, carry=None, accumulator=None)
+    if summary:
+        state = replace(state, **summary)
+        if state.e == 1:
+            state = replace(state, m=1, x=1)
+    return state
+
+
 def analyze_snes(
     image: SnesImage,
     seeds: Iterable[tuple[int, CpuState]] | None = None,
@@ -346,6 +433,9 @@ def analyze_snes(
             diagnostics.append(AnalysisDiagnostic(kind, address, message))
 
     forced_states: dict[int, CpuState] = {}
+    # What each called routine returns with, from the last pass; a pass that
+    # changes them runs again.
+    summaries: dict[int, dict[str, int | None]] = {}
     for _iteration in range(1024):
         states: dict[int, CpuState] = {}
         instructions: dict[int, Instruction] = {}
@@ -420,9 +510,22 @@ def analyze_snes(
                         )
                     continue
                 target_state = replace(after, pbr=flow.target >> 16)
+                if flow.kind == "fallthrough" and mnemonic in {"JSR", "JSL"}:
+                    callee = next((item.target for item in flows if item.kind == "call"), None)
+                    target_state = _after_call(target_state, summaries.get(callee) if callee is not None else None)
                 queue.append((flow.target, target_state))
         if not restart:
-            break
+            found = _call_summaries(instructions)
+            # Widened, never narrowed again: the passes settle.
+            merged = {
+                entry: {field: (value if field not in summaries.get(entry, {}) else
+                                _merge_value(summaries[entry][field], value))
+                        for field, value in summary.items()}
+                for entry, summary in found.items()
+            }
+            if merged == summaries:
+                break
+            summaries = merged
     else:
         raise SnesAnalysisError("W65C816 state propagation did not converge")
 

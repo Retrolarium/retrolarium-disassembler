@@ -90,6 +90,27 @@ class SnesAnalysisTests(unittest.TestCase):
         manifest = analysis_manifest(result)
         self.assertEqual("retrolarium.snes.state-analysis", manifest["schema"])
 
+    def test_a_call_returns_with_the_width_its_callee_leaves(self) -> None:
+        # CLC; XCE; REP #$20; JSR $900B; LDA #$12; STP ... $900B: SEP #$20; RTS.
+        # The callee goes back to an 8-bit accumulator: LDA takes one byte and
+        # STP stays an instruction.
+        code = bytes.fromhex("18 FB C2 20 20 0B 90 A9 12 DB EA E2 20 60")
+        result = analyze_snes(image_with_code(code), [(0x009000, CpuState(1, 1, 1, None, 0, 0, 0))])
+        facts = {item.logical_address: item for item in result.instructions}
+        self.assertEqual(2, facts[0x009007].length)
+        self.assertEqual("STP", facts[0x009009].mnemonic)
+
+    def test_arithmetic_sets_the_carry_xce_reads(self) -> None:
+        # Native, 16-bit A: LDA #$FFFF; CLC; ADC #$0001 (carry set); XCE back
+        # to emulation, where LDA #$34 is one byte; STP.
+        code = bytes.fromhex("A9 FF FF 18 69 01 00 FB A9 34 DB")
+        result = analyze_snes(image_with_code(code), [(0x009000, CpuState(0, 0, 1, None, 0, 0, 0))])
+        facts = {item.logical_address: item for item in result.instructions}
+        self.assertIsNone(facts[0x009004].state_after.carry)
+        self.assertNotEqual(3, facts.get(0x009008).length if 0x009008 in facts else 0)
+        self.assertNotIn(0x00900A, {address for address, item in facts.items()
+                                   if address < 0x00900A < address + item.length})
+
     def test_tracks_pbr_dbr_and_direct_page_evidence(self) -> None:
         code = bytes.fromhex("18 FB 4B AB C2 20 A9 34 12 5B DB")
         result = analyze_snes(
