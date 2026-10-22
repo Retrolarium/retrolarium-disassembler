@@ -13,12 +13,12 @@ CORE ?= ../retrolarium-core/python/retrolarium_core
 lint:
 	$(PYTHON) $(CORE)/stop_words.py check .
 
-# Markdown through mdformat with the mdformat-gfm plugin (.mdformat.toml).
+# Every tracked file through its language's formatter (retrolarium_core.formatting).
 format:
-	$(PYTHON) $(CORE)/hooks.py markdown .
+	$(PYTHON) $(CORE)/hooks.py format .
 
 format-check:
-	$(PYTHON) $(CORE)/hooks.py markdown . --check
+	$(PYTHON) $(CORE)/hooks.py format . --check
 
 hooks:
 	$(PYTHON) $(CORE)/hooks.py install .
