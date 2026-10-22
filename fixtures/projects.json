@@ -71,9 +71,7 @@
       "source": "nes/honkeypong/upstream-source",
       "commit": "f9ab7ad450ffebabec15623aa811a7564f079168",
       "builder": "nes-ophis",
-      "patches": [
-        "patches/nes/honkeypong/0001-avoid-double-close.patch"
-      ],
+      "patches": ["patches/nes/honkeypong/0001-avoid-double-close.patch"],
       "source_output": "bin/HonkeyPong.nes",
       "output": "nes/bin/HonkeyPong.nes",
       "expected_size": 24592,
@@ -85,9 +83,7 @@
       "source": "nes/rhde/upstream-source",
       "commit": "376204907155d15bb13018e5f9b231c8511d5333",
       "builder": "nes-cc65",
-      "patches": [
-        "patches/nes/rhde/0001-noninteractive-terminal-width.patch"
-      ],
+      "patches": ["patches/nes/rhde/0001-noninteractive-terminal-width.patch"],
       "source_output": "rhde.nes",
       "output": "nes/bin/rhde.nes",
       "expected_size": 32784,
@@ -228,9 +224,7 @@
       "source": "snes/horizontal_shooter/upstream-source",
       "commit": "747111b1a46a7e6e540fa0b5dd36d1d017f7111e",
       "builder": "snes-untech",
-      "patches": [
-        "patches/snes/horizontal_shooter/0001-include-array.patch"
-      ],
+      "patches": ["patches/snes/horizontal_shooter/0001-include-array.patch"],
       "source_output": "bin/horizontal-shooter.sfc",
       "output": "snes/bin/horizontal-shooter.sfc",
       "expected_size": 131072,

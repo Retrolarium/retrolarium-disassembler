@@ -115,38 +115,22 @@ def _evaluate(
     instruction_interiors: set[int],
     image: SnesImage,
 ) -> PointerCandidate:
-    target_offsets = tuple(
-        _physical_target(image, entry.target) for entry in entries
-    )
+    target_offsets = tuple(_physical_target(image, entry.target) for entry in entries)
     contradictions: list[str] = []
     if any(offset is None for offset in target_offsets):
         contradictions.append("target_outside_file_backed_rom")
-    if any(
-        offset in instruction_interiors
-        for offset in target_offsets
-        if offset is not None
-    ):
+    if any(offset in instruction_interiors for offset in target_offsets if offset is not None):
         contradictions.append("target_inside_instruction")
-    if any(
-        physical_start <= offset < physical_end
-        for offset in target_offsets
-        if offset is not None
-    ):
+    if any(physical_start <= offset < physical_end for offset in target_offsets if offset is not None):
         contradictions.append("target_inside_own_table")
-    instruction_targets = sum(
-        entry.target in instruction_starts for entry in entries
-    )
+    instruction_targets = sum(entry.target in instruction_starts for entry in entries)
     evidence = (
         "all_entries_map_to_file_backed_rom",
         f"entry_count={len(entries)}",
         f"instruction_targets={instruction_targets}",
         "all_targets_are_instruction_starts",
     )
-    accepted = (
-        len(entries) >= MIN_ENTRIES
-        and instruction_targets == len(entries)
-        and not contradictions
-    )
+    accepted = len(entries) >= MIN_ENTRIES and instruction_targets == len(entries) and not contradictions
     score = min(100, 45 + len(entries) * 5 + instruction_targets * 10)
     slug = schema_id.removeprefix("snes.").replace(".", "-")
     return PointerCandidate(
@@ -176,9 +160,7 @@ def _u16_candidates(
         for logical_start in _table_aliases(image, start):
             bank = logical_start & 0xFF0000
             if start >= 2 and start - 2 not in occupied:
-                previous = int.from_bytes(
-                    image.data[start - 2 : start], "little"
-                )
+                previous = int.from_bytes(image.data[start - 2 : start], "little")
                 if bank | previous in starts:
                     continue
             entries: list[PointerEntry] = []
@@ -242,11 +224,7 @@ def _u24_candidates(
                 break
             targets.add(target)
             logical = next(
-                (
-                    alias
-                    for alias in _table_aliases(image, offset)
-                    if alias >> 16 == target >> 16
-                ),
+                (alias for alias in _table_aliases(image, offset) if alias >> 16 == target >> 16),
                 _table_aliases(image, offset)[0],
             )
             entries.append(PointerEntry(offset, logical, target, target))
@@ -286,12 +264,8 @@ def _relative_candidates(
                 if offset in occupied or offset + 1 in occupied:
                     break
                 raw = int.from_bytes(image.data[offset : offset + 2], "little")
-                signed = int.from_bytes(
-                    image.data[offset : offset + 2], "little", signed=True
-                )
-                target = (logical_start & 0xFF0000) | (
-                    ((logical_start & 0xFFFF) + signed) & 0xFFFF
-                )
+                signed = int.from_bytes(image.data[offset : offset + 2], "little", signed=True)
+                target = (logical_start & 0xFF0000) | (((logical_start & 0xFFFF) + signed) & 0xFFFF)
                 if target not in starts or target in targets:
                     break
                 targets.add(target)
@@ -336,11 +310,7 @@ def _split_candidates(
             end = start + count * 3
             if end > size:
                 break
-            first_target = (
-                image.data[start]
-                | image.data[start + count] << 8
-                | image.data[start + count * 2] << 16
-            )
+            first_target = image.data[start] | image.data[start + count] << 8 | image.data[start + count * 2] << 16
             if first_target not in starts:
                 continue
             if any(item in occupied for item in range(start, end)):
@@ -351,20 +321,12 @@ def _split_candidates(
                 low_offset = start + index
                 high_offset = start + count + index
                 bank_offset = start + count * 2 + index
-                target = (
-                    image.data[low_offset]
-                    | image.data[high_offset] << 8
-                    | image.data[bank_offset] << 16
-                )
+                target = image.data[low_offset] | image.data[high_offset] << 8 | image.data[bank_offset] << 16
                 if target not in starts or target in targets:
                     break
                 targets.add(target)
                 logical = next(
-                    (
-                        alias
-                        for alias in _table_aliases(image, low_offset)
-                        if alias >> 16 == target >> 16
-                    ),
+                    (alias for alias in _table_aliases(image, low_offset) if alias >> 16 == target >> 16),
                     _table_aliases(image, low_offset)[0],
                 )
                 entries.append(
@@ -418,9 +380,7 @@ def _vector_candidate(image: SnesImage) -> PointerCandidate:
     )
 
 
-def detect_pointer_candidates(
-    image: SnesImage, result: AnalysisResult
-) -> tuple[PointerCandidate, ...]:
+def detect_pointer_candidates(image: SnesImage, result: AnalysisResult) -> tuple[PointerCandidate, ...]:
     occupied, interiors, starts = _instruction_sets(result)
     occupied.update(range(image.header_offset, image.header_offset + 0x40))
     candidates: list[PointerCandidate] = [_vector_candidate(image)]
@@ -455,8 +415,12 @@ def _resolve_overlaps(candidates: list[PointerCandidate]) -> list[PointerCandida
     entries, then the earliest) keeps them, the others are rejected."""
     accepted = sorted(
         (candidate for candidate in candidates if candidate.status == "accepted"),
-        key=lambda candidate: (-candidate.score, -len(candidate.entries), candidate.physical_start,
-                               candidate.schema_id),
+        key=lambda candidate: (
+            -candidate.score,
+            -len(candidate.entries),
+            candidate.physical_start,
+            candidate.schema_id,
+        ),
     )
     retained: set[str] = set()
     occupied: set[int] = set()
@@ -467,9 +431,14 @@ def _resolve_overlaps(candidates: list[PointerCandidate]) -> list[PointerCandida
         retained.add(candidate.candidate_id)
         occupied.update(byte_range)
     return [
-        replace(candidate, status="rejected", score=max(0, candidate.score - 30),
-                contradictions=candidate.contradictions + ("overlaps_stronger_candidate",))
-        if candidate.status == "accepted" and candidate.candidate_id not in retained else candidate
+        replace(
+            candidate,
+            status="rejected",
+            score=max(0, candidate.score - 30),
+            contradictions=candidate.contradictions + ("overlaps_stronger_candidate",),
+        )
+        if candidate.status == "accepted" and candidate.candidate_id not in retained
+        else candidate
         for candidate in candidates
     ]
 

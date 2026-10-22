@@ -44,63 +44,93 @@ class MegaDriveEmitTests(unittest.TestCase):
     @needs_kit_assemblers
     def test_overlapping_z80_sources_build_complete_programs_emit_shared_byte_once(self):
         from retrolarium_core.contracts import _validate_megadrive_assets, ContractError
+
         data = bytearray(cartridge(size=0x600))
         data[0x300:0x307] = bytes.fromhex("f30000c90000c9")
         image = parse_megadrive(bytes(data))
         copies = []
         for index, (offset, size, base) in enumerate(((0x300, 4, 0), (0x303, 4, 0x1000), (0x302, 2, 0x1800))):
-            payload = data[offset:offset + size]
-            copies.append(CrossCpuCopy(
-                str(index), "test", "m68k", "m68k", offset, offset + size - 1,
-                "z80", "z80", base, base + size - 1, size,
-                hashlib.sha256(payload).hexdigest(), (0x200,), "proven-static-copy"))
+            payload = data[offset : offset + size]
+            copies.append(
+                CrossCpuCopy(
+                    str(index),
+                    "test",
+                    "m68k",
+                    "m68k",
+                    offset,
+                    offset + size - 1,
+                    "z80",
+                    "z80",
+                    base,
+                    base + size - 1,
+                    size,
+                    hashlib.sha256(payload).hexdigest(),
+                    (0x200,),
+                    "proven-static-copy",
+                )
+            )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            result = emit_project(root, image, {}, (), (), tuple(copies),
-                                  tuple((f"z80.{i}", c.target_start, {}) for i, c in enumerate(copies)))
+            result = emit_project(
+                root,
+                image,
+                {},
+                (),
+                (),
+                tuple(copies),
+                tuple((f"z80.{i}", c.target_start, {}) for i, c in enumerate(copies)),
+            )
             source = (root / "src/rom-000200.s").read_text()
             self.assertIn('binclude "build/z80-program01.bin",1,3', source)
             self.assertNotIn('binclude "build/z80-program02.bin"', source)
             programs = [a for a in result.assets if a["kind"] == "z80_program"]
             self.assertEqual([4, 4, 2], [a["size"] for a in programs])
             self.assertEqual([], programs[2]["rom_emission"])
-            _validate_megadrive_assets({"assets": {"schema": "retrolarium.assets",
-                "schema_version": 1, "items": list(result.assets)}}, root, len(data))
+            _validate_megadrive_assets(
+                {"assets": {"schema": "retrolarium.assets", "schema_version": 1, "items": list(result.assets)}},
+                root,
+                len(data),
+            )
             if os.name == "nt":
                 suite = materialize_build_toolchain("megadrive", cache_root=root / "toolchains")
-                _asl_build({"source": "src/main.s", "object": "build/main.p",
-                            "z80_prebuild": list(result.z80_builds)}, root, root / "rebuilt.bin", suite)
+                _asl_build(
+                    {"source": "src/main.s", "object": "build/main.p", "z80_prebuild": list(result.z80_builds)},
+                    root,
+                    root / "rebuilt.bin",
+                    suite,
+                )
                 self.assertEqual(bytes(data), (root / "rebuilt.bin").read_bytes())
                 for i, c in enumerate(copies):
-                    self.assertEqual(bytes(data[c.source_start:c.source_start + c.size]),
-                                     (root / f"build/z80-program{i:02d}.bin").read_bytes())
+                    self.assertEqual(
+                        bytes(data[c.source_start : c.source_start + c.size]),
+                        (root / f"build/z80-program{i:02d}.bin").read_bytes(),
+                    )
             programs[1]["rom_emission"][0]["file_offset"] = 0
             with self.assertRaisesRegex(ContractError, "coordinates"):
-                _validate_megadrive_assets({"assets": {"schema": "retrolarium.assets",
-                    "schema_version": 1, "items": list(result.assets)}}, root, len(data))
+                _validate_megadrive_assets(
+                    {"assets": {"schema": "retrolarium.assets", "schema_version": 1, "items": list(result.assets)}},
+                    root,
+                    len(data),
+                )
 
     def test_pc_long_index_implicit_ghidra_suffix_emits_exact_instruction(self):
-        item = replace(fact(0x11954, "MOVEA.L", "(0x11962,PC,D0*0x1)|A0"),
-                       raw=bytes.fromhex("207b080c"), length=4)
+        item = replace(fact(0x11954, "MOVEA.L", "(0x11962,PC,D0*0x1)|A0"), raw=bytes.fromhex("207b080c"), length=4)
         self.assertEqual("movea.l $011962(pc,d0.l),a0", _asm_instruction(item))
 
     def test_68000_rejects_movem_load_predecrement_and_tst_address_register(self):
-        movem = replace(fact(0x200, "MOVEM.W", "-(A4)|{ D0 D1 D6 D7 A0}"),
-                        raw=bytes.fromhex("4C A4 01 C3"), length=4)
+        movem = replace(fact(0x200, "MOVEM.W", "-(A4)|{ D0 D1 D6 D7 A0}"), raw=bytes.fromhex("4C A4 01 C3"), length=4)
         tst = replace(fact(0x200, "TST.W", "A3w"), raw=bytes.fromhex("4A 4B"))
         self.assertIsNone(_asm_instruction(movem))
         self.assertIsNone(_asm_instruction(tst))
 
     def test_move_byte_ignored_immediate_high_byte_is_preserved_raw(self):
-        instruction = replace(fact(0x200, "MOVE.B", "#0x16|(A2)+"),
-                              raw=bytes.fromhex("14 FC 05 16"), length=4)
+        instruction = replace(fact(0x200, "MOVE.B", "#0x16|(A2)+"), raw=bytes.fromhex("14 FC 05 16"), length=4)
         self.assertIsNone(_asm_instruction(instruction))
 
     @needs_kit_assemblers
     def test_nonzero_z80_payload_rebuilds_without_ram_address_prefix(self):
         payload = bytes.fromhex("C3 00 1C C9")
-        instruction = replace(fact(0, "JP", "0x1c00"), cpu_address=0x1C00,
-                              raw=payload[:3], length=3)
+        instruction = replace(fact(0, "JP", "0x1c00"), cpu_address=0x1C00, raw=payload[:3], length=3)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             _emit_z80_source(root / "program.asm", payload, {0: instruction}, base_address=0x1C00)
@@ -111,15 +141,18 @@ class MegaDriveEmitTests(unittest.TestCase):
 
     def test_68000_rejects_address_register_multiply_and_pc_memory_shift(self):
         multiply = replace(fact(0x200, "MULU.W", "A2w|D5"), raw=bytes.fromhex("CA CA"))
-        shift = replace(fact(0x200, "ASL", "(0x216,PC,A6w*0x1)"),
-                        raw=bytes.fromhex("E1 FB E0 14"), length=4)
+        shift = replace(fact(0x200, "ASL", "(0x216,PC,A6w*0x1)"), raw=bytes.fromhex("E1 FB E0 14"), length=4)
         self.assertIsNone(_asm_instruction(multiply))
         self.assertIsNone(_asm_instruction(shift))
 
     def test_z80_absolute_register_pair_transfers_use_canonical_encodings(self):
         for opcode, expected in (
-            (0x43, "ld ($1234),bc"), (0x53, "ld ($1234),de"), (0x73, "ld ($1234),sp"),
-            (0x4B, "ld bc,($1234)"), (0x5B, "ld de,($1234)"), (0x7B, "ld sp,($1234)"),
+            (0x43, "ld ($1234),bc"),
+            (0x53, "ld ($1234),de"),
+            (0x73, "ld ($1234),sp"),
+            (0x4B, "ld bc,($1234)"),
+            (0x5B, "ld de,($1234)"),
+            (0x7B, "ld sp,($1234)"),
         ):
             with self.subTest(opcode=opcode):
                 self.assertEqual(expected, _z80_asm(bytes((0xED, opcode, 0x34, 0x12)), 0))
@@ -129,9 +162,12 @@ class MegaDriveEmitTests(unittest.TestCase):
     def test_z80_index_register_arithmetic_preserves_prefix(self):
         for prefix, register in ((0xDD, "ix"), (0xFD, "iy")):
             for opcode, expected in (
-                (0x23, f"inc {register}"), (0x2B, f"dec {register}"),
-                (0x09, f"add {register},bc"), (0x19, f"add {register},de"),
-                (0x29, f"add {register},{register}"), (0x39, f"add {register},sp"),
+                (0x23, f"inc {register}"),
+                (0x2B, f"dec {register}"),
+                (0x09, f"add {register},bc"),
+                (0x19, f"add {register},de"),
+                (0x29, f"add {register},{register}"),
+                (0x39, f"add {register},sp"),
             ):
                 with self.subTest(prefix=prefix, opcode=opcode):
                     self.assertEqual(expected, _z80_asm(bytes((prefix, opcode)), 0))
@@ -142,8 +178,11 @@ class MegaDriveEmitTests(unittest.TestCase):
         image, facts, targets = word_dispatch_image()
         for target in targets:
             facts[target] = replace(fact(target, "RTS", ""), flow_type="TERMINATOR")
-        candidate = next(item for item in detect_pointer_candidates(image, facts)
-                         if item.schema_id == "megadrive.s16be.target-code_base")
+        candidate = next(
+            item
+            for item in detect_pointer_candidates(image, facts)
+            if item.schema_id == "megadrive.s16be.target-code_base"
+        )
         lines = _pointer_lines(candidate, image, {})
         self.assertIn("                dc.w    $000340-$000340", lines)
         self.assertIn("                dc.w    $000280-$000340", lines)
@@ -192,9 +231,12 @@ class MegaDriveEmitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             emit_project(
-                root, image, {},
+                root,
+                image,
+                {},
                 (candidate(0x220, (0x304,)), candidate(0x300, (0x400, 0x404))),
-                (symbol,), (),
+                (symbol,),
+                (),
             )
             source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
         self.assertIn("dc.l    $000304", source)
@@ -253,17 +295,13 @@ class MegaDriveEmitTests(unittest.TestCase):
 
     def test_emits_counted_ram_trampoline_table_as_symbolic_words(self) -> None:
         data = bytearray(cartridge(size=0x500))
-        data[0x220:0x238] = bytes.fromhex(
-            "41 FA 00 3E 43 F8 FF 00 30 18 32 FC 4E F9 "
-            "72 00 32 18 22 C1 51 C8 FF F4"
-        )
+        data[0x220:0x238] = bytes.fromhex("41 FA 00 3E 43 F8 FF 00 30 18 32 FC 4E F9 72 00 32 18 22 C1 51 C8 FF F4")
         targets = (0x280, 0x290, 0x2A0, 0x2B0)
-        data[0x260:0x26A] = (
-            (len(targets) - 1).to_bytes(2, "big")
-            + b"".join(target.to_bytes(2, "big") for target in targets)
+        data[0x260:0x26A] = (len(targets) - 1).to_bytes(2, "big") + b"".join(
+            target.to_bytes(2, "big") for target in targets
         )
         for target in targets:
-            data[target:target + 2] = bytes.fromhex("4E 75")
+            data[target : target + 2] = bytes.fromhex("4E 75")
         image = parse_megadrive(bytes(data))
         facts = {
             target: replace(
@@ -299,39 +337,35 @@ class MegaDriveEmitTests(unittest.TestCase):
             evidence=("data_reference_from_117fe",),
         )
         cases = (
-            (0x117FE, "ADD.W", "(0x11878,PC,D1w*0x1)|D5w",
-             "DA 7B 10 78", "add.w off_M68K_011878(pc,d1.w),d5",
-             {0x11878: symbol}),
-            (0x1269C, "MOVE.L", "(0x0,A0,D0w*0x1)|D1",
-             "22 30 00 00", "move.l (a0,d0.w),d1", None),
-            (0x113F6, "ADDA.L", "D7|A0",
-             "D1 C7", "adda.l d7,a0", None),
-            (0x116C8, "ABCD", "D1b|D0b",
-             "C1 01", "abcd d1,d0", None),
-            (0x10EDC, "CMPM.L", "(A0)+|(A1)+",
-             "B3 88", "cmpm.l (a0)+,(a1)+", None),
+            (
+                0x117FE,
+                "ADD.W",
+                "(0x11878,PC,D1w*0x1)|D5w",
+                "DA 7B 10 78",
+                "add.w off_M68K_011878(pc,d1.w),d5",
+                {0x11878: symbol},
+            ),
+            (0x1269C, "MOVE.L", "(0x0,A0,D0w*0x1)|D1", "22 30 00 00", "move.l (a0,d0.w),d1", None),
+            (0x113F6, "ADDA.L", "D7|A0", "D1 C7", "adda.l d7,a0", None),
+            (0x116C8, "ABCD", "D1b|D0b", "C1 01", "abcd d1,d0", None),
+            (0x10EDC, "CMPM.L", "(A0)+|(A1)+", "B3 88", "cmpm.l (a0)+,(a1)+", None),
         )
         for address, mnemonic, operands, raw_hex, expected, symbols in cases:
             with self.subTest(address=address):
                 raw = bytes.fromhex(raw_hex)
-                instruction = replace(
-                    fact(address, mnemonic, operands), raw=raw, length=len(raw)
-                )
+                instruction = replace(fact(address, mnemonic, operands), raw=raw, length=len(raw))
                 self.assertEqual(expected, _asm_instruction(instruction, symbols))
 
     def test_renders_forced_zero_displacement_trap_and_ccr_move(self) -> None:
         cases = (
-            (0x11386, "ADDQ.B", "0x1|(0x0,A0)",
-             "52 28 00 00", "addq.b #1,0.w(a0)"),
+            (0x11386, "ADDQ.B", "0x1|(0x0,A0)", "52 28 00 00", "addq.b #1,0.w(a0)"),
             (0x10E52, "TRAP", "0x0", "4E 40", "trap #0"),
             (0x1169A, "MOVE", "#0x4", "44 FC 00 04", "move #4,ccr"),
         )
         for address, mnemonic, operands, raw_hex, expected in cases:
             with self.subTest(address=address):
                 raw = bytes.fromhex(raw_hex)
-                instruction = replace(
-                    fact(address, mnemonic, operands), raw=raw, length=len(raw)
-                )
+                instruction = replace(fact(address, mnemonic, operands), raw=raw, length=len(raw))
                 self.assertEqual(expected, _asm_instruction(instruction))
 
     def test_renders_pc_relative_lea_to_known_symbol(self) -> None:
@@ -348,7 +382,8 @@ class MegaDriveEmitTests(unittest.TestCase):
         )
         instruction = replace(
             fact(0x216, "LEA", "(0x7c,PC)|A5"),
-            raw=bytes.fromhex("4B FA 00 7C"), length=4,
+            raw=bytes.fromhex("4B FA 00 7C"),
+            length=4,
         )
         self.assertEqual(
             "lea off_M68K_000294(pc),a5",
@@ -364,8 +399,7 @@ class MegaDriveEmitTests(unittest.TestCase):
             (0x300, "JMP", "0x0000030a", "4E FA 00 06", None),
         ):
             with self.subTest(address=address, raw=raw):
-                instruction = replace(fact(address, mnemonic, operand),
-                                      raw=bytes.fromhex(raw), length=4)
+                instruction = replace(fact(address, mnemonic, operand), raw=bytes.fromhex(raw), length=4)
                 self.assertEqual(expected, _asm_instruction(instruction))
 
     def test_status_immediates_and_dynamic_bits_preserve_extension_words(self) -> None:
@@ -379,26 +413,26 @@ class MegaDriveEmitTests(unittest.TestCase):
             ("BCLR.B", "D0|(0x18e,A5)", "01 AD 01 8E", "bclr d0,398(a5)"),
         ):
             with self.subTest(mnemonic=mnemonic, raw=raw):
-                instruction = replace(fact(0x300, mnemonic, operand),
-                                      raw=bytes.fromhex(raw), length=4)
+                instruction = replace(fact(0x300, mnemonic, operand), raw=bytes.fromhex(raw), length=4)
                 self.assertEqual(expected, _asm_instruction(instruction))
 
     def test_renders_flicky_bset_displacement(self) -> None:
         instruction = replace(
             fact(0x16674, "BSET.B", "#0x7|(0x2,A0)"),
-            raw=bytes.fromhex("08 E8 00 07 00 02"), length=6,
+            raw=bytes.fromhex("08 E8 00 07 00 02"),
+            length=6,
         )
         self.assertEqual("bset #7,2(a0)", _asm_instruction(instruction))
 
     def test_link_word_frame_uses_proven_signed_immediate(self):
-        instruction = replace(fact(0x300, "LINK.W", "A6|-0x20"),
-                              raw=bytes.fromhex("4e56ffe0"), length=4)
+        instruction = replace(fact(0x300, "LINK.W", "A6|-0x20"), raw=bytes.fromhex("4e56ffe0"), length=4)
         self.assertEqual("link a6,#-32", _asm_instruction(instruction))
-        self.assertEqual("link a6,#-32", _asm_instruction(replace(
-            instruction, mnemonic="LINK", operands="A6|#-0x20")))
-        for invalid in (replace(instruction, operands="A5|-0x20"),
-                        replace(instruction, operands="A6|-0x10"),
-                        replace(instruction, raw=bytes.fromhex("4806ffffffe0"), length=6)):
+        self.assertEqual("link a6,#-32", _asm_instruction(replace(instruction, mnemonic="LINK", operands="A6|#-0x20")))
+        for invalid in (
+            replace(instruction, operands="A5|-0x20"),
+            replace(instruction, operands="A6|-0x10"),
+            replace(instruction, raw=bytes.fromhex("4806ffffffe0"), length=6),
+        ):
             self.assertIsNone(_asm_instruction(invalid))
 
     def test_rejects_noncanonical_byte_immediate_extension_words(self) -> None:
@@ -410,9 +444,7 @@ class MegaDriveEmitTests(unittest.TestCase):
         for mnemonic, operands, raw_hex in cases:
             with self.subTest(mnemonic=mnemonic):
                 raw = bytes.fromhex(raw_hex)
-                instruction = replace(
-                    fact(0x200, mnemonic, operands), raw=raw, length=len(raw)
-                )
+                instruction = replace(fact(0x200, mnemonic, operands), raw=raw, length=len(raw))
                 self.assertIsNone(_asm_instruction(instruction))
 
     def test_preserves_bit_immediates_that_assemblers_reduce_modulo_width(self):
@@ -459,11 +491,13 @@ class MegaDriveEmitTests(unittest.TestCase):
         )
         branch = replace(
             fact(0x10084, "BRA.W", "0x00011fb0"),
-            raw=bytes.fromhex("60 00 1F 2A"), length=4,
+            raw=bytes.fromhex("60 00 1F 2A"),
+            length=4,
         )
         dbcc = replace(
             fact(0x11FB4, "DBEQ", "D0w|0x00011fb0"),
-            raw=bytes.fromhex("57 C8 FF FA"), length=4,
+            raw=bytes.fromhex("57 C8 FF FA"),
+            length=4,
         )
         self.assertEqual("bra.w sub_M68K_011FB0", _asm_instruction(branch, {target: symbol}))
         self.assertEqual("dbeq d0,sub_M68K_011FB0", _asm_instruction(dbcc, {target: symbol}))
@@ -475,12 +509,14 @@ class MegaDriveEmitTests(unittest.TestCase):
         image = parse_megadrive(bytes(data))
         branch = replace(
             fact(0x200, "BRA.W", "0x00000206", flows=(0x206,)),
-            raw=bytes.fromhex("60 00 00 04"), length=4,
+            raw=bytes.fromhex("60 00 00 04"),
+            length=4,
             flow_type="UNCONDITIONAL_JUMP",
         )
         comparison = replace(
             fact(0x204, "CMPI.W", "#0x0|D0w"),
-            raw=bytes.fromhex("0C 40 00 00"), length=4,
+            raw=bytes.fromhex("0C 40 00 00"),
+            length=4,
         )
         facts = {0x200: branch, 0x204: comparison}
         symbols = generate_symbols(image, facts, ())
@@ -509,7 +545,8 @@ class MegaDriveEmitTests(unittest.TestCase):
         )
         call = replace(
             fact(0x1007A, "JSR", "(0x10084,PC,D0w*0x1)"),
-            raw=bytes.fromhex("4E BB 00 08"), length=4,
+            raw=bytes.fromhex("4E BB 00 08"),
+            length=4,
             flow_type="COMPUTED_CALL",
         )
         self.assertEqual(
@@ -519,27 +556,21 @@ class MegaDriveEmitTests(unittest.TestCase):
 
     def test_renders_flicky_btst_dbeq_and_movem(self) -> None:
         instructions = (
-            (0x106C, "BTST.B", "#0x0|(0x00a11100).l",
-             "08 39 00 00 00 A1 11 00", "btst #0,($00A11100).l"),
-            (0x1074, "DBEQ", "D0w|0x0000106c",
-             "57 C8 FF F6", "dbeq d0,$00106C"),
-            (0x1078, "MOVEM.W", "(SP)+|{ D0}",
-             "4C 9F 00 01", "movem.w (sp)+,d0"),
-            (0x1060, "MOVEM.W", "{ D0w}|-(SP)",
-             "48 A7 80 00", "movem.w d0,-(sp)"),
+            (0x106C, "BTST.B", "#0x0|(0x00a11100).l", "08 39 00 00 00 A1 11 00", "btst #0,($00A11100).l"),
+            (0x1074, "DBEQ", "D0w|0x0000106c", "57 C8 FF F6", "dbeq d0,$00106C"),
+            (0x1078, "MOVEM.W", "(SP)+|{ D0}", "4C 9F 00 01", "movem.w (sp)+,d0"),
+            (0x1060, "MOVEM.W", "{ D0w}|-(SP)", "48 A7 80 00", "movem.w d0,-(sp)"),
         )
         for address, mnemonic, operands, raw_hex, expected in instructions:
             with self.subTest(address=address):
                 raw = bytes.fromhex(raw_hex)
-                instruction = replace(
-                    fact(address, mnemonic, operands), raw=raw, length=len(raw)
-                )
+                instruction = replace(fact(address, mnemonic, operands), raw=raw, length=len(raw))
                 self.assertEqual(expected, _asm_instruction(instruction))
 
     @needs_kit_assemblers
     def test_ff_tail_uses_org_and_rebuilds_exactly(self) -> None:
         data = bytearray(cartridge(size=0x800))
-        data[0x300:] = b"\xFF" * (len(data) - 0x300)
+        data[0x300:] = b"\xff" * (len(data) - 0x300)
         image = parse_megadrive(bytes(data))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -549,13 +580,13 @@ class MegaDriveEmitTests(unittest.TestCase):
             self.assertIn("org     $0007FF", source)
             self.assertNotIn("$FF, $FF, $FF", source)
             if os.name == "nt":
-                suite = materialize_build_toolchain(
-                    "megadrive", cache_root=root / "toolchains"
-                )
+                suite = materialize_build_toolchain("megadrive", cache_root=root / "toolchains")
                 rebuilt = root / "rebuilt.bin"
                 _asl_build(
                     {"source": "src/main.s", "object": "build/main.p"},
-                    root, rebuilt, suite,
+                    root,
+                    rebuilt,
+                    suite,
                 )
                 self.assertEqual(image.data, rebuilt.read_bytes())
 
@@ -586,13 +617,8 @@ class MegaDriveEmitTests(unittest.TestCase):
     def test_emits_modules_relocatable_tables_and_z80_include(self) -> None:
         data = bytearray(cartridge())
         targets = (0x200, 0x206, 0x23C, 0x23E)
-        data[0x240:0x250] = b"".join(
-            target.to_bytes(4, "big") for target in targets
-        )
-        data[0x250:0x258] = b"".join(
-            (target - 0x250).to_bytes(2, "big", signed=True)
-            for target in targets
-        )
+        data[0x240:0x250] = b"".join(target.to_bytes(4, "big") for target in targets)
+        data[0x250:0x258] = b"".join((target - 0x250).to_bytes(2, "big", signed=True) for target in targets)
         z80_payload = bytes.fromhex("F3 31 FF 1F AF 32 00 40 3C 18 FD")
         data[0x258:0x263] = z80_payload
         image = parse_megadrive(bytes(data))
@@ -608,17 +634,15 @@ class MegaDriveEmitTests(unittest.TestCase):
             fact(0x23E, "RTE", ""),
         )
         facts = {
-            item.cpu_address: replace(
-                item, raw=bytes(data[item.cpu_address:item.cpu_address + 2])
-            )
-            for item in items
+            item.cpu_address: replace(item, raw=bytes(data[item.cpu_address : item.cpu_address + 2])) for item in items
         }
         facts[0x200] = replace(
-            facts[0x200], references=(
+            facts[0x200],
+            references=(
                 InstructionReference(0x240, "DATA", 0),
                 InstructionReference(0x250, "DATA", 0),
                 InstructionReference(0xFFFFC000, "DATA", 0),
-            )
+            ),
         )
         pointers = detect_pointer_candidates(image, facts)
         copy = CrossCpuCopy(
@@ -639,14 +663,19 @@ class MegaDriveEmitTests(unittest.TestCase):
         )
         symbols = generate_symbols(image, facts, pointers)
         z80_facts = {
-            0: replace(fact(0, "DI", ""), length=1, raw=b"\xF3"),
-            4: replace(fact(4, "XOR", "A"), length=1, raw=b"\xAF"),
+            0: replace(fact(0, "DI", ""), length=1, raw=b"\xf3"),
+            4: replace(fact(4, "XOR", "A"), length=1, raw=b"\xaf"),
         }
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             result = emit_project(
-                root, image, facts, pointers, symbols, (copy,),
+                root,
+                image,
+                facts,
+                pointers,
+                symbols,
+                (copy,),
                 (("z80.00", 0, z80_facts),),
             )
             source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
@@ -662,29 +691,30 @@ class MegaDriveEmitTests(unittest.TestCase):
             z80_source = (root / "src/sound/z80/program00.asm").read_text()
             self.assertIn("    di\n", z80_source)
             self.assertIn("    xor a\n", z80_source)
-            self.assertEqual(len(image.data), 0x200 + sum((
-                result.instruction_bytes,
-                result.pointer_bytes,
-                result.asset_bytes - 0x100,
-                result.raw_bytes,
-                result.padding_bytes,
-            )))
+            self.assertEqual(
+                len(image.data),
+                0x200
+                + sum(
+                    (
+                        result.instruction_bytes,
+                        result.pointer_bytes,
+                        result.asset_bytes - 0x100,
+                        result.raw_bytes,
+                        result.padding_bytes,
+                    )
+                ),
+            )
             if os.name == "nt":
-                suite = materialize_build_toolchain(
-                    "megadrive", cache_root=root / "toolchains"
-                )
+                suite = materialize_build_toolchain("megadrive", cache_root=root / "toolchains")
                 rebuilt = root / "rebuilt.bin"
                 (root / "build/z80-program00.bin").write_bytes(b"\0" * len(z80_payload))
                 _asl_build(
-                    {"source": "src/main.s", "object": "build/main.p",
-                     "z80_prebuild": list(result.z80_builds)},
+                    {"source": "src/main.s", "object": "build/main.p", "z80_prebuild": list(result.z80_builds)},
                     root,
                     rebuilt,
                     suite,
                 )
-                self.assertEqual(
-                    z80_payload, (root / "build/z80-program00.bin").read_bytes()
-                )
+                self.assertEqual(z80_payload, (root / "build/z80-program00.bin").read_bytes())
                 self.assertEqual(image.data, rebuilt.read_bytes())
 
     def test_ambiguous_add_word_immediate_keeps_exact_bytes(self) -> None:
@@ -705,17 +735,14 @@ class MegaDriveEmitTests(unittest.TestCase):
             source = (root / "src/rom-000200.s").read_text(encoding="utf-8")
 
         self.assertIn("dc.b    $D0, $7C, $00, $01", source)
-        self.assertFalse(any(
-            line.strip().lower().startswith(("add", "addi"))
-            for line in source.splitlines()
-        ))
+        self.assertFalse(any(line.strip().lower().startswith(("add", "addi")) for line in source.splitlines()))
         self.assertEqual(4, result.instruction_bytes)
 
     def test_emit_project_writes_z80_dispatch_table_words(self) -> None:
         # RET, RET, then a two-entry little-endian table pointing at both.
         payload = bytes.fromhex("C9 C9 00 00 01 00")
         data = bytearray(cartridge(size=0x800))
-        data[0x400:0x400 + len(payload)] = payload
+        data[0x400 : 0x400 + len(payload)] = payload
         image = parse_megadrive(bytes(data))
         copy = CrossCpuCopy(
             edge_id="copy.z80.00",
@@ -735,7 +762,9 @@ class MegaDriveEmitTests(unittest.TestCase):
         )
         z80_facts = {
             address: replace(
-                fact(address, "RET", ""), raw=b"\xC9", length=1,
+                fact(address, "RET", ""),
+                raw=b"\xc9",
+                length=1,
                 flow_type="TERMINATOR",
             )
             for address in (0, 1)
@@ -750,13 +779,16 @@ class MegaDriveEmitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             emit_project(
-                root, image, {}, (), (), (copy,),
+                root,
+                image,
+                {},
+                (),
+                (),
+                (copy,),
                 (("z80.00", 0, z80_facts),),
                 ((table,),),
             )
-            source = (root / "src/sound/z80/program00.asm").read_text(
-                encoding="utf-8"
-            )
+            source = (root / "src/sound/z80/program00.asm").read_text(encoding="utf-8")
 
         lines = source.splitlines()
         self.assertIn("Z80_Table_0002:", lines)
@@ -765,7 +797,7 @@ class MegaDriveEmitTests(unittest.TestCase):
         start = lines.index("Z80_Table_0002:")
         self.assertEqual(
             ["    dw Z80_Loc_0000", "    dw Z80_Loc_0001"],
-            lines[start + 1:start + 3],
+            lines[start + 1 : start + 3],
         )
 
     def test_emit_project_rejects_dispatch_tables_without_per_program_shape(
@@ -775,7 +807,14 @@ class MegaDriveEmitTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(MegaDriveEmitError):
                 emit_project(
-                    Path(directory), image, {}, (), (), (), (), ((),),
+                    Path(directory),
+                    image,
+                    {},
+                    (),
+                    (),
+                    (),
+                    (),
+                    ((),),
                 )
 
 

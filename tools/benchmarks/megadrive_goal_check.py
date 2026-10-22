@@ -13,15 +13,22 @@ def evaluate_case(case: dict, report: dict, verification: dict) -> dict:
     reference_count = comparison["reference_instructions"]
     matching = emission["matching_reference_instructions"]
     generated = emission.get("mnemonic_instructions", emission.get("emitted_mnemonic_instructions"))
-    if (not isinstance(reference_count, int) or reference_count <= 0
-            or not isinstance(generated, int) or generated <= 0
-            or not isinstance(matching, int) or not 0 <= matching <= min(reference_count, generated)):
+    if (
+        not isinstance(reference_count, int)
+        or reference_count <= 0
+        or not isinstance(generated, int)
+        or generated <= 0
+        or not isinstance(matching, int)
+        or not 0 <= matching <= min(reference_count, generated)
+    ):
         raise ValueError("invalid source instruction counts")
     minimum = case["minimum_source_recall_percentage"]
     if not 0 < minimum <= 100:
         raise ValueError("source recall goal must be in (0, 100]")
     expected_hash = case["rom_sha256"]
-    report_hash = report.get("reference_rom_sha256") or report.get("instruction_comparison", {}).get("reference_rom_sha256")
+    report_hash = report.get("reference_rom_sha256") or report.get("instruction_comparison", {}).get(
+        "reference_rom_sha256"
+    )
     exact = (
         verification.get("status") == "exact"
         and verification["artifact"]["sha256"] == expected_hash

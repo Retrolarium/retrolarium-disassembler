@@ -87,11 +87,7 @@ _ROWS = (
     "BEQ:rel8 SBC:dpiy SBC:dpi SBC:sriy PEA:abs SBC:dpx INC:dpx SBC:dpily SED:imp SBC:absy PLX:imp XCE:imp JSR:absix SBC:absx INC:absx SBC:longx",
 )
 
-OPCODES: tuple[tuple[str, str], ...] = tuple(
-    tuple(token.split(":", 1))
-    for row in _ROWS
-    for token in row.split()
-)
+OPCODES: tuple[tuple[str, str], ...] = tuple(tuple(token.split(":", 1)) for row in _ROWS for token in row.split())
 if len(OPCODES) != 256:
     raise AssertionError("W65C816 opcode table must have 256 entries")
 
@@ -125,8 +121,24 @@ _MODE_LENGTHS = {
 _CONDITIONAL_BRANCHES = {"BPL", "BMI", "BVC", "BVS", "BCC", "BCS", "BNE", "BEQ"}
 _TERMINATORS = {"RTS", "RTL", "RTI", "STP", "BRK", "COP"}
 _ACCUMULATOR_WRITES = {
-    "ADC", "AND", "ASL", "DEC", "EOR", "INC", "LDA", "LSR", "ORA",
-    "PLA", "ROL", "ROR", "SBC", "TDC", "TSC", "TXA", "TYA", "XBA",
+    "ADC",
+    "AND",
+    "ASL",
+    "DEC",
+    "EOR",
+    "INC",
+    "LDA",
+    "LSR",
+    "ORA",
+    "PLA",
+    "ROL",
+    "ROR",
+    "SBC",
+    "TDC",
+    "TSC",
+    "TXA",
+    "TYA",
+    "XBA",
 }
 # Instructions that leave the carry as the data makes it.
 _CARRY_WRITES = {"ADC", "SBC", "CMP", "CPX", "CPY", "ASL", "LSR", "ROL", "ROR"}
@@ -141,9 +153,29 @@ _CALLEE_CHANGES = {
 }
 _RETURNS = {"RTS", "RTL"}
 _STACK_CHANGERS = {
-    "BRK", "COP", "JSL", "JSR", "PEA", "PEI", "PER", "PHA", "PHB",
-    "PHD", "PHK", "PHP", "PHX", "PHY", "PLA", "PLB", "PLD", "PLP",
-    "PLX", "PLY", "RTI", "RTL", "RTS",
+    "BRK",
+    "COP",
+    "JSL",
+    "JSR",
+    "PEA",
+    "PEI",
+    "PER",
+    "PHA",
+    "PHB",
+    "PHD",
+    "PHK",
+    "PHP",
+    "PHX",
+    "PHY",
+    "PLA",
+    "PLB",
+    "PLD",
+    "PLP",
+    "PLX",
+    "PLY",
+    "RTI",
+    "RTL",
+    "RTS",
 }
 
 
@@ -163,9 +195,7 @@ def merge_states(left: CpuState, right: CpuState) -> CpuState:
         dbr=_merge_value(left.dbr, right.dbr),
         direct_page=_merge_value(left.direct_page, right.direct_page),
         accumulator=_merge_value(left.accumulator, right.accumulator),
-        pending_bank_push=_merge_value(
-            left.pending_bank_push, right.pending_bank_push
-        ),
+        pending_bank_push=_merge_value(left.pending_bank_push, right.pending_bank_push),
     )
     if merged.e == 1:
         merged = replace(merged, m=1, x=1)
@@ -303,9 +333,7 @@ def _flows(address: int, mnemonic: str, mode: str, raw: bytes) -> tuple[Flow, ..
     return (Flow("fallthrough", fallthrough),)
 
 
-def _read_instruction(
-    image: SnesImage, address: int, state: CpuState
-) -> tuple[bytes, str, str] | None:
+def _read_instruction(image: SnesImage, address: int, state: CpuState) -> tuple[bytes, str, str] | None:
     try:
         physical = snes_to_rom_offset(image, address)
     except SnesError:
@@ -364,8 +392,11 @@ def _call_summaries(instructions: dict[int, Instruction]) -> dict[int, dict[str,
             instruction = instructions[address]
             if instruction.mnemonic in _RETURNS or instruction.mnemonic == "RTI":
                 continue
-            stack.extend(flow.target for flow in instruction.flows
-                         if flow.kind in {"branch", "fallthrough", "jump"} and flow.target is not None)
+            stack.extend(
+                flow.target
+                for flow in instruction.flows
+                if flow.kind in {"branch", "fallthrough", "jump"} and flow.target is not None
+            )
         return seen
 
     bodies: dict[int, set[int]] = {}
@@ -389,13 +420,21 @@ def _call_summaries(instructions: dict[int, Instruction]) -> dict[int, dict[str,
         changed[entry] = fields
         return fields
 
-    callees = {flow.target for instruction in instructions.values() if instruction.mnemonic in {"JSR", "JSL"}
-               for flow in instruction.flows if flow.kind == "call" and flow.target is not None}
+    callees = {
+        flow.target
+        for instruction in instructions.values()
+        if instruction.mnemonic in {"JSR", "JSL"}
+        for flow in instruction.flows
+        if flow.kind == "call" and flow.target is not None
+    }
     summaries: dict[int, dict[str, int | None]] = {}
     for entry in sorted(callees):
         fields = changes(entry, set())
-        exits = [instructions[address].state_after for address in bodies.get(entry, body(entry))
-                 if instructions[address].mnemonic in _RETURNS]
+        exits = [
+            instructions[address].state_after
+            for address in bodies.get(entry, body(entry))
+            if instructions[address].mnemonic in _RETURNS
+        ]
         summary: dict[str, int | None] = {}
         for field in sorted(fields):
             values = {getattr(state, field) for state in exits}
@@ -452,11 +491,7 @@ def analyze_snes(
                 merged = merge_states(previous, incoming)
                 if merged == previous:
                     continue
-                widened = (
-                    merged
-                    if forced is None
-                    else merge_states(forced, merged)
-                )
+                widened = merged if forced is None else merge_states(forced, merged)
                 if forced != widened:
                     forced_states[address] = widened
                     diagnose(
@@ -518,9 +553,12 @@ def analyze_snes(
             found = _call_summaries(instructions)
             # Widened, never narrowed again: the passes settle.
             merged = {
-                entry: {field: (value if field not in summaries.get(entry, {}) else
-                                _merge_value(summaries[entry][field], value))
-                        for field, value in summary.items()}
+                entry: {
+                    field: (
+                        value if field not in summaries.get(entry, {}) else _merge_value(summaries[entry][field], value)
+                    )
+                    for field, value in summary.items()
+                }
                 for entry, summary in found.items()
             }
             if merged == summaries:
@@ -534,9 +572,7 @@ def analyze_snes(
         mapping=image.header.map_mode,
         entries=tuple(sorted({address for address, _ in initial})),
         instructions=tuple(instructions[key] for key in sorted(instructions)),
-        diagnostics=tuple(
-            sorted(diagnostics, key=lambda item: (item.logical_address, item.kind))
-        ),
+        diagnostics=tuple(sorted(diagnostics, key=lambda item: (item.logical_address, item.kind))),
     )
 
 
@@ -571,10 +607,7 @@ def analysis_manifest(result: AnalysisResult) -> dict[str, object]:
                 "addressing_mode": item.addressing_mode,
                 "state_before": _state_manifest(item.state_before),
                 "state_after": _state_manifest(item.state_after),
-                "flows": [
-                    {"kind": flow.kind, "target": flow.target}
-                    for flow in item.flows
-                ],
+                "flows": [{"kind": flow.kind, "target": flow.target} for flow in item.flows],
             }
             for item in result.instructions
         ],
@@ -596,10 +629,7 @@ def validate_backend_facts(
     """Accept backend facts only where independent state-aware decoding agrees."""
     from retrolarium_disassembler.facts import FactError
 
-    independent = {
-        instruction.logical_address: instruction
-        for instruction in result.instructions
-    }
+    independent = {instruction.logical_address: instruction for instruction in result.instructions}
     accepted: dict[int, InstructionFact] = {}
     for physical, fact in facts.items():
         expected = independent.get(fact.cpu_address)
@@ -607,13 +637,11 @@ def validate_backend_facts(
             continue
         if fact.raw != expected.raw or fact.length != expected.length:
             raise FactError(
-                f"backend instruction boundary disagrees with independent "
-                f"W65C816 state at ${fact.cpu_address:06X}"
+                f"backend instruction boundary disagrees with independent W65C816 state at ${fact.cpu_address:06X}"
             )
         if fact.mnemonic != expected.mnemonic:
             raise FactError(
-                f"backend mnemonic {fact.mnemonic} disagrees with "
-                f"{expected.mnemonic} at ${fact.cpu_address:06X}"
+                f"backend mnemonic {fact.mnemonic} disagrees with {expected.mnemonic} at ${fact.cpu_address:06X}"
             )
         accepted[physical] = fact
     return accepted

@@ -85,9 +85,7 @@ class M68kConvergenceTests(unittest.TestCase):
 
     def _analyze(self, harness: _M68kHarness):
         with mock.patch.multiple(pipeline, **harness.patches()):
-            return pipeline.analyze_megadrive(
-                self.root / "game.bin", self.root / "out", self.root / "ghidra"
-            )
+            return pipeline.analyze_megadrive(self.root / "game.bin", self.root / "out", self.root / "ghidra")
 
     def test_inline_data_is_planned_before_decoding_continuation(self):
         call = InlineTrapCall(0x200, 0x202, 0x204, 0x300, 0x240)
@@ -118,10 +116,8 @@ class M68kConvergenceTests(unittest.TestCase):
         # was an accidental instruction/root on the preceding pass; the new
         # DATA proof must force a rerun even with the continuation already seeded.
         call = InlineTrapCall(0x200, 0x202, 0x204, 0x300, 0x240)
-        seeds = tuple(DecoderSeed(a, "test", "proven", "existing plan")
-                      for a in (0x200, 0x202, 0x204))
-        harness = _M68kHarness([{"inline": (call,)}, {"inline": (call,)}],
-                              initial_seeds=seeds)
+        seeds = tuple(DecoderSeed(a, "test", "proven", "existing plan") for a in (0x200, 0x202, 0x204))
+        harness = _M68kHarness([{"inline": (call,)}, {"inline": (call,)}], initial_seeds=seeds)
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
         self.assertEqual(2, len(harness.plans_seen))
@@ -135,15 +131,19 @@ class M68kConvergenceTests(unittest.TestCase):
         self.assertTrue(progress["converged"])
 
     def test_rooted_dispatch_and_cursor_proofs_persist_for_next_decoder_pass(self):
-        for key, kind in (("reaching_dispatch", "reaching_word_dispatch"),
-                          ("cursor_callbacks", "bytecode_cursor_callback"),
-                          ("tail_callbacks", "tail_allocator_callback")):
+        for key, kind in (
+            ("reaching_dispatch", "reaching_word_dispatch"),
+            ("cursor_callbacks", "bytecode_cursor_callback"),
+            ("tail_callbacks", "tail_allocator_callback"),
+        ):
             with self.subTest(proof=kind):
                 seed = DecoderSeed(0x300, kind, "proven", "rooted consumer", 0x200)
-                harness = _M68kHarness([
-                    {"raw": (0x200, 0x300), "trusted": (0x200,), key: (seed,)},
-                    {"raw": (0x200, 0x300), "reached": (0x200, 0x300), key: (seed,)},
-                ])
+                harness = _M68kHarness(
+                    [
+                        {"raw": (0x200, 0x300), "trusted": (0x200,), key: (seed,)},
+                        {"raw": (0x200, 0x300), "reached": (0x200, 0x300), key: (seed,)},
+                    ]
+                )
                 with self.assertRaises(_StopAfterLoop):
                     self._analyze(harness)
                 self.assertEqual(2, len(harness.plans_seen))
@@ -155,14 +155,16 @@ class M68kConvergenceTests(unittest.TestCase):
 
     def test_exact_shared_leaf_can_bootstrap_without_predecoded_handlers(self):
         roots = [0x400, 0x420]
-        for kind, confidence, expected in (("leaf_word_dispatch", "proven", 2),
-                                           ("pc_word_dispatch", "proven", 2),
-                                           ("inline_word_dispatch", "proven", 2),
-                                           ("leaf_word_dispatch", "high", 1),
-                                           ("indexed_pointer_table_target", "proven", 1)):
+        for kind, confidence, expected in (
+            ("leaf_word_dispatch", "proven", 2),
+            ("pc_word_dispatch", "proven", 2),
+            ("inline_word_dispatch", "proven", 2),
+            ("leaf_word_dispatch", "high", 1),
+            ("indexed_pointer_table_target", "proven", 1),
+        ):
             with self.subTest(kind=kind, confidence=confidence):
                 seeds = tuple(DecoderSeed(a, kind, confidence, "leaf semantics", 0x300) for a in roots)
-                harness = _M68kHarness([{"raw":(0x300,), "raw_dispatch":seeds}, {}])
+                harness = _M68kHarness([{"raw": (0x300,), "raw_dispatch": seeds}, {}])
                 with self.assertRaises(_StopAfterLoop):
                     self._analyze(harness)
                 self.assertEqual(expected, len(harness.plans_seen))
@@ -171,8 +173,7 @@ class M68kConvergenceTests(unittest.TestCase):
 
     def test_new_return_witness_requires_backend_pass_even_for_planned_root(self):
         seed = DecoderSeed(0x206, "normal_return_continuation", "proven", "balanced RTS", 0x200)
-        harness = _M68kHarness([{"returning": (seed,)}, {"returning": (seed,)}],
-                              initial_seeds=(seed,))
+        harness = _M68kHarness([{"returning": (seed,)}, {"returning": (seed,)}], initial_seeds=(seed,))
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
         self.assertEqual(2, len(harness.plans_seen))
@@ -183,9 +184,7 @@ class M68kConvergenceTests(unittest.TestCase):
 
     def test_perpetual_discovery_raises_after_bounded_passes(self) -> None:
         # Every pass proves a brand-new target, so the loop can never settle.
-        harness = _M68kHarness(
-            lambda index: {"edges": (_edge(0x1000 + 2 * index),)}
-        )
+        harness = _M68kHarness(lambda index: {"edges": (_edge(0x1000 + 2 * index),)})
 
         with self.assertRaisesRegex(ValueError, "did not converge"):
             self._analyze(harness)
@@ -194,9 +193,7 @@ class M68kConvergenceTests(unittest.TestCase):
         self.assertEqual(pipeline.MAX_ABSTRACT_PASSES, 32)
         # Trusted interpretation ran once per pass and never after the loop.
         self.assertEqual(harness.trusted_calls, pipeline.MAX_ABSTRACT_PASSES)
-        self.assertFalse(
-            (self.root / "out" / "m68k" / "abstract-analysis.json").exists()
-        )
+        self.assertFalse((self.root / "out" / "m68k" / "abstract-analysis.json").exists())
         progress = json.loads((self.root / "out" / "m68k" / "decoder-passes.json").read_text())
         self.assertFalse(progress["converged"])
         self.assertEqual(pipeline.MAX_ABSTRACT_PASSES, len(progress["passes"]))
@@ -214,21 +211,15 @@ class M68kConvergenceTests(unittest.TestCase):
 
         self.assertEqual(len(harness.plans_seen), 2)
         self.assertEqual(_plan_addresses(harness.plans_seen[0]), [0x200])
-        self.assertEqual(
-            _plan_addresses(harness.plans_seen[1]), [0x200, 0x1000]
-        )
+        self.assertEqual(_plan_addresses(harness.plans_seen[1]), [0x200, 0x1000])
         # The interpreter is rooted at exactly the seeds planned so far.
-        self.assertEqual(
-            harness.interpreter_entrypoints, [{0x200}, {0x200, 0x1000}]
-        )
+        self.assertEqual(harness.interpreter_entrypoints, [{0x200}, {0x200, 0x1000}])
 
     def test_dispatch_table_seed_is_planned_before_next_decoder_pass(
         self,
     ) -> None:
         initial = DecoderSeed(0x200, "reset", "proven", "reset vector")
-        dispatch = DecoderSeed(
-            0x1400, "dispatch_table_target", "proven", "table entry", 0x210
-        )
+        dispatch = DecoderSeed(0x1400, "dispatch_table_target", "proven", "table entry", 0x210)
         harness = _M68kHarness(
             [{"dispatch": (dispatch, initial)}, {"dispatch": (dispatch,)}],
             initial_seeds=(initial,),
@@ -240,17 +231,19 @@ class M68kConvergenceTests(unittest.TestCase):
         # The second pass only rediscovered 0x1400, so the loop settled.
         self.assertEqual(len(harness.plans_seen), 2)
         self.assertEqual(_plan_addresses(harness.plans_seen[0]), [0x200])
-        self.assertEqual(
-            _plan_addresses(harness.plans_seen[1]), [0x200, 0x1400]
-        )
+        self.assertEqual(_plan_addresses(harness.plans_seen[1]), [0x200, 0x1400])
         # The converged pass is reused after the loop, not recomputed.
         self.assertEqual(harness.trusted_calls, 2)
 
     def test_validated_unused_function_becomes_a_root_on_next_pass(self):
         candidate = UnusedCodeCandidate(
-            address=0x240, end=0x250, preceding_address=0x23E,
-            instruction_count=4, instruction_addresses=(0x240, 0x246, 0x24A, 0x24E),
-            signatures=("call_known_code", "rts"), evidence="validated complete CFG",
+            address=0x240,
+            end=0x250,
+            preceding_address=0x23E,
+            instruction_count=4,
+            instruction_addresses=(0x240, 0x246, 0x24A, 0x24E),
+            signatures=("call_known_code", "rts"),
+            evidence="validated complete CFG",
         )
         harness = _M68kHarness([{"unused": (candidate,)}, {}])
         with self.assertRaises(_StopAfterLoop):
@@ -258,44 +251,45 @@ class M68kConvergenceTests(unittest.TestCase):
         self.assertEqual([0x240], _plan_addresses(harness.plans_seen[1]))
         progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
         self.assertEqual([0x240], progress["passes"][0]["new_seed_addresses"])
-        self.assertEqual(["validated complete CFG"],
-                         progress["passes"][0]["new_seed_evidence"][0]["evidence"])
+        self.assertEqual(["validated complete CFG"], progress["passes"][0]["new_seed_evidence"][0]["evidence"])
 
     def test_constructor_callback_uses_rooted_execution_and_survives_reanalysis(self):
-        seed = DecoderSeed(0x240, "constructor_record_callback", "proven",
-                           "counted ROM records share an executed RAM pool", 0x210)
-        harness = _M68kHarness([{"constructor_callbacks": (seed,)},
-                               {"constructor_callbacks": (seed,)}])
+        seed = DecoderSeed(
+            0x240, "constructor_record_callback", "proven", "counted ROM records share an executed RAM pool", 0x210
+        )
+        harness = _M68kHarness([{"constructor_callbacks": (seed,)}, {"constructor_callbacks": (seed,)}])
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
         self.assertEqual(2, len(harness.plans_seen))
         self.assertEqual([0x240], _plan_addresses(harness.plans_seen[1]))
         progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
         self.assertTrue(progress["converged"])
-        self.assertEqual([seed.evidence],
-                         progress["passes"][0]["new_seed_evidence"][0]["evidence"])
+        self.assertEqual([seed.evidence], progress["passes"][0]["new_seed_evidence"][0]["evidence"])
 
     def test_structural_callback_from_raw_is_planned_for_next_pass(self):
         callback = _handler(0x350)
-        harness = _M68kHarness([
-            {"raw_callbacks": (callback,)},
-            {"raw_callbacks": (callback,)},
-        ])
+        harness = _M68kHarness(
+            [
+                {"raw_callbacks": (callback,)},
+                {"raw_callbacks": (callback,)},
+            ]
+        )
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
         self.assertEqual([0x350], _plan_addresses(harness.plans_seen[1]))
         progress = json.loads((self.root / "out/m68k/decoder-passes.json").read_text())
-        self.assertEqual(["handler 000350"],
-                         progress["passes"][0]["new_seed_evidence"][0]["evidence"])
+        self.assertEqual(["handler 000350"], progress["passes"][0]["new_seed_evidence"][0]["evidence"])
 
     def test_low_confidence_candidates_are_not_planned(self) -> None:
-        harness = _M68kHarness([
-            {
-                "edges": (_edge(0x1000, confidence="likely"),),
-                "handlers": (_handler(0x1100, confidence="likely"),),
-                "orphans": (_orphan(0x1200, confidence="medium"),),
-            }
-        ])
+        harness = _M68kHarness(
+            [
+                {
+                    "edges": (_edge(0x1000, confidence="likely"),),
+                    "handlers": (_handler(0x1100, confidence="likely"),),
+                    "orphans": (_orphan(0x1200, confidence="medium"),),
+                }
+            ]
+        )
 
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
@@ -312,9 +306,7 @@ class M68kConvergenceTests(unittest.TestCase):
             "handlers": (_handler(0x200), _handler(0x300)),
             "orphans": (_orphan(0x200), _orphan(0x300)),
         }
-        harness = _M68kHarness(
-            [repeated, repeated], initial_seeds=(initial, initial)
-        )
+        harness = _M68kHarness([repeated, repeated], initial_seeds=(initial, initial))
 
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
@@ -325,22 +317,22 @@ class M68kConvergenceTests(unittest.TestCase):
             addresses = _plan_addresses(plan)
             self.assertEqual(len(addresses), len(set(addresses)), plan)
         self.assertEqual(_plan_addresses(harness.plans_seen[0]), [0x200])
-        self.assertEqual(
-            _plan_addresses(harness.plans_seen[1]), [0x200, 0x300]
-        )
+        self.assertEqual(_plan_addresses(harness.plans_seen[1]), [0x200, 0x300])
 
     def test_decoded_but_untrusted_proven_targets_are_planned(self) -> None:
         # 0x300 and 0x340 were decoded inside a backend island; 0x320 is
         # already reached from the planned roots and needs no seed.
-        harness = _M68kHarness([
-            {
-                "raw": (0x300, 0x320, 0x340),
-                "trusted": (0x320,),
-                "edges": (_edge(0x300), _edge(0x320)),
-                "handlers": (_handler(0x340), _handler(0x320)),
-            },
-            {},
-        ])
+        harness = _M68kHarness(
+            [
+                {
+                    "raw": (0x300, 0x320, 0x340),
+                    "trusted": (0x320,),
+                    "edges": (_edge(0x300), _edge(0x320)),
+                    "handlers": (_handler(0x340), _handler(0x320)),
+                },
+                {},
+            ]
+        )
 
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
@@ -350,12 +342,20 @@ class M68kConvergenceTests(unittest.TestCase):
 
     def test_proven_handler_absent_from_raw_facts_is_planned(self) -> None:
         # The backend never decoded 0x380; only the slot proof names it.
-        harness = _M68kHarness([
-            {"raw": (0x200,), "trusted": (0x200,),
-             "handlers": (_handler(0x380), _handler(0x3C0, confidence="candidate"))},
-            {"raw": (0x200, 0x380), "reached": (0x200, 0x380),
-             "handlers": (_handler(0x380), _handler(0x3C0, confidence="candidate"))},
-        ])
+        harness = _M68kHarness(
+            [
+                {
+                    "raw": (0x200,),
+                    "trusted": (0x200,),
+                    "handlers": (_handler(0x380), _handler(0x3C0, confidence="candidate")),
+                },
+                {
+                    "raw": (0x200, 0x380),
+                    "reached": (0x200, 0x380),
+                    "handlers": (_handler(0x380), _handler(0x3C0, confidence="candidate")),
+                },
+            ]
+        )
 
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
@@ -363,36 +363,34 @@ class M68kConvergenceTests(unittest.TestCase):
         self.assertEqual(2, len(harness.plans_seen))
         self.assertEqual([0x380], _plan_addresses(harness.plans_seen[1]))
         self.assertEqual([set(), {0x380}], harness.interpreter_entrypoints)
-        document = json.loads(
-            (self.root / "out/m68k/abstract-analysis.json").read_text()
-        )
+        document = json.loads((self.root / "out/m68k/abstract-analysis.json").read_text())
         evidence = {item["address"]: item for item in document["decoder_seed_evidence"]}
         self.assertEqual(["ram_handler"], evidence[0x380]["kinds"])
         self.assertNotIn(0x3C0, document["decoder_seed_addresses"])
 
     def test_analysis_persists_the_converged_trusted_root_set(self) -> None:
-        harness = _M68kHarness([
-            {"edges": (_edge(0x1000),)},
-            {"edges": (_edge(0x1000), _edge(0x1040)), "reached": (0x1040,)},
-        ])
+        harness = _M68kHarness(
+            [
+                {"edges": (_edge(0x1000),)},
+                {"edges": (_edge(0x1000), _edge(0x1040)), "reached": (0x1040,)},
+            ]
+        )
 
         with self.assertRaises(_StopAfterLoop):
             self._analyze(harness)
 
         # 0x1040 is proven but already reached, so it is a root not a seed.
-        document = json.loads(
-            (self.root / "out/m68k/abstract-analysis.json").read_text()
-        )
+        document = json.loads((self.root / "out/m68k/abstract-analysis.json").read_text())
         self.assertEqual([0x1000], document["decoder_seed_addresses"])
-        self.assertEqual(
-            [0x1000, 0x1040], document["trusted_root_addresses"]
-        )
+        self.assertEqual([0x1000, 0x1040], document["trusted_root_addresses"])
 
 
 def _flow(address, mnemonic, operands, length, flow_type, flows=()):
     return replace(
         fact(address, mnemonic, operands, flows=flows),
-        raw=bytes(length), length=length, flow_type=flow_type,
+        raw=bytes(length),
+        length=length,
+        flow_type=flow_type,
     )
 
 
@@ -408,8 +406,10 @@ class TrustedEmitFactsTests(unittest.TestCase):
 
     def test_persisted_roots_select_the_analysed_instructions(self) -> None:
         retained = pipeline._trusted_emit_facts(
-            self.image, self.facts,
-            {"trusted_root_addresses": [0x300]}, {0x200, 0x300},
+            self.image,
+            self.facts,
+            {"trusted_root_addresses": [0x300]},
+            {0x200, 0x300},
         )
         self.assertEqual({0x200, 0x300}, self._addresses(retained))
 
@@ -417,25 +417,36 @@ class TrustedEmitFactsTests(unittest.TestCase):
         # Old emit recomputed extra roots from raw facts; the island must not
         # be revived when analysis did not trust it.
         retained = pipeline._trusted_emit_facts(
-            self.image, self.facts, {"trusted_root_addresses": []}, {0x200},
+            self.image,
+            self.facts,
+            {"trusted_root_addresses": []},
+            {0x200},
         )
         self.assertEqual({0x200}, self._addresses(retained))
 
     def test_inconsistent_persisted_roots_are_rejected(self) -> None:
         with self.assertRaises(MegaDriveEmitError):
             pipeline._trusted_emit_facts(
-                self.image, self.facts,
-                {"trusted_root_addresses": []}, {0x200, 0x300},
+                self.image,
+                self.facts,
+                {"trusted_root_addresses": []},
+                {0x200, 0x300},
             )
 
     def test_legacy_cache_reuses_the_analysed_instruction_set(self) -> None:
         retained = pipeline._trusted_emit_facts(
-            self.image, self.facts, {"decoder_seed_addresses": []}, {0x200, 0x300},
+            self.image,
+            self.facts,
+            {"decoder_seed_addresses": []},
+            {0x200, 0x300},
         )
         self.assertEqual({0x200, 0x300}, self._addresses(retained))
         with self.assertRaises(MegaDriveEmitError):
             pipeline._trusted_emit_facts(
-                self.image, self.facts, {}, {0x200, 0x400},
+                self.image,
+                self.facts,
+                {},
+                {0x200, 0x400},
             )
 
 
@@ -469,8 +480,14 @@ class Z80DispatchConvergenceTests(unittest.TestCase):
         )
 
     def _run_z80(
-        self, z80_input, z80_root, ghidra_home, scripts, *,
-        base_address, seed_plan=None,
+        self,
+        z80_input,
+        z80_root,
+        ghidra_home,
+        scripts,
+        *,
+        base_address,
+        seed_plan=None,
     ):
         self.z80_runs.append(seed_plan)
         if seed_plan is not None:
@@ -495,15 +512,17 @@ class Z80DispatchConvergenceTests(unittest.TestCase):
             write_symbol_report=self._write_stub,
         )
         with mock.patch.multiple(pipeline, **patches):
-            return pipeline.analyze_megadrive(
-                self.root / "game.bin", self.root / "out", self.root / "ghidra"
-            )
+            return pipeline.analyze_megadrive(self.root / "game.bin", self.root / "out", self.root / "ghidra")
 
     def test_adjacent_uploads_share_one_z80_analysis(self) -> None:
         first = self._copy()
         second = replace(
-            first, edge_id="copy.01", source_start=0x180,
-            source_end=0x1FF, target_start=0x80, target_end=0xFF,
+            first,
+            edge_id="copy.01",
+            source_start=0x180,
+            source_end=0x1FF,
+            target_start=0x80,
+            target_end=0xFF,
         )
         analysis = self._analyze(
             lambda payload, facts, *, base_address: (),
@@ -513,13 +532,9 @@ class Z80DispatchConvergenceTests(unittest.TestCase):
         self.assertEqual(1, len(self.z80_runs))
         z80_program = analysis["programs"][1]
         self.assertEqual(["copy.00", "copy.01"], z80_program["derived_from"])
-        self.assertEqual(0x100, (
-            self.root / "out" / z80_program["analysis_input"]
-        ).stat().st_size)
+        self.assertEqual(0x100, (self.root / "out" / z80_program["analysis_input"]).stat().st_size)
         self.assertEqual(2, analysis["cross_cpu_evidence"]["edge_count"])
-        evidence = json.loads((
-            self.root / "out" / "cross-cpu-evidence.json"
-        ).read_text(encoding="utf-8"))
+        evidence = json.loads((self.root / "out" / "cross-cpu-evidence.json").read_text(encoding="utf-8"))
         self.assertEqual(
             ["z80.00", "z80.00"],
             [edge["target"]["cpu_id"] for edge in evidence["edges"]],
@@ -563,9 +578,7 @@ class Z80DispatchConvergenceTests(unittest.TestCase):
             targets=(0x40, 0x50),
         )
 
-        manifest = self._analyze(
-            lambda payload, facts, *, base_address: [table]
-        )
+        manifest = self._analyze(lambda payload, facts, *, base_address: [table])
 
         self.assertEqual(len(self.z80_runs), 2)
         self.assertIsNone(self.z80_runs[0])
@@ -574,19 +587,18 @@ class Z80DispatchConvergenceTests(unittest.TestCase):
             ["T 0020 0024", "S 0040", "S 0050"],
         )
         dispatch = json.loads(
-            (self.root / "out" / "z80" / "program00" / "dispatch-tables.json")
-            .read_text(encoding="utf-8")
+            (self.root / "out" / "z80" / "program00" / "dispatch-tables.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(
-            [t["logical_start"] for t in dispatch["tables"]], [0x20]
-        )
+        self.assertEqual([t["logical_start"] for t in dispatch["tables"]], [0x20])
         self.assertEqual(len(manifest["programs"]), 2)
 
     def test_changed_dispatch_table_is_rejected(self) -> None:
-        tables = iter([
-            Z80DispatchTable(0x20, 0x24, 0x02, 0x08, (0x40, 0x50)),
-            Z80DispatchTable(0x20, 0x24, 0x02, 0x08, (0x60, 0x50)),
-        ])
+        tables = iter(
+            [
+                Z80DispatchTable(0x20, 0x24, 0x02, 0x08, (0x40, 0x50)),
+                Z80DispatchTable(0x20, 0x24, 0x02, 0x08, (0x60, 0x50)),
+            ]
+        )
 
         with self.assertRaisesRegex(ValueError, "changed at 0x0020"):
             self._analyze(lambda payload, facts, *, base_address: [next(tables)])

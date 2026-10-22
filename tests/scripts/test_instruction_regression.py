@@ -5,7 +5,12 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from tools.benchmarks.instruction_regression import audit_listings, compare_instruction_sets, main, read_complete_listing
+from tools.benchmarks.instruction_regression import (
+    audit_listings,
+    compare_instruction_sets,
+    main,
+    read_complete_listing,
+)
 
 
 def line(address, encoded, source):
@@ -16,8 +21,10 @@ class InstructionRegressionTests(unittest.TestCase):
     def test_net_gain_cannot_hide_a_lost_instruction(self):
         reference = {0: b"\x4e\x71", 2: b"\x70\x00", 4: b"\x4e\x75"}
         result = compare_instruction_sets(reference, {0: reference[0]}, {2: reference[2], 4: reference[4]})
-        self.assertEqual(("regressed", 1, 1, 2),
-                         (result["status"], result["net_delta"], result["lost_count"], result["gained_count"]))
+        self.assertEqual(
+            ("regressed", 1, 1, 2),
+            (result["status"], result["net_delta"], result["lost_count"], result["gained_count"]),
+        )
         self.assertEqual(0, result["lost"][0]["offset"])
 
     def test_shared_opcode_prefix_with_changed_length_is_a_loss(self):
@@ -87,8 +94,13 @@ class InstructionRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             rom, reference, before, after = self.fixture(folder)
             output = Path(folder) / "result.json"
-            arguments = dict(rom=rom, reference=reference, before=before, after=after,
-                             **{"before-rom": rom, "after-rom": rom, "output": output})
+            arguments = dict(
+                rom=rom,
+                reference=reference,
+                before=before,
+                after=after,
+                **{"before-rom": rom, "after-rom": rom, "output": output},
+            )
             argv = [value for name, path in arguments.items() for value in ("--" + name, str(path))]
             self.assertEqual(1, main(argv))
             self.assertEqual(2, json.loads(output.read_text())["lost_count"])

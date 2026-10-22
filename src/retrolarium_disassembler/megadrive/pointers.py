@@ -86,10 +86,7 @@ def _referenced_addresses(facts: dict[int, InstructionFact]) -> set[int]:
         reference.address
         for fact in facts.values()
         for reference in fact.references
-        if (
-            "DATA" in reference.reference_type
-            or "READ" in reference.reference_type
-        )
+        if ("DATA" in reference.reference_type or "READ" in reference.reference_type)
     }
 
 
@@ -108,10 +105,7 @@ def _indexed_read_addresses(
         addresses.update(
             reference.address
             for reference in fact.references
-            if (
-                "DATA" in reference.reference_type
-                or "READ" in reference.reference_type
-            )
+            if ("DATA" in reference.reference_type or "READ" in reference.reference_type)
         )
     return addresses
 
@@ -127,16 +121,11 @@ def _indexed_word_read_addresses(
     facts: dict[int, InstructionFact],
 ) -> set[int]:
     """Return table bases read as indexed 16-bit values."""
-    return _indexed_read_addresses(
-        facts, frozenset({"MOVE.W", "MOVEA.W", "ADDA.W", "ADD.W"})
-    )
+    return _indexed_read_addresses(facts, frozenset({"MOVE.W", "MOVEA.W", "ADDA.W", "ADD.W"}))
 
 
 def _mapped(image: MegaDriveImage, address: int) -> bool:
-    return (
-        image.header.rom_start <= address <= image.actual_rom_end
-        and address & 1 == 0
-    )
+    return image.header.rom_start <= address <= image.actual_rom_end and address & 1 == 0
 
 
 def _evaluate(
@@ -172,7 +161,8 @@ def _evaluate(
         evidence.append("all_targets_are_instruction_starts")
     logical_end = image.header.rom_start + end
     indexed_forward_data_table = (
-        schema_id in {
+        schema_id
+        in {
             "megadrive.u32be.absolute",
             "megadrive.s16be.target-table_base",
         }
@@ -180,12 +170,12 @@ def _evaluate(
         and all(target >= logical_end for target in targets)
     )
     if indexed_forward_data_table:
-        evidence.extend((
-            "table_read_by_indexed_move_l"
-            if entry_size == 4
-            else "table_read_by_indexed_word",
-            "all_targets_follow_table",
-        ))
+        evidence.extend(
+            (
+                "table_read_by_indexed_move_l" if entry_size == 4 else "table_read_by_indexed_word",
+                "all_targets_follow_table",
+            )
+        )
     if not referenced:
         evidence.append("scan_only_no_table_reference")
     ratio = target_starts / len(entries)
@@ -246,7 +236,7 @@ def _absolute_candidates(
             logical_offset = image.header.rom_start + offset
             if entries and logical_offset in referenced:
                 break
-            raw = int.from_bytes(image.data[offset:offset + width], "big")
+            raw = int.from_bytes(image.data[offset : offset + width], "big")
             if not _mapped(image, raw):
                 break
             entries.append(
@@ -292,7 +282,7 @@ def _relative_candidates(
     # An overlay's address-indexed view has a synthetic prefix. Index only
     # bytes eligible for scanning; neither arrays nor suffix preprocessing
     # should scale with the module's load address.
-    words = array("h", image.data[scan_start:len(image.data) & ~1])
+    words = array("h", image.data[scan_start : len(image.data) & ~1])
     if sys.byteorder != "big":
         words.byteswap()
     code_starts = sorted(instruction_starts)
@@ -307,12 +297,12 @@ def _relative_candidates(
         for index in range(len(words) - 1, -1, -1):
             offset = scan_start + index * 2
             target = origin + offset + words[index]
-            valid = (offset not in occupied and offset + 1 not in occupied
-                     and origin <= target <= rom_end and not target & 1)
+            valid = (
+                offset not in occupied and offset + 1 not in occupied and origin <= target <= rom_end and not target & 1
+            )
             next_stop[index] = next_stop[index + 1] if valid else index
             suffix_hits[index] = suffix_hits[index + 1] + (target in instruction_starts)
-        reference_offsets = sorted(address - origin for address in referenced
-                                   if not (address - origin) & 1)
+        reference_offsets = sorted(address - origin for address in referenced if not (address - origin) & 1)
     for start in range(scan_start, max(scan_start, len(image.data) - 5), 2):
         logical_start = origin + start
         is_referenced = logical_start in referenced
@@ -350,13 +340,16 @@ def _relative_candidates(
         if count < MIN_ENTRIES or not is_referenced and target_hits * 4 < count * 3:
             continue
         # Materialize only windows which survive _evaluate's existing filter.
-        entries = tuple(PointerEntry(
-            physical_offset=scan_start + index * 2,
-            logical_address=origin + scan_start + index * 2,
-            raw_value=words[index] & 0xFFFF,
-            target=(origin + scan_start + index * 2 if entry_relative else logical_start) + words[index],
-            base_address=origin + scan_start + index * 2 if entry_relative else logical_start,
-        ) for index in range(first, last))
+        entries = tuple(
+            PointerEntry(
+                physical_offset=scan_start + index * 2,
+                logical_address=origin + scan_start + index * 2,
+                raw_value=words[index] & 0xFFFF,
+                target=(origin + scan_start + index * 2 if entry_relative else logical_start) + words[index],
+                base_address=origin + scan_start + index * 2 if entry_relative else logical_start,
+            )
+            for index in range(first, last)
+        )
         candidate = _evaluate(
             image,
             schema_id,
@@ -398,7 +391,10 @@ def _vector_candidate(image: MegaDriveImage) -> PointerCandidate:
 
 
 def _ram_trampoline_candidates(
-    image: MegaDriveImage, facts: dict[int, InstructionFact], *, scan_start: int = 0x200,
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
+    scan_start: int = 0x200,
 ) -> tuple[PointerCandidate, ...]:
     """Promote loader-proven counted u16 function tables."""
     _, interiors, instruction_starts = instruction_sets(facts)
@@ -415,57 +411,55 @@ def _ram_trampoline_candidates(
             for index, target in enumerate(table.targets)
         )
         contradictions = []
-        if any(
-            target - image.header.rom_start in interiors
-            for target in table.targets
-        ):
+        if any(target - image.header.rom_start in interiors for target in table.targets):
             contradictions.append("target_inside_instruction")
-        all_targets_decoded = all(
-            target in instruction_starts for target in table.targets
-        )
+        all_targets_decoded = all(target in instruction_starts for target in table.targets)
         if not all_targets_decoded:
             contradictions.append("target_not_instruction_start")
         status = "accepted" if not contradictions else "rejected"
-        candidates.append(PointerCandidate(
-            candidate_id=f"Ptr_counted-u16be-absolute_{start:06X}",
-            schema_id="megadrive.counted-u16be.absolute",
-            physical_start=start,
-            physical_end=start + 2 + len(entries) * 2,
-            logical_start=image.header.rom_start + start,
-            entry_size=2,
-            status=status,
-            score=100 if status == "accepted" else 65,
-            entries=entries,
-            evidence=(
-                f"loader_at_{table.loader_address:06X}",
-                "loader_builds_counted_JMP_abs_l_trampolines_in_RAM",
-                f"count_word_plus_one={len(entries)}",
-                "instruction_targets="
-                f"{sum(target in instruction_starts for target in table.targets)}",
-            ),
-            contradictions=tuple(contradictions),
-        ))
+        candidates.append(
+            PointerCandidate(
+                candidate_id=f"Ptr_counted-u16be-absolute_{start:06X}",
+                schema_id="megadrive.counted-u16be.absolute",
+                physical_start=start,
+                physical_end=start + 2 + len(entries) * 2,
+                logical_start=image.header.rom_start + start,
+                entry_size=2,
+                status=status,
+                score=100 if status == "accepted" else 65,
+                entries=entries,
+                evidence=(
+                    f"loader_at_{table.loader_address:06X}",
+                    "loader_builds_counted_JMP_abs_l_trampolines_in_RAM",
+                    f"count_word_plus_one={len(entries)}",
+                    f"instruction_targets={sum(target in instruction_starts for target in table.targets)}",
+                ),
+                contradictions=tuple(contradictions),
+            )
+        )
     return tuple(candidates)
 
 
-_DISPLACEMENT_ADDRESS = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)\|([Aa][0-7])$", re.I
-)
+_DISPLACEMENT_ADDRESS = re.compile(r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)\|([Aa][0-7])$", re.I)
 _INDEXED_ADDRESS = re.compile(
     r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7]),"
-    r"([Dd][0-7])w\*0x1\)\|([Aa][0-7])$", re.I
+    r"([Dd][0-7])w\*0x1\)\|([Aa][0-7])$",
+    re.I,
 )
 _INDEXED_WORD = re.compile(
     r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7]),"
-    r"([Dd][0-7])w\*0x1\)\|([Dd][0-7])w$", re.I
+    r"([Dd][0-7])w\*0x1\)\|([Dd][0-7])w$",
+    re.I,
 )
 _IMMEDIATE_TO_DISPLACEMENT = re.compile(
     r"#(-?0x[0-9a-f]+|-?\d+)\|"
-    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)$", re.I
+    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)$",
+    re.I,
 )
 _INDEXED_TO_DISPLACEMENT = re.compile(
     r".+PC,[Dd][0-7]w\*0x1\)\|"
-    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)$", re.I
+    r"\((-?0x[0-9a-f]+|-?\d+),([Aa][0-7])\)$",
+    re.I,
 )
 _MOVEQ = re.compile(r"(-?0x[0-9a-f]+|-?\d+)\|([Dd][0-7])$", re.I)
 
@@ -498,10 +492,7 @@ def _animation_reader_fields(
         ):
             continue
         index_register = indexed.group(3).upper()
-        window = [
-            fact for fact in ordered
-            if indexed_load.cpu_address < fact.cpu_address <= load.cpu_address + 0x40
-        ]
+        window = [fact for fact in ordered if indexed_load.cpu_address < fact.cpu_address <= load.cpu_address + 0x40]
         sign_extended_registers = {
             match.group(2).upper()
             for fact in window
@@ -531,8 +522,7 @@ def _animation_roots(
     accepted_tables = {
         candidate.logical_start: candidate
         for candidate in absolute_candidates
-        if candidate.schema_id == "megadrive.u32be.absolute"
-        and candidate.status == "accepted"
+        if candidate.schema_id == "megadrive.u32be.absolute" and candidate.status == "accepted"
     }
     roots: dict[int, tuple[int, int]] = {}
     for fact in facts.values():
@@ -542,9 +532,7 @@ def _animation_roots(
         if immediate is not None:
             field = (int(immediate.group(2), 0), immediate.group(3).upper())
             if field in fields:
-                roots[int(immediate.group(1), 0) & 0xFFFFFF] = (
-                    fact.cpu_address, fields[field]
-                )
+                roots[int(immediate.group(1), 0) & 0xFFFFFF] = (fact.cpu_address, fields[field])
             continue
         indexed = _INDEXED_TO_DISPLACEMENT.fullmatch(fact.operands)
         if indexed is None:
@@ -584,20 +572,22 @@ def _animation_sequence_candidate(
     runtime_page = region.destination_start & 0xFF0000
     for index in range(count):
         offset = physical_start + 2 + index * 2
-        raw = int.from_bytes(image.data[offset:offset + 2], "big")
+        raw = int.from_bytes(image.data[offset : offset + 2], "big")
         runtime_target = runtime_page | raw
         if not region.destination_start <= runtime_target < region.destination_end:
             return None
         target = region.source_start + runtime_target - region.destination_start
         if not _mapped(image, target):
             return None
-        entries.append(PointerEntry(
-            physical_offset=offset,
-            logical_address=image.header.rom_start + offset,
-            raw_value=raw,
-            target=target,
-            base_address=region.source_start,
-        ))
+        entries.append(
+            PointerEntry(
+                physical_offset=offset,
+                logical_address=image.header.rom_start + offset,
+                raw_value=raw,
+                target=target,
+                base_address=region.source_start,
+            )
+        )
     return PointerCandidate(
         candidate_id=f"Ptr_counted-u16be-ram-copy-offset_{sequence:06X}",
         schema_id="megadrive.counted-u16be.ram-copy-offset",
@@ -612,8 +602,7 @@ def _animation_sequence_candidate(
             f"animation_pointer_root_{root:06X}",
             f"count_header={count}",
             f"reader_at_{reader:06X}",
-            f"rom_{region.source_start:06X}_copied_to_ram_"
-            f"{region.destination_start:06X}",
+            f"rom_{region.source_start:06X}_copied_to_ram_{region.destination_start:06X}",
         ),
         contradictions=(),
     )
@@ -628,9 +617,9 @@ def _animation_candidates(
 ) -> tuple[PointerCandidate, ...]:
     """Recover long animation roots and their counted copied-RAM offsets."""
     regions = tuple(
-        region for region in discover_ram_copy_regions(image, scan_start=scan_start)
-        if region.destination_start & 0xFFFF == 0
-        and region.destination_end - region.destination_start <= 0x10000
+        region
+        for region in discover_ram_copy_regions(image, scan_start=scan_start)
+        if region.destination_start & 0xFFFF == 0 and region.destination_end - region.destination_start <= 0x10000
     )
     fields = _animation_reader_fields(facts)
     if not regions or not fields:
@@ -652,83 +641,70 @@ def _animation_candidates(
             logical_offset = image.header.rom_start + offset
             if offset != physical_start and logical_offset in root_boundaries:
                 break
-            target = int.from_bytes(image.data[offset:offset + 4], "big")
+            target = int.from_bytes(image.data[offset : offset + 4], "big")
             if not _mapped(image, target) or target < root + 4:
                 break
             sequence_candidate = next(
                 (
                     candidate
                     for region in regions
-                    if (
-                        candidate := _animation_sequence_candidate(
-                            image, occupied, region, target, root, reader
-                        )
-                    ) is not None
+                    if (candidate := _animation_sequence_candidate(image, occupied, region, target, root, reader))
+                    is not None
                 ),
                 None,
             )
             if sequence_candidate is None:
                 break
-            entries.append(PointerEntry(
-                physical_offset=offset,
-                logical_address=logical_offset,
-                raw_value=target,
-                target=target,
-            ))
+            entries.append(
+                PointerEntry(
+                    physical_offset=offset,
+                    logical_address=logical_offset,
+                    raw_value=target,
+                    target=target,
+                )
+            )
             sequences.append(sequence_candidate)
             offset += 4
         if not entries:
             continue
-        sequence_ranges = sorted(
-            (item.physical_start, item.physical_end) for item in sequences
-        )
-        if (
-            any(start < offset for start, _ in sequence_ranges)
-            or any(
-                left_end > right_start
-                for (_, left_end), (right_start, _) in zip(
-                    sequence_ranges, sequence_ranges[1:]
-                )
-            )
+        sequence_ranges = sorted((item.physical_start, item.physical_end) for item in sequences)
+        if any(start < offset for start, _ in sequence_ranges) or any(
+            left_end > right_start for (_, left_end), (right_start, _) in zip(sequence_ranges, sequence_ranges[1:])
         ):
             continue
-        candidates.append(PointerCandidate(
-            candidate_id=f"Ptr_u32be-animation-root_{root:06X}",
-            schema_id="megadrive.u32be.absolute",
-            physical_start=physical_start,
-            physical_end=offset,
-            logical_start=root,
-            entry_size=4,
-            status="accepted",
-            score=100,
-            entries=tuple(entries),
-            evidence=(
-                f"stored_to_animation_field_by_{assignment:06X}",
-                f"reader_at_{reader:06X}",
-                "all_targets_have_counted_word_offset_layout",
-            ),
-            contradictions=(),
-        ))
+        candidates.append(
+            PointerCandidate(
+                candidate_id=f"Ptr_u32be-animation-root_{root:06X}",
+                schema_id="megadrive.u32be.absolute",
+                physical_start=physical_start,
+                physical_end=offset,
+                logical_start=root,
+                entry_size=4,
+                status="accepted",
+                score=100,
+                entries=tuple(entries),
+                evidence=(
+                    f"stored_to_animation_field_by_{assignment:06X}",
+                    f"reader_at_{reader:06X}",
+                    "all_targets_have_counted_word_offset_layout",
+                ),
+                contradictions=(),
+            )
+        )
         candidates.extend(sequences)
     return tuple(candidates)
 
 
 _REGISTER_INDIRECT = re.compile(r"\(([Aa][0-7])\)$")
 _DATA_TO_ADDRESS = re.compile(r"[Dd][0-7]w?\|([Aa][0-7])$", re.I)
-_PC_INDEXED_ADDRESS = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x1\)\|([Aa][0-7])$", re.I
-)
+_PC_INDEXED_ADDRESS = re.compile(r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x1\)\|([Aa][0-7])$", re.I)
 _IMMEDIATE_ADDRESS = re.compile(r"#(-?0x[0-9a-f]+|-?\d+)\|([Aa][0-7])$", re.I)
 _INDIRECT_TO_ADDRESS = re.compile(r"\(([Aa][0-7])\)\|([Aa][0-7])$", re.I)
 _PC_DATA_WORD_INDEX = re.compile(r",(D[0-7])w\*0x1\)\|A[0-7]$", re.I)
 # Compilers often double a long switch index (ADD.L Dn,Dn) and read the
 # offset with a long index; only the JMP needs the word-sized offset.
-_PC_WORD_TO_DATA = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x1\)\|(D[0-7])w$", re.I
-)
-_PC_WORD_BRANCH = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),PC,(D[0-7])w\*0x1\)$", re.I
-)
+_PC_WORD_TO_DATA = re.compile(r"\((-?0x[0-9a-f]+|-?\d+),PC,[DA][0-7][wl]?\*0x1\)\|(D[0-7])w$", re.I)
+_PC_WORD_BRANCH = re.compile(r"\((-?0x[0-9a-f]+|-?\d+),PC,(D[0-7])w\*0x1\)$", re.I)
 
 
 @dataclass(frozen=True)
@@ -754,11 +730,13 @@ def _weak_absolute_lea_boundaries(facts: dict[int, InstructionFact]) -> set[int]
     strong = {}
     for key, fact in facts.items():
         operands = fact.operands.split("|")
-        if (fact.mnemonic.upper() == "LEA" and len(operands) == 2
-                and re.fullmatch(r"\(-?0x[0-9a-f]+\)\.[wl]", operands[0], re.I)
-                and re.fullmatch(r"A[0-6]", operands[1], re.I)
-                and _register_use(by_address, fact.cpu_address + fact.length,
-                                  operands[1].upper()) != "data"):
+        if (
+            fact.mnemonic.upper() == "LEA"
+            and len(operands) == 2
+            and re.fullmatch(r"\(-?0x[0-9a-f]+\)\.[wl]", operands[0], re.I)
+            and re.fullmatch(r"A[0-6]", operands[1], re.I)
+            and _register_use(by_address, fact.cpu_address + fact.length, operands[1].upper()) != "data"
+        ):
             continue
         strong[key] = fact
     return absolute_referenced_addresses(facts) - absolute_referenced_addresses(strong)
@@ -790,7 +768,8 @@ def _index_register_from_data_register(
 
 
 def _guarded_nonzero_byte_index(
-    ends: dict[int, InstructionFact], load: InstructionFact,
+    ends: dict[int, InstructionFact],
+    load: InstructionFact,
     call: InstructionFact | None,
 ) -> bool:
     """Prove that a byte index starts at one before multiplication by four.
@@ -806,26 +785,34 @@ def _guarded_nonzero_byte_index(
     current = ends.get(load.cpu_address)
     if current is None:
         return False
-    doubled = (current.mnemonic.upper() == "ADD.W"
-               and current.operands.upper() == f"{register}W|{register}W")
-    shifted = (current.mnemonic.upper() in {"LSL.W", "ASL.W"}
-               and current.operands.upper() == f"#0X2|{register}W")
+    doubled = current.mnemonic.upper() == "ADD.W" and current.operands.upper() == f"{register}W|{register}W"
+    shifted = current.mnemonic.upper() in {"LSL.W", "ASL.W"} and current.operands.upper() == f"#0X2|{register}W"
     if doubled:
         previous = ends.get(current.cpu_address)
-        if (previous is None or previous.mnemonic.upper() != "ADD.W"
-                or previous.operands.upper() != f"{register}W|{register}W"):
+        if (
+            previous is None
+            or previous.mnemonic.upper() != "ADD.W"
+            or previous.operands.upper() != f"{register}W|{register}W"
+        ):
             return False
         current = previous
     elif not shifted:
         return False
     branch = ends.get(current.cpu_address)
-    if (branch is None or branch.mnemonic.upper() not in {"BEQ.B", "BEQ.W"}
-            or not branch.flows or min(branch.flows) < call.cpu_address + call.length):
+    if (
+        branch is None
+        or branch.mnemonic.upper() not in {"BEQ.B", "BEQ.W"}
+        or not branch.flows
+        or min(branch.flows) < call.cpu_address + call.length
+    ):
         return False
     read = ends.get(branch.cpu_address)
-    if (read is None or read.mnemonic.upper() != "MOVE.B"
-            or not read.operands.upper().endswith(f"|{register}B")
-            or not read.operands.startswith("(")):
+    if (
+        read is None
+        or read.mnemonic.upper() != "MOVE.B"
+        or not read.operands.upper().endswith(f"|{register}B")
+        or not read.operands.startswith("(")
+    ):
         return False
     current = read
     for _ in range(GUARDED_DISPATCH_WINDOW):
@@ -834,21 +821,18 @@ def _guarded_nonzero_byte_index(
             return False
         if current.flow_type.upper() != "FALL_THROUGH" and not (
             current.flow_type.upper() == "CONDITIONAL_JUMP"
-            and current.flows and min(current.flows) > current.cpu_address
+            and current.flows
+            and min(current.flows) > current.cpu_address
         ):
             return False
         if current.mnemonic.upper() == "MOVEQ" and current.operands.upper() == f"0X0|{register}":
             return True
-        if current.operands.rsplit("|", 1)[-1].upper() in {
-            register, f"{register}B", f"{register}W", f"{register}L"
-        }:
+        if current.operands.rsplit("|", 1)[-1].upper() in {register, f"{register}B", f"{register}W", f"{register}L"}:
             return False
     return False
 
 
-def _dispatch_tables(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
-) -> tuple[_DispatchTable, ...]:
+def _dispatch_tables(image: MegaDriveImage, facts: dict[int, InstructionFact]) -> tuple[_DispatchTable, ...]:
     """Recover u32 handler tables selected by an indexed MOVEA.L dispatch.
 
     The table base comes from a decoded ``MOVEA.L (d16,An),Am`` with a
@@ -859,15 +843,20 @@ def _dispatch_tables(
     """
     occupied, interiors, instruction_starts = instruction_sets(facts)
     by_address = {fact.cpu_address: fact for fact in facts.values()}
+
     def indirect_call(load: InstructionFact, register: str) -> InstructionFact | None:
         next_fact = by_address.get(load.cpu_address + load.length)
-        if (next_fact is not None and next_fact.mnemonic.upper() == "MOVE.L"
-                and next_fact.operands.upper() in {
-                    f"{register}|(A0)", f"{register}|(A1)"
-                }):
+        if (
+            next_fact is not None
+            and next_fact.mnemonic.upper() == "MOVE.L"
+            and next_fact.operands.upper() in {f"{register}|(A0)", f"{register}|(A1)"}
+        ):
             next_fact = by_address.get(next_fact.cpu_address + next_fact.length)
-        if (next_fact is None or next_fact.mnemonic.upper() not in {"JSR", "JMP"}
-                or next_fact.operands.upper() != f"({register})"):
+        if (
+            next_fact is None
+            or next_fact.mnemonic.upper() not in {"JSR", "JMP"}
+            or next_fact.operands.upper() != f"({register})"
+        ):
             return None
         return next_fact
 
@@ -876,13 +865,15 @@ def _dispatch_tables(
     boundaries = absolute_referenced_addresses(facts)
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
     for fact in facts.values():
-        match = (_DISPLACEMENT_ADDRESS.fullmatch(fact.operands)
-                 or _PC_INDEXED_ADDRESS.fullmatch(fact.operands))
+        match = _DISPLACEMENT_ADDRESS.fullmatch(fact.operands) or _PC_INDEXED_ADDRESS.fullmatch(fact.operands)
         if fact.mnemonic.upper() == "MOVEA.L" and match is not None:
             call = indirect_call(fact, match.group(3 if _DISPLACEMENT_ADDRESS.fullmatch(fact.operands) else 2).upper())
             if call is not None:
-                offset = (4 if _PC_INDEXED_ADDRESS.fullmatch(fact.operands)
-                          and _guarded_nonzero_byte_index(ends, fact, call) else 0)
+                offset = (
+                    4
+                    if _PC_INDEXED_ADDRESS.fullmatch(fact.operands) and _guarded_nonzero_byte_index(ends, fact, call)
+                    else 0
+                )
                 boundaries.add(int(match.group(1), 0) + offset)
     rom_start = image.header.rom_start
     data = image.data
@@ -929,7 +920,7 @@ def _dispatch_tables(
             logical_offset = rom_start + offset
             if entries and logical_offset in boundaries:
                 break
-            raw = int.from_bytes(data[offset:offset + 4], "big")
+            raw = int.from_bytes(data[offset : offset + 4], "big")
             physical_target = raw - rom_start
             if (
                 not _mapped(image, raw)
@@ -937,32 +928,28 @@ def _dispatch_tables(
                 or physical_target + 2 > len(data)
                 or physical_target in interiors
                 or physical_start <= physical_target < offset + 4
-                or data[physical_target:physical_target + 2]
-                in {b"\x00\x00", b"\xff\xff"}
+                or data[physical_target : physical_target + 2] in {b"\x00\x00", b"\xff\xff"}
             ):
                 break
-            entries.append(PointerEntry(
-                physical_offset=offset,
-                logical_address=logical_offset,
-                raw_value=raw,
-                target=raw,
-            ))
+            entries.append(
+                PointerEntry(
+                    physical_offset=offset,
+                    logical_address=logical_offset,
+                    raw_value=raw,
+                    target=raw,
+                )
+            )
             offset += 4
         # A later entry may still aim back into earlier table bytes.
         while entries:
             end = physical_start + len(entries) * 4
-            inside = [
-                index for index, entry in enumerate(entries)
-                if physical_start <= entry.target - rom_start < end
-            ]
+            inside = [index for index, entry in enumerate(entries) if physical_start <= entry.target - rom_start < end]
             if not inside:
                 break
-            entries = entries[:inside[0]]
+            entries = entries[: inside[0]]
         if len(entries) < MIN_DISPATCH_ENTRIES:
             continue
-        target_starts = sum(
-            entry.target in instruction_starts for entry in entries
-        )
+        target_starts = sum(entry.target in instruction_starts for entry in entries)
         accepted = target_starts == len(entries)
         tables[table] = _DispatchTable(
             candidate=PointerCandidate(
@@ -977,8 +964,7 @@ def _dispatch_tables(
                 entries=tuple(entries),
                 evidence=(
                     f"indexed_movea_l_at_{load.cpu_address:06X}",
-                    f"{call.mnemonic.lower()}_indirect_at_"
-                    f"{call.cpu_address:06X}",
+                    f"{call.mnemonic.lower()}_indirect_at_{call.cpu_address:06X}",
                     index_evidence,
                     f"entry_count={len(entries)}",
                     f"instruction_targets={target_starts}",
@@ -997,41 +983,59 @@ def can_bootstrap_dispatch_seeds(seeds, decoded_starts) -> bool:
     targets = {seed.address for seed in seeds}
     if len(targets) < 2:
         return False
-    if all(seed.confidence == "proven" and seed.kind in {
-        "leaf_word_dispatch", "inline_word_dispatch", "pc_word_dispatch",
-    } for seed in seeds):
+    if all(
+        seed.confidence == "proven"
+        and seed.kind
+        in {
+            "leaf_word_dispatch",
+            "inline_word_dispatch",
+            "pc_word_dispatch",
+        }
+        for seed in seeds
+    ):
         return True
     decoded = len(targets & decoded_starts)
     return len(targets) >= 4 and (decoded >= 2 or decoded == 1 and len(seeds) >= 8)
 
 
 def discover_dispatch_table_seeds(
-    image: MegaDriveImage, facts: dict[int, InstructionFact],
-    *, handler_validator: Callable[[int], bool] | None = None, entrypoints=(),
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
+    handler_validator: Callable[[int], bool] | None = None,
+    entrypoints=(),
 ) -> tuple[DecoderSeed, ...]:
     """Turn instruction-proven absolute and relative dispatch tables into seeds."""
     from retrolarium_disassembler.m68k.dispatch.record import discover_record_callback_seeds
     from retrolarium_disassembler.m68k.callbacks.abi import discover_callback_abi_seeds
     from retrolarium_disassembler.m68k.dispatch.ram import discover_ram_stub_dispatch_seeds
-    from retrolarium_disassembler.m68k.dispatch.table import discover_lea_indexed_call_seeds, discover_trap_relative_dispatch_seeds
+    from retrolarium_disassembler.m68k.dispatch.table import (
+        discover_lea_indexed_call_seeds,
+        discover_trap_relative_dispatch_seeds,
+    )
     from retrolarium_disassembler.m68k.callbacks.word import discover_nested_word_resolver_seeds
     from retrolarium_disassembler.m68k.dispatch.leaf import discover_leaf_word_dispatch_seeds
     from retrolarium_disassembler.m68k.dispatch.indexed import (
-        discover_register_indexed_dispatch_seeds, discover_added_index_dispatch_seeds,
+        discover_register_indexed_dispatch_seeds,
+        discover_added_index_dispatch_seeds,
         discover_nested_word_dispatch_seeds,
     )
-    seeds = [*discover_record_callback_seeds(image, facts),
-             *discover_callback_abi_seeds(image, facts),
-             *discover_ram_stub_dispatch_seeds(image, facts),
-             *discover_nested_word_resolver_seeds(image, facts),
-             *discover_leaf_word_dispatch_seeds(image, facts, handler_validator=handler_validator,
-                                                 entrypoints=entrypoints),
-             *discover_lea_indexed_call_seeds(image, facts),
-             *discover_trap_relative_dispatch_seeds(image, facts)]
-    for table in (*_dispatch_tables(image, facts), *_word_dispatch_tables(image, facts),
-                  *_pc_word_dispatch_tables(image, facts, handler_validator=handler_validator,
-                                            skip_conflicting_targets=True),
-                  *_object_callback_tables(image, facts)):
+
+    seeds = [
+        *discover_record_callback_seeds(image, facts),
+        *discover_callback_abi_seeds(image, facts),
+        *discover_ram_stub_dispatch_seeds(image, facts),
+        *discover_nested_word_resolver_seeds(image, facts),
+        *discover_leaf_word_dispatch_seeds(image, facts, handler_validator=handler_validator, entrypoints=entrypoints),
+        *discover_lea_indexed_call_seeds(image, facts),
+        *discover_trap_relative_dispatch_seeds(image, facts),
+    ]
+    for table in (
+        *_dispatch_tables(image, facts),
+        *_word_dispatch_tables(image, facts),
+        *_pc_word_dispatch_tables(image, facts, handler_validator=handler_validator, skip_conflicting_targets=True),
+        *_object_callback_tables(image, facts),
+    ):
         candidate = table.candidate
         evidence = (
             f"{candidate.schema_id} handler table at 0x{candidate.logical_start:06X} "
@@ -1039,8 +1043,7 @@ def discover_dispatch_table_seeds(
             f"0x{table.load_address:06X} and {table.call_mnemonic} at "
             f"0x{table.call_address:06X}"
         )
-        evidence += "".join(f"; {item}" for item in candidate.evidence
-                            if item.startswith("complete_cfg_witness_at_"))
+        evidence += "".join(f"; {item}" for item in candidate.evidence if item.startswith("complete_cfg_witness_at_"))
         seeds.extend(
             DecoderSeed(
                 address=entry.target,
@@ -1055,18 +1058,18 @@ def discover_dispatch_table_seeds(
     # These readers are also used by CD overlays. Cartridge analysis must
     # receive the same proven register-index and nested-table discoveries.
     seen = {seed.address for seed in seeds}
-    for seed in (*discover_register_indexed_dispatch_seeds(image, facts),
-                 *discover_added_index_dispatch_seeds(image, facts),
-                 *discover_nested_word_dispatch_seeds(image, facts)):
+    for seed in (
+        *discover_register_indexed_dispatch_seeds(image, facts),
+        *discover_added_index_dispatch_seeds(image, facts),
+        *discover_nested_word_dispatch_seeds(image, facts),
+    ):
         if seed.address not in seen:
             seeds.append(seed)
             seen.add(seed.address)
     return tuple(seeds)
 
 
-def _object_callback_tables(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
-) -> tuple[_DispatchTable, ...]:
+def _object_callback_tables(image: MegaDriveImage, facts: dict[int, InstructionFact]) -> tuple[_DispatchTable, ...]:
     """Find indexed ROM pointers installed as object callbacks.
 
     The reader copies a longword from a four-byte-indexed table directly
@@ -1086,12 +1089,15 @@ def _object_callback_tables(
         stored = ram_store.fullmatch(second.operands)
         if second.mnemonic.upper() != "MOVE.L" or stored is None:
             continue
-        for first in reversed(ordered[max(0, position - 32):position]):
+        for first in reversed(ordered[max(0, position - 32) : position]):
             if second.cpu_address - first.cpu_address > 0x40:
                 break
             match = immediate.fullmatch(first.operands)
-            if (first.mnemonic.upper() == "MOVE.L" and match is not None
-                    and match.group(2).upper() == stored.group(1).upper()):
+            if (
+                first.mnemonic.upper() == "MOVE.L"
+                and match is not None
+                and match.group(2).upper() == stored.group(1).upper()
+            ):
                 ram_bases.setdefault(int(stored.group(2), 0), set()).add(int(match.group(1), 0))
 
     origins: list[tuple[int, set[int]]] = []
@@ -1114,36 +1120,41 @@ def _object_callback_tables(
         second = ends.get(read.cpu_address)
         first = ends.get(second.cpu_address) if second is not None else None
         if not all(
-            item is not None and item.mnemonic.upper() == "ADD.W"
+            item is not None
+            and item.mnemonic.upper() == "ADD.W"
             and item.operands.upper() == f"{register}W|{register}W"
             for item in (first, second)
         ):
             continue
         source = ends.get(first.cpu_address)
-        if (source is None or source.mnemonic.upper() != "MOVE.B"
-                or not source.operands.upper().endswith(f"|{register}B")):
+        if (
+            source is None
+            or source.mnemonic.upper() != "MOVE.B"
+            or not source.operands.upper().endswith(f"|{register}B")
+        ):
             continue
-        preceding = [item for item in origins
-                     if 0 < read.cpu_address - item[0] <= 0x2000]
+        preceding = [item for item in origins if 0 < read.cpu_address - item[0] <= 0x2000]
         if not preceding:
             continue
         origin, bases = preceding[-1]
         for table in bases:
             offset = table - image.header.rom_start
-            if (table in tables or offset < 0x200 or table & 1
-                    or offset + 32 > len(image.data) or offset in occupied):
+            if table in tables or offset < 0x200 or table & 1 or offset + 32 > len(image.data) or offset in occupied:
                 continue
             entries: list[PointerEntry] = []
             for index in range(MAX_DISPATCH_ENTRIES):
                 at = offset + index * 4
                 if at + 4 > len(image.data) or any(at + part in occupied for part in range(4)):
                     break
-                target = int.from_bytes(image.data[at:at + 4], "big")
+                target = int.from_bytes(image.data[at : at + 4], "big")
                 physical = target - image.header.rom_start
-                if (not _mapped(image, target) or physical < 0x200
-                        or physical + 2 > len(image.data)
-                        or offset <= physical < at + 4
-                        or image.data[physical:physical + 2] in {b"\x00\x00", b"\xff\xff"}):
+                if (
+                    not _mapped(image, target)
+                    or physical < 0x200
+                    or physical + 2 > len(image.data)
+                    or offset <= physical < at + 4
+                    or image.data[physical : physical + 2] in {b"\x00\x00", b"\xff\xff"}
+                ):
                     break
                 entries.append(PointerEntry(at, image.header.rom_start + at, target, target))
             if len(entries) < 8 or len({entry.target for entry in entries}) < 8:
@@ -1159,9 +1170,11 @@ def _object_callback_tables(
                     status="accepted" if all(entry.target in starts for entry in entries) else "candidate",
                     score=90,
                     entries=tuple(entries),
-                    evidence=(f"table_base_at_{origin:06X}",
-                              f"indexed_object_callback_store_at_{read.cpu_address:06X}",
-                              f"entry_count={len(entries)}"),
+                    evidence=(
+                        f"table_base_at_{origin:06X}",
+                        f"indexed_object_callback_store_at_{read.cpu_address:06X}",
+                        f"entry_count={len(entries)}",
+                    ),
                     contradictions=(),
                 ),
                 load_address=read.cpu_address,
@@ -1171,9 +1184,7 @@ def _object_callback_tables(
     return tuple(tables[address] for address in sorted(tables))
 
 
-def _word_dispatch_tables(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
-) -> tuple[_DispatchTable, ...]:
+def _word_dispatch_tables(image: MegaDriveImage, facts: dict[int, InstructionFact]) -> tuple[_DispatchTable, ...]:
     """Prove signed-word dispatches with a constant or entry-address base.
 
     MOVEA.W (table,PC,Dn.W),An / ADDA.L #base,An uses a constant base.
@@ -1199,7 +1210,8 @@ def _word_dispatch_tables(
         register = indexed.group(2).upper()
         add = by_address.get(load.cpu_address + load.length)
         if (
-            add is None or add.mnemonic.upper() != ("ADDA.L" if word_load else "ADDA.W")
+            add is None
+            or add.mnemonic.upper() != ("ADDA.L" if word_load else "ADDA.W")
             or add.flow_type.upper() != "FALL_THROUGH"
         ):
             continue
@@ -1221,14 +1233,17 @@ def _word_dispatch_tables(
             arithmetic_evidence = "signed_word_offsets_added_to_entry_address"
         call = by_address.get(add.cpu_address + add.length)
         if (
-            call is None or call.mnemonic.upper() not in {"JMP", "JSR"}
+            call is None
+            or call.mnemonic.upper() not in {"JMP", "JSR"}
             or (target_register := _REGISTER_INDIRECT.fullmatch(call.operands)) is None
             or target_register.group(1).upper() != register
         ):
             continue
         start = table - rom_start
         if (
-            table in tables or start < 0x200 or table & 1
+            table in tables
+            or start < 0x200
+            or table & 1
             or start + 2 * MIN_DISPATCH_ENTRIES > len(data)
             or (base is not None and not _mapped(image, base))
         ):
@@ -1245,15 +1260,17 @@ def _word_dispatch_tables(
                 break
             if entries and rom_start + offset in boundaries:
                 break
-            raw = int.from_bytes(data[offset:offset + 2], "big")
+            raw = int.from_bytes(data[offset : offset + 2], "big")
             entry_base = base if base is not None else rom_start + offset
             target = (entry_base + (raw - 0x10000 if raw & 0x8000 else raw)) & 0xFFFFFF
             physical = target - rom_start
             if (
-                not _mapped(image, target) or physical < 0x200
-                or physical + 2 > len(data) or physical in interiors
+                not _mapped(image, target)
+                or physical < 0x200
+                or physical + 2 > len(data)
+                or physical in interiors
                 or start <= physical < offset + 2
-                or data[physical:physical + 2] in {b"\x00\x00", b"\xff\xff"}
+                or data[physical : physical + 2] in {b"\x00\x00", b"\xff\xff"}
             ):
                 break
             entries.append(PointerEntry(offset, rom_start + offset, raw, target, entry_base))
@@ -1264,10 +1281,9 @@ def _word_dispatch_tables(
                 forward_code_start = min(forward_code_start, physical)
         while entries:
             end = start + 2 * len(entries)
-            inside = next((
-                index for index, entry in enumerate(entries)
-                if start <= entry.target - rom_start < end
-            ), None)
+            inside = next(
+                (index for index, entry in enumerate(entries) if start <= entry.target - rom_start < end), None
+            )
             if inside is None:
                 break
             entries = entries[:inside]
@@ -1279,32 +1295,40 @@ def _word_dispatch_tables(
             candidate=PointerCandidate(
                 candidate_id=f"Ptr_s16be-dispatch_{'code' if word_load else 'entry'}_{table:06X}",
                 schema_id=schema,
-                physical_start=start, physical_end=start + 2 * len(entries),
-                logical_start=table, entry_size=2,
-                status="accepted" if accepted else "candidate", score=100 if accepted else 60,
+                physical_start=start,
+                physical_end=start + 2 * len(entries),
+                logical_start=table,
+                entry_size=2,
+                status="accepted" if accepted else "candidate",
+                score=100 if accepted else 60,
                 entries=tuple(entries),
                 evidence=(
                     f"indexed_{'movea_w' if word_load else 'lea'}_at_{load.cpu_address:06X}",
                     base_evidence,
                     f"{call.mnemonic.lower()}_indirect_at_{call.cpu_address:06X}",
                     arithmetic_evidence,
-                    f"entry_count={len(entries)}", f"instruction_targets={decoded}",
+                    f"entry_count={len(entries)}",
+                    f"instruction_targets={decoded}",
                 ),
                 contradictions=(),
             ),
-            load_address=load.cpu_address, call_address=call.cpu_address,
+            load_address=load.cpu_address,
+            call_address=call.cpu_address,
             call_mnemonic=call.mnemonic.upper(),
         )
     return tuple(tables[address] for address in sorted(tables))
 
 
 def _pc_word_dispatch_tables(
-    image: MegaDriveImage, facts: dict[int, InstructionFact],
-    *, handler_validator: Callable[[int], bool] | None = None,
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
+    handler_validator: Callable[[int], bool] | None = None,
     skip_conflicting_targets: bool = False,
 ) -> tuple[_DispatchTable, ...]:
     """Recover signed offsets loaded from a table then used by PC-indexed JMP/JSR."""
     from retrolarium_disassembler.m68k.abstract import _register_list
+
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     occupied, interiors, instruction_starts = instruction_sets(facts)
     boundaries = absolute_referenced_addresses(facts)
@@ -1330,28 +1354,28 @@ def _pc_word_dispatch_tables(
             offset_register = indexed.group(2).upper()
             operands = call.operands.upper().split("|")
             operation = call.mnemonic.upper().split(".", 1)[0]
-            clobbers_offset = operands[-1] in {
-                offset_register + size for size in ("", "B", "W", "L")
-            }
+            clobbers_offset = operands[-1] in {offset_register + size for size in ("", "B", "W", "L")}
             if operation == "MOVEM":
                 clobbers_offset |= offset_register.lower() in _register_list(operands[-1])
             if operation == "EXG":
                 clobbers_offset |= offset_register in operands
-            if (call.flow_type.upper() != "FALL_THROUGH"
-                    or clobbers_offset):
+            if call.flow_type.upper() != "FALL_THROUGH" or clobbers_offset:
                 call = None
                 break
             call = by_address.get(call.cpu_address + call.length)
         else:
             call = None
-        if (call is None or call.mnemonic.upper() not in {"JMP", "JSR"}
-                or branch is None or int(indexed.group(1), 0) != int(branch.group(1), 0)
-                or indexed.group(2).upper() != branch.group(2).upper()):
+        if (
+            call is None
+            or call.mnemonic.upper() not in {"JMP", "JSR"}
+            or branch is None
+            or int(indexed.group(1), 0) != int(branch.group(1), 0)
+            or indexed.group(2).upper() != branch.group(2).upper()
+        ):
             continue
         table = int(indexed.group(1), 0)
         start = table - rom_start
-        if (table in tables or start < 0x200 or table & 1
-                or start + 2 * MIN_DISPATCH_ENTRIES > len(data)):
+        if table in tables or start < 0x200 or table & 1 or start + 2 * MIN_DISPATCH_ENTRIES > len(data):
             continue
         entries = []
         strict_entries = None
@@ -1361,8 +1385,7 @@ def _pc_word_dispatch_tables(
         suffix_witnesses = ()
         forward_code_start = min(len(data), start + 2 * MAX_DISPATCH_ENTRIES)
         for offset in range(start, forward_code_start - 1, 2):
-            if (offset + 2 > forward_code_start
-                    or offset in occupied or offset + 1 in occupied):
+            if offset + 2 > forward_code_start or offset in occupied or offset + 1 in occupied:
                 break
             if entries and rom_start + offset in boundaries:
                 if handler_validator is None:
@@ -1373,13 +1396,16 @@ def _pc_word_dispatch_tables(
                     break
                 if strict_entries is None:
                     strict_entries = list(entries)
-            raw = int.from_bytes(data[offset:offset + 2], "big")
+            raw = int.from_bytes(data[offset : offset + 2], "big")
             target = (table + (raw - 0x10000 if raw & 0x8000 else raw)) & 0xFFFFFF
             physical = target - rom_start
-            if (not _mapped(image, target) or physical < 0x200
-                    or physical + 2 > len(data)
-                    or start <= physical < offset + 2
-                    or data[physical:physical + 2] in {b"\x00\x00", b"\xff\xff"}):
+            if (
+                not _mapped(image, target)
+                or physical < 0x200
+                or physical + 2 > len(data)
+                or start <= physical < offset + 2
+                or data[physical : physical + 2] in {b"\x00\x00", b"\xff\xff"}
+            ):
                 break
             if physical in interiors:
                 if not skip_conflicting_targets:
@@ -1396,10 +1422,8 @@ def _pc_word_dispatch_tables(
             # first forward handler, and a rooted-code-connected complete CFG
             # must independently establish at least one speculative handler.
             end = start + 2 * len(entries)
-            if (end == forward_code_start
-                    and rom_start + end in {entry.target for entry in entries}):
-                witness = next((entry.target for entry in entries
-                                if handler_validator(entry.target)), None)
+            if end == forward_code_start and rom_start + end in {entry.target for entry in entries}:
+                witness = next((entry.target for entry in entries if handler_validator(entry.target)), None)
             if witness is None:
                 entries = strict_entries
         if before_conflict is not None:
@@ -1409,16 +1433,24 @@ def _pc_word_dispatch_tables(
             # A decoded forward handler bounds the scan, but adjacent data can
             # still imitate offsets before it. Require an independent complete
             # CFG for each new suffix target; a valid neighbour is not proof.
-            if not (end == forward_code_start and rom_start + end in instruction_starts
-                    and rom_start + end in {entry.target for entry in entries}):
+            if not (
+                end == forward_code_start
+                and rom_start + end in instruction_starts
+                and rom_start + end in {entry.target for entry in entries}
+            ):
                 entries = before_conflict if len(before_conflict) < len(entries) else entries
                 excluded_targets.clear()
             else:
-                suffix_targets = ({entry.target for entry in entries}
-                                  - {entry.target for entry in before_conflict}
-                                  - excluded_targets)
-                suffix_witnesses = tuple(sorted(target for target in suffix_targets
-                    if handler_validator is not None and handler_validator(target)))
+                suffix_targets = (
+                    {entry.target for entry in entries} - {entry.target for entry in before_conflict} - excluded_targets
+                )
+                suffix_witnesses = tuple(
+                    sorted(
+                        target
+                        for target in suffix_targets
+                        if handler_validator is not None and handler_validator(target)
+                    )
+                )
                 if suffix_witnesses:
                     excluded_targets.update(suffix_targets - set(suffix_witnesses))
                 else:
@@ -1431,29 +1463,39 @@ def _pc_word_dispatch_tables(
             candidate=PointerCandidate(
                 candidate_id=f"Ptr_s16be-pc-word-dispatch_{table:06X}",
                 schema_id="megadrive.s16be.target-table_base",
-                physical_start=start, physical_end=start + len(entries) * 2,
-                logical_start=table, entry_size=2,
+                physical_start=start,
+                physical_end=start + len(entries) * 2,
+                logical_start=table,
+                entry_size=2,
                 status="accepted" if decoded == len(entries) else "candidate",
                 score=100 if decoded == len(entries) else 60,
                 entries=tuple(entries),
-                evidence=(f"indexed_move_w_at_{load.cpu_address:06X}",
-                          f"{call.mnemonic.lower()}_pc_indexed_at_{call.cpu_address:06X}",
-                          "same_pc_relative_table_base_and_offset_register",
-                          f"entry_count={len(entries)}", f"instruction_targets={decoded}")
-                         + ((f"complete_cfg_witness_at_{witness:06X}",) if witness is not None else ())
-                         + tuple(f"complete_cfg_witness_at_{target:06X}" for target in suffix_witnesses),
+                evidence=(
+                    f"indexed_move_w_at_{load.cpu_address:06X}",
+                    f"{call.mnemonic.lower()}_pc_indexed_at_{call.cpu_address:06X}",
+                    "same_pc_relative_table_base_and_offset_register",
+                    f"entry_count={len(entries)}",
+                    f"instruction_targets={decoded}",
+                )
+                + ((f"complete_cfg_witness_at_{witness:06X}",) if witness is not None else ())
+                + tuple(f"complete_cfg_witness_at_{target:06X}" for target in suffix_witnesses),
                 contradictions=(),
             ),
-            load_address=load.cpu_address, call_address=call.cpu_address,
+            load_address=load.cpu_address,
+            call_address=call.cpu_address,
             call_mnemonic=call.mnemonic.upper(),
-            seed_kind="pc_word_dispatch", seed_confidence="proven",
+            seed_kind="pc_word_dispatch",
+            seed_confidence="proven",
             excluded_targets=frozenset(excluded_targets),
         )
     return tuple(tables[address] for address in sorted(tables))
 
 
 def detect_pointer_candidates(
-    image: MegaDriveImage, facts: dict[int, InstructionFact], *, scan_start: int = 0x200,
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
+    scan_start: int = 0x200,
 ) -> tuple[PointerCandidate, ...]:
     """Detect pointer schemas; ``scan_start`` bounds physical scan-only work.
 
@@ -1465,9 +1507,7 @@ def detect_pointer_candidates(
         raise ValueError("pointer scan start must be a nonnegative even physical offset")
     candidates = [_vector_candidate(image)]
     candidates.extend(_ram_trampoline_candidates(image, facts, scan_start=scan_start))
-    candidates.extend(
-        table.candidate for table in _dispatch_tables(image, facts)
-    )
+    candidates.extend(table.candidate for table in _dispatch_tables(image, facts))
     candidates.extend(table.candidate for table in _word_dispatch_tables(image, facts))
     candidates.extend(table.candidate for table in _pc_word_dispatch_tables(image, facts))
     absolute = tuple(_absolute_candidates(image, facts, 4, scan_start=scan_start))

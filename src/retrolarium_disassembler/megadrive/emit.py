@@ -108,13 +108,8 @@ def _m68k_operand(
     if indexed:
         value = int(indexed.group(1), 0)
         prefix = "" if value == 0 else str(value)
-        return (
-            f"{prefix}({indexed.group(2).lower()},"
-            f"{indexed.group(3).lower()}.{indexed.group(4).lower() or 'l'})"
-        )
-    pc_indexed = re.fullmatch(
-        r"\((0x[0-9a-f]+),PC,([DA][0-7])([wl]?)\*0x1\)", operand, re.I
-    )
+        return f"{prefix}({indexed.group(2).lower()},{indexed.group(3).lower()}.{indexed.group(4).lower() or 'l'})"
+    pc_indexed = re.fullmatch(r"\((0x[0-9a-f]+),PC,([DA][0-7])([wl]?)\*0x1\)", operand, re.I)
     if pc_indexed and fact is not None:
         indexed_target = pc_indexed_target(fact)
         if indexed_target is not None:
@@ -136,8 +131,7 @@ def _movem_registers(operand: str, *, predecrement: bool, mask: int) -> str | No
     if not re.fullmatch(r"\{\s*(?:[DA][0-7][bwl]?\s*)+\}", operand, re.I):
         return None
     names = re.findall(r"([DA])([0-7])(?:[bwl])?", operand, re.I)
-    indices = sorted({(0 if kind.upper() == "D" else 8) + int(index)
-                      for kind, index in names})
+    indices = sorted({(0 if kind.upper() == "D" else 8) + int(index) for kind, index in names})
     if len(indices) != len(names):
         return None
     expected = sum(1 << (15 - index if predecrement else index) for index in indices)
@@ -162,28 +156,47 @@ def _asm_instruction(
 ) -> str | None:
     """Render ROM-derived instruction candidates; project build proves encoding."""
     byte_immediate_mnemonics = {
-        "MOVE.B", "ORI.B", "ANDI.B", "SUBI.B", "ADDI.B", "EORI.B", "CMPI.B",
-        "BTST.B", "BTST.L", "BCHG.B", "BCHG.L", "BCLR.B", "BCLR.L",
-        "BSET.B", "BSET.L",
+        "MOVE.B",
+        "ORI.B",
+        "ANDI.B",
+        "SUBI.B",
+        "ADDI.B",
+        "EORI.B",
+        "CMPI.B",
+        "BTST.B",
+        "BTST.L",
+        "BCHG.B",
+        "BCHG.L",
+        "BCLR.B",
+        "BCLR.L",
+        "BSET.B",
+        "BSET.L",
     }
-    if (fact.mnemonic.upper() in byte_immediate_mnemonics
-            and fact.operands.lstrip().startswith("#")
-            and len(fact.raw) >= 4 and fact.raw[2] != 0):
+    if (
+        fact.mnemonic.upper() in byte_immediate_mnemonics
+        and fact.operands.lstrip().startswith("#")
+        and len(fact.raw) >= 4
+        and fact.raw[2] != 0
+    ):
         # The 68000 ignores the upper byte of these immediate extension words.
         # Assemblers canonicalize it to zero, so preserve unusual ROM encodings
         # as data to keep rebuilds byte exact.
         return None
-    if (fact.mnemonic.upper().startswith(("BTST.", "BCHG.", "BCLR.", "BSET."))
-            and fact.operands.lstrip().startswith("#") and len(fact.raw) >= 4):
+    if (
+        fact.mnemonic.upper().startswith(("BTST.", "BCHG.", "BCLR.", "BSET."))
+        and fact.operands.lstrip().startswith("#")
+        and len(fact.raw) >= 4
+    ):
         bit_limit = 32 if int.from_bytes(fact.raw[:2], "big") & 0x38 == 0 else 8
         if int.from_bytes(fact.raw[2:4], "big") >= bit_limit:
             # AS reduces an out-of-range immediate bit number modulo the
             # operand width. Its otherwise equivalent instruction changes bytes.
             return None
-    if (fact.mnemonic.upper().split(".", 1)[0] in AMBIGUOUS_IMMEDIATE_BASES
-            and len(fact.raw) >= 2
-            and (int.from_bytes(fact.raw[:2], "big") & 0x3F == 0x3C
-                 or fact.operands.lstrip().startswith("#"))):
+    if (
+        fact.mnemonic.upper().split(".", 1)[0] in AMBIGUOUS_IMMEDIATE_BASES
+        and len(fact.raw) >= 2
+        and (int.from_bytes(fact.raw[:2], "big") & 0x3F == 0x3C or fact.operands.lstrip().startswith("#"))
+    ):
         # Ea-form immediates such as D07C (add.w #imm,d0) have ADDI/SUBI/
         # CMPI/ANDI/ORI twins that assemblers prefer, so keep exact bytes.
         return None
@@ -203,8 +216,7 @@ def _asm_instruction(
         vector = fact.raw[1] & 0xF
         if fact.raw == bytes((0x4E, 0x40 | vector)):
             return f"trap #{vector}"
-    if (fact.mnemonic.upper() == "MOVE" and len(fact.raw) == 4
-            and fact.raw[:2] == b"\x44\xfc"):
+    if fact.mnemonic.upper() == "MOVE" and len(fact.raw) == 4 and fact.raw[:2] == b"\x44\xfc":
         value = int.from_bytes(fact.raw[2:], "big")
         if fact.operands.lower() == f"#0x{value:x}":
             return f"move #{value},ccr"
@@ -215,28 +227,33 @@ def _asm_instruction(
             displacement = int.from_bytes(fact.raw[2:], "big", signed=True)
             target = (fact.cpu_address + 2 + displacement) & 0xFFFFFF
             operand = re.fullmatch(r"0x[0-9a-f]+", fact.operands.strip(), re.I)
-            if (fact.mnemonic.lower() == mnemonic and operand is not None
-                    and int(operand.group(), 16) == target):
+            if fact.mnemonic.lower() == mnemonic and operand is not None and int(operand.group(), 16) == target:
                 return f"{mnemonic} {_target_expression(target, primary or {}, 6)}(pc)"
             return None
         status_immediates = {
-            0x003C: ("ori", "ccr"), 0x007C: ("ori", "sr"),
-            0x023C: ("andi", "ccr"), 0x027C: ("andi", "sr"),
-            0x0A3C: ("eori", "ccr"), 0x0A7C: ("eori", "sr"),
+            0x003C: ("ori", "ccr"),
+            0x007C: ("ori", "sr"),
+            0x023C: ("andi", "ccr"),
+            0x027C: ("andi", "sr"),
+            0x0A3C: ("eori", "ccr"),
+            0x0A7C: ("eori", "sr"),
         }
         if opcode in status_immediates:
             mnemonic, register = status_immediates[opcode]
             value = int.from_bytes(fact.raw[2:], "big")
             match = re.fullmatch(
                 r"#(-?0x[0-9a-f]+|-?\d+)(?:\|(SR|CCR))?",
-                fact.operands, re.I,
+                fact.operands,
+                re.I,
             )
             mask = 0xFF if register == "ccr" else 0xFFFF
-            if (fact.mnemonic.lower() == mnemonic and match is not None
-                    and value <= mask
-                    and int(match.group(1), 0) & mask == value
-                    and (match.group(2) is None
-                         or match.group(2).lower() == register)):
+            if (
+                fact.mnemonic.lower() == mnemonic
+                and match is not None
+                and value <= mask
+                and int(match.group(1), 0) & mask == value
+                and (match.group(2) is None or match.group(2).lower() == register)
+            ):
                 return f"{mnemonic} #${value:X},{register}"
             return None
         if opcode == 0x4E72 and fact.mnemonic.upper() == "STOP":
@@ -246,8 +263,22 @@ def _asm_instruction(
                 return f"stop #${value:X}"
     if len(fact.raw) in (2, 4) and 0x60 <= fact.raw[0] <= 0x6F:
         condition = (
-            "bra", "bsr", "bhi", "bls", "bcc", "bcs", "bne", "beq",
-            "bvc", "bvs", "bpl", "bmi", "bge", "blt", "bgt", "ble",
+            "bra",
+            "bsr",
+            "bhi",
+            "bls",
+            "bcc",
+            "bcs",
+            "bne",
+            "beq",
+            "bvc",
+            "bvs",
+            "bpl",
+            "bmi",
+            "bge",
+            "blt",
+            "bgt",
+            "ble",
         )[fact.raw[0] & 0xF]
         if len(fact.raw) == 2 and fact.raw[1] != 0:
             displacement = int.from_bytes(fact.raw[1:], "big", signed=True)
@@ -258,20 +289,36 @@ def _asm_instruction(
         else:
             return None
         target = (fact.cpu_address + 2 + displacement) & 0xFFFFFF
-        if fact.mnemonic.upper() == f"{condition.upper()}.{ 'B' if suffix == 's' else 'W'}":
+        if fact.mnemonic.upper() == f"{condition.upper()}.{'B' if suffix == 's' else 'W'}":
             return f"{condition}.{suffix} {_target_expression(target, primary or {}, 6)}"
-    db_names = ("DBT", "DBF", "DBHI", "DBLS", "DBCC", "DBCS", "DBNE", "DBEQ",
-                "DBVC", "DBVS", "DBPL", "DBMI", "DBGE", "DBLT", "DBGT", "DBLE")
-    if (len(fact.raw) == 4 and 0x50 <= fact.raw[0] <= 0x5F
-            and 0xC8 <= fact.raw[1] <= 0xCF
-            and fact.mnemonic.upper() == db_names[fact.raw[0] & 0xF]):
+    db_names = (
+        "DBT",
+        "DBF",
+        "DBHI",
+        "DBLS",
+        "DBCC",
+        "DBCS",
+        "DBNE",
+        "DBEQ",
+        "DBVC",
+        "DBVS",
+        "DBPL",
+        "DBMI",
+        "DBGE",
+        "DBLT",
+        "DBGT",
+        "DBLE",
+    )
+    if (
+        len(fact.raw) == 4
+        and 0x50 <= fact.raw[0] <= 0x5F
+        and 0xC8 <= fact.raw[1] <= 0xCF
+        and fact.mnemonic.upper() == db_names[fact.raw[0] & 0xF]
+    ):
         register = fact.raw[1] & 7
         displacement = int.from_bytes(fact.raw[2:], "big", signed=True)
         target = (fact.cpu_address + 2 + displacement) & 0xFFFFFF
-        return (
-            f"{fact.mnemonic.lower()} d{register},"
-            f"{_target_expression(target, primary or {}, 6)}"
-        )
+        return f"{fact.mnemonic.lower()} d{register},{_target_expression(target, primary or {}, 6)}"
     indexed = pc_indexed_jsr_target(fact)
     if indexed is not None and primary is not None:
         target, register = indexed
@@ -286,22 +333,17 @@ def _asm_instruction(
             displacement = int.from_bytes(fact.raw[2:], "big", signed=True)
             target = (fact.cpu_address + 2 + displacement) & 0xFFFFFF
             symbol = primary.get(target)
-            if (register == int(match.group(2))
-                    and displacement == int(match.group(1), 0)
-                    and symbol is not None):
+            if register == int(match.group(2)) and displacement == int(match.group(1), 0) and symbol is not None:
                 return f"lea {symbol.name}(pc),a{register}"
     if fact.mnemonic.upper() in ("MOVEM.W", "MOVEM.L") and len(fact.raw) >= 4:
         operands = fact.operands.split("|")
         if len(operands) == 2:
             set_index = 0 if operands[0].lstrip().startswith("{") else 1
             ea_mode = int.from_bytes(fact.raw[:2], "big") & 0x38
-            if (set_index == 1 and ea_mode == 0x20
-                    or set_index == 0 and ea_mode == 0x18):
+            if set_index == 1 and ea_mode == 0x20 or set_index == 0 and ea_mode == 0x18:
                 # MOVEM loads permit postincrement; stores permit predecrement.
                 return None
-            address = _m68k_operand(
-                operands[1 - set_index], fact=fact, primary=primary
-            )
+            address = _m68k_operand(operands[1 - set_index], fact=fact, primary=primary)
             if address is not None:
                 registers = _movem_registers(
                     operands[set_index],
@@ -327,42 +369,166 @@ def _asm_instruction(
             return None
         return f"link a{opcode & 7},#{displacement}"
     allowed = {
-        "MOVE", "MOVE.B", "MOVE.W", "MOVE.L", "MOVEA.W", "MOVEA.L",
-        "LEA", "CLR.B", "CLR.W", "CLR.L", "TST.B", "TST.W", "TST.L",
-        "ADD.B", "ADD.W", "ADD.L", "ADDA.W", "ADDA.L",
-        "SUB.B", "SUB.W", "SUB.L", "SUBA.W", "SUBA.L",
-        "CMP.B", "CMP.W", "CMP.L", "CMPA.W", "CMPA.L",
-        "CMPM.B", "CMPM.W", "CMPM.L",
-        "AND.B", "AND.W", "AND.L", "EOR.B", "EOR.W", "EOR.L",
-        "OR.B", "OR.W", "OR.L", "ADDI.B", "ADDI.W", "ADDI.L",
-        "SUBI.B", "SUBI.W", "SUBI.L", "ANDI.B", "ANDI.W", "ANDI.L",
-        "ORI.B", "ORI.W", "ORI.L", "EORI.B", "EORI.W", "EORI.L",
-        "CMPI.B", "CMPI.W", "CMPI.L",
-        "ADDQ.B", "ADDQ.W", "ADDQ.L", "SUBQ.B", "SUBQ.W", "SUBQ.L",
-        "LSL.B", "LSL.W", "LSL.L", "LSR.B", "LSR.W", "LSR.L",
-        "ASL.B", "ASL.W", "ASL.L", "ASR.B", "ASR.W", "ASR.L",
-        "ROL.B", "ROL.W", "ROL.L", "ROR.B", "ROR.W", "ROR.L",
-        "ROXL.B", "ROXL.W", "ROXL.L", "ROXR.B", "ROXR.W", "ROXR.L",
-        "SWAP", "NEG.B", "NEG.W", "NEG.L", "NOT.B", "NOT.W", "NOT.L",
-        "NEGX.B", "NEGX.W", "NEGX.L", "NBCD", "EXG", "PEA", "LINK", "UNLK",
-        "ADDX.B", "ADDX.W", "ADDX.L", "SUBX.B", "SUBX.W", "SUBX.L",
-        "ASL", "ASR", "LSL", "LSR", "ROL", "ROR", "ROXL", "ROXR",
-        "ABCD", "SBCD", "MULU.W", "MULS.W", "DIVU.W", "DIVS.W",
-        "ST", "SF", "SHI", "SLS", "SCC", "SCS", "SNE", "SEQ",
-        "SVC", "SVS", "SPL", "SMI", "SGE", "SLT", "SGT", "SLE",
-        "EXT.W", "EXT.L", "BTST.B", "BTST.L", "BSET.B", "BSET.L",
-        "BCLR.B", "BCLR.L", "BCHG.B", "BCHG.L", "JSR", "JMP",
+        "MOVE",
+        "MOVE.B",
+        "MOVE.W",
+        "MOVE.L",
+        "MOVEA.W",
+        "MOVEA.L",
+        "LEA",
+        "CLR.B",
+        "CLR.W",
+        "CLR.L",
+        "TST.B",
+        "TST.W",
+        "TST.L",
+        "ADD.B",
+        "ADD.W",
+        "ADD.L",
+        "ADDA.W",
+        "ADDA.L",
+        "SUB.B",
+        "SUB.W",
+        "SUB.L",
+        "SUBA.W",
+        "SUBA.L",
+        "CMP.B",
+        "CMP.W",
+        "CMP.L",
+        "CMPA.W",
+        "CMPA.L",
+        "CMPM.B",
+        "CMPM.W",
+        "CMPM.L",
+        "AND.B",
+        "AND.W",
+        "AND.L",
+        "EOR.B",
+        "EOR.W",
+        "EOR.L",
+        "OR.B",
+        "OR.W",
+        "OR.L",
+        "ADDI.B",
+        "ADDI.W",
+        "ADDI.L",
+        "SUBI.B",
+        "SUBI.W",
+        "SUBI.L",
+        "ANDI.B",
+        "ANDI.W",
+        "ANDI.L",
+        "ORI.B",
+        "ORI.W",
+        "ORI.L",
+        "EORI.B",
+        "EORI.W",
+        "EORI.L",
+        "CMPI.B",
+        "CMPI.W",
+        "CMPI.L",
+        "ADDQ.B",
+        "ADDQ.W",
+        "ADDQ.L",
+        "SUBQ.B",
+        "SUBQ.W",
+        "SUBQ.L",
+        "LSL.B",
+        "LSL.W",
+        "LSL.L",
+        "LSR.B",
+        "LSR.W",
+        "LSR.L",
+        "ASL.B",
+        "ASL.W",
+        "ASL.L",
+        "ASR.B",
+        "ASR.W",
+        "ASR.L",
+        "ROL.B",
+        "ROL.W",
+        "ROL.L",
+        "ROR.B",
+        "ROR.W",
+        "ROR.L",
+        "ROXL.B",
+        "ROXL.W",
+        "ROXL.L",
+        "ROXR.B",
+        "ROXR.W",
+        "ROXR.L",
+        "SWAP",
+        "NEG.B",
+        "NEG.W",
+        "NEG.L",
+        "NOT.B",
+        "NOT.W",
+        "NOT.L",
+        "NEGX.B",
+        "NEGX.W",
+        "NEGX.L",
+        "NBCD",
+        "EXG",
+        "PEA",
+        "LINK",
+        "UNLK",
+        "ADDX.B",
+        "ADDX.W",
+        "ADDX.L",
+        "SUBX.B",
+        "SUBX.W",
+        "SUBX.L",
+        "ASL",
+        "ASR",
+        "LSL",
+        "LSR",
+        "ROL",
+        "ROR",
+        "ROXL",
+        "ROXR",
+        "ABCD",
+        "SBCD",
+        "MULU.W",
+        "MULS.W",
+        "DIVU.W",
+        "DIVS.W",
+        "ST",
+        "SF",
+        "SHI",
+        "SLS",
+        "SCC",
+        "SCS",
+        "SNE",
+        "SEQ",
+        "SVC",
+        "SVS",
+        "SPL",
+        "SMI",
+        "SGE",
+        "SLT",
+        "SGT",
+        "SLE",
+        "EXT.W",
+        "EXT.L",
+        "BTST.B",
+        "BTST.L",
+        "BSET.B",
+        "BSET.L",
+        "BCLR.B",
+        "BCLR.L",
+        "BCHG.B",
+        "BCHG.L",
+        "JSR",
+        "JMP",
     }
     if fact.mnemonic.upper() in allowed:
         opcode = int.from_bytes(fact.raw[:2], "big")
         if fact.mnemonic.upper().startswith("TST.") and opcode & 0x38 == 0x08:
             return None  # Address-register TST is a 68020+ form.
-        if (fact.mnemonic.upper().startswith(("MULU.", "MULS.", "DIVU.", "DIVS."))
-                and opcode & 0x38 == 0x08):
+        if fact.mnemonic.upper().startswith(("MULU.", "MULS.", "DIVU.", "DIVS.")) and opcode & 0x38 == 0x08:
             # The 68000 data-EA forms do not accept address-register direct.
             return None
-        if opcode & 0xF0C0 == 0xE0C0 and (
-                opcode & 0x38 in {0, 8} or opcode & 0x3F >= 0x3A):
+        if opcode & 0xF0C0 == 0xE0C0 and (opcode & 0x38 in {0, 8} or opcode & 0x3F >= 0x3A):
             # Memory shifts require an alterable memory EA, excluding PC.
             return None
         has_ea = opcode & 0xF000 != 0xE000 or opcode & 0xC0 == 0xC0
@@ -378,23 +544,18 @@ def _asm_instruction(
         operands = fact.operands.split("|") if fact.operands else []
         if fact.mnemonic.upper() == "MOVE" and len(operands) != 2:
             return None
-        if (operands and operands[-1].strip().startswith("#")
-                and fact.mnemonic.upper() != "LINK"):
+        if operands and operands[-1].strip().startswith("#") and fact.mnemonic.upper() != "LINK":
             # None of the generic forms accepts an immediate destination.
             return None
         if fact.mnemonic.upper().endswith(".B") and any(
-            re.fullmatch(r"(?:A[0-7][bwl]?|SP)", operand.strip(), re.I)
-            for operand in operands
+            re.fullmatch(r"(?:A[0-7][bwl]?|SP)", operand.strip(), re.I) for operand in operands
         ):
             # Address registers have no byte-sized direct operand on 68000.
             return None
         if fact.mnemonic.upper().startswith(("ADDQ.", "SUBQ.")) and operands:
             operands[0] = "#" + operands[0].lstrip("#")
-        converted = [
-            _m68k_operand(operand, fact=fact, primary=primary)
-            for operand in operands
-        ]
-        if (len(converted) in (1, 2) and all(part is not None for part in converted)):
+        converted = [_m68k_operand(operand, fact=fact, primary=primary) for operand in operands]
+        if len(converted) in (1, 2) and all(part is not None for part in converted):
             mnemonic = fact.mnemonic.lower()
             if mnemonic.startswith(("btst.", "bset.", "bclr.", "bchg.")):
                 mnemonic = mnemonic.split(".", 1)[0]
@@ -414,12 +575,10 @@ def _symbol_maps(
     primary = {
         symbol.logical_address: symbol
         for symbol in symbols
-        if (symbol.cpu_id == "m68k"
-            and symbol.logical_address not in instruction_interiors)
+        if (symbol.cpu_id == "m68k" and symbol.logical_address not in instruction_interiors)
     }
     aliases = {
-        address: tuple(alias for alias in symbol.aliases if alias != symbol.name)
-        for address, symbol in primary.items()
+        address: tuple(alias for alias in symbol.aliases if alias != symbol.name) for address, symbol in primary.items()
     }
     return primary, aliases
 
@@ -437,9 +596,7 @@ def _emit_labels(
     lines.extend(f"{alias}:" for alias in aliases.get(logical_address, ()))
 
 
-def _target_expression(
-    address: int, primary: dict[int, TechnicalSymbol], width: int
-) -> str:
+def _target_expression(address: int, primary: dict[int, TechnicalSymbol], width: int) -> str:
     symbol = primary.get(address)
     if symbol is not None:
         return symbol.name
@@ -456,27 +613,15 @@ def _pointer_lines(
     if candidate.schema_id == "megadrive.counted-u16be.absolute":
         count_word = len(candidate.entries) - 1
         encoded_count = count_word.to_bytes(2, "big")
-        original_count = image.data[
-            candidate.physical_start:candidate.physical_start + 2
-        ]
+        original_count = image.data[candidate.physical_start : candidate.physical_start + 2]
         if encoded_count != original_count:
-            raise MegaDriveEmitError(
-                f"counted pointer header changes bytes at "
-                f"{candidate.physical_start:#x}"
-            )
+            raise MegaDriveEmitError(f"counted pointer header changes bytes at {candidate.physical_start:#x}")
         lines.append(f"{M68K_INDENT}dc.w    ${count_word:X}")
     elif candidate.schema_id == "megadrive.counted-u16be.ram-copy-offset":
-        header = image.data[
-            candidate.physical_start:candidate.physical_start + 2
-        ]
+        header = image.data[candidate.physical_start : candidate.physical_start + 2]
         if len(header) != 2 or header[0] != len(candidate.entries):
-            raise MegaDriveEmitError(
-                f"animation count header disagrees at "
-                f"{candidate.physical_start:#x}"
-            )
-        lines.append(
-            f"{M68K_INDENT}dc.b    ${header[0]:02X}, ${header[1]:02X}"
-        )
+            raise MegaDriveEmitError(f"animation count header disagrees at {candidate.physical_start:#x}")
+        lines.append(f"{M68K_INDENT}dc.b    ${header[0]:02X}, ${header[1]:02X}")
     for entry in candidate.entries:
         target = _target_expression(entry.target, primary, 6)
         if candidate.schema_id == "megadrive.u32be.absolute":
@@ -490,14 +635,10 @@ def _pointer_lines(
             encoded = entry.target.to_bytes(2, "big")
         elif candidate.schema_id == "megadrive.s16be.target-table_base":
             lines.append(f"{M68K_INDENT}dc.w    {target}-{table}")
-            encoded = ((entry.target - candidate.logical_start) & 0xFFFF).to_bytes(
-                2, "big"
-            )
+            encoded = ((entry.target - candidate.logical_start) & 0xFFFF).to_bytes(2, "big")
         elif candidate.schema_id == "megadrive.s16be.target-entry_address":
             lines.append(f"{M68K_INDENT}dc.w    {target}-*")
-            encoded = ((entry.target - entry.logical_address) & 0xFFFF).to_bytes(
-                2, "big"
-            )
+            encoded = ((entry.target - entry.logical_address) & 0xFFFF).to_bytes(2, "big")
         elif candidate.schema_id in {
             "megadrive.counted-u16be.ram-copy-offset",
             "megadrive.s16be.target-code_base",
@@ -506,20 +647,12 @@ def _pointer_lines(
                 raise MegaDriveEmitError("relative pointer is missing its ROM base")
             base = _target_expression(entry.base_address, primary, 6)
             lines.append(f"{M68K_INDENT}dc.w    {target}-{base}")
-            encoded = ((entry.target - entry.base_address) & 0xFFFF).to_bytes(
-                2, "big"
-            )
+            encoded = ((entry.target - entry.base_address) & 0xFFFF).to_bytes(2, "big")
         else:
-            raise MegaDriveEmitError(
-                f"unsupported accepted pointer schema: {candidate.schema_id}"
-            )
-        original = image.data[
-            entry.physical_offset:entry.physical_offset + candidate.entry_size
-        ]
+            raise MegaDriveEmitError(f"unsupported accepted pointer schema: {candidate.schema_id}")
+        original = image.data[entry.physical_offset : entry.physical_offset + candidate.entry_size]
         if encoded != original:
-            raise MegaDriveEmitError(
-                f"pointer expression changes bytes at {entry.physical_offset:#x}"
-            )
+            raise MegaDriveEmitError(f"pointer expression changes bytes at {entry.physical_offset:#x}")
     return lines
 
 
@@ -531,11 +664,11 @@ def _standard_boot_setup_lines(
     lines: list[str] = []
 
     for _ in range(3):
-        value = int.from_bytes(image.data[offset:offset + 2], "big")
+        value = int.from_bytes(image.data[offset : offset + 2], "big")
         lines.append(f"{M68K_INDENT}dc.w    ${value:X}")
         offset += 2
     for _ in range(5):
-        value = int.from_bytes(image.data[offset:offset + 4], "big")
+        value = int.from_bytes(image.data[offset : offset + 4], "big")
         lines.append(f"{M68K_INDENT}dc.l    Io_{value:06X}")
         offset += 4
 
@@ -544,15 +677,13 @@ def _standard_boot_setup_lines(
         end = offset + size
         while offset < end:
             next_offset = min(offset + 8, end)
-            lines.append(
-                f"{M68K_INDENT}dc.b    {_hex_bytes(image.data[offset:next_offset])}"
-            )
+            lines.append(f"{M68K_INDENT}dc.b    {_hex_bytes(image.data[offset:next_offset])}")
             offset = next_offset
 
     def emit_longs(count: int) -> None:
         nonlocal offset
         for _ in range(count):
-            value = int.from_bytes(image.data[offset:offset + 4], "big")
+            value = int.from_bytes(image.data[offset : offset + 4], "big")
             lines.append(f"{M68K_INDENT}dc.l    ${value:08X}")
             offset += 4
 
@@ -579,10 +710,7 @@ def _selected_tables(
         if candidate.status != "accepted" or candidate.physical_start < 0x200:
             continue
         byte_range = set(range(candidate.physical_start, candidate.physical_end))
-        if any(
-            candidate.physical_start < end and start < candidate.physical_end
-            for start, end in assets
-        ):
+        if any(candidate.physical_start < end and start < candidate.physical_end for start, end in assets):
             continue
         if occupied & byte_range:
             continue
@@ -644,13 +772,28 @@ def _z80_one_byte_asm(raw: bytes) -> str | None:
         return None
     opcode = raw[0]
     simple = {
-        0x00: "nop", 0x07: "rlca", 0x08: "ex af,af'", 0x0F: "rrca",
-        0x17: "rla", 0x1F: "rra", 0x27: "daa", 0x2F: "cpl",
-        0x37: "scf", 0x3F: "ccf", 0x76: "halt", 0xC9: "ret",
-        0xD9: "exx", 0xE9: "jp (hl)", 0xEB: "ex de,hl",
-        0xF3: "di", 0xF9: "ld sp,hl", 0xFB: "ei",
-        0x02: "ld (bc),a", 0x12: "ld (de),a",
-        0x0A: "ld a,(bc)", 0x1A: "ld a,(de)",
+        0x00: "nop",
+        0x07: "rlca",
+        0x08: "ex af,af'",
+        0x0F: "rrca",
+        0x17: "rla",
+        0x1F: "rra",
+        0x27: "daa",
+        0x2F: "cpl",
+        0x37: "scf",
+        0x3F: "ccf",
+        0x76: "halt",
+        0xC9: "ret",
+        0xD9: "exx",
+        0xE9: "jp (hl)",
+        0xEB: "ex de,hl",
+        0xF3: "di",
+        0xF9: "ld sp,hl",
+        0xFB: "ei",
+        0x02: "ld (bc),a",
+        0x12: "ld (de),a",
+        0x0A: "ld a,(bc)",
+        0x1A: "ld a,(de)",
     }
     if opcode in simple:
         return simple[opcode]
@@ -660,8 +803,7 @@ def _z80_one_byte_asm(raw: bytes) -> str | None:
         return f"ld {registers[(opcode >> 3) & 7]},{registers[opcode & 7]}"
     if 0x80 <= opcode <= 0xBF:
         register = registers[opcode & 7]
-        operations = ("add a,", "adc a,", "sub ", "sbc a,",
-                      "and ", "xor ", "or ", "cp ")
+        operations = ("add a,", "adc a,", "sub ", "sbc a,", "and ", "xor ", "or ", "cp ")
         return operations[(opcode - 0x80) >> 3] + register
     for index, register in enumerate(registers):
         if opcode == 0x04 + index * 8:
@@ -717,9 +859,14 @@ def _z80_asm(raw: bytes, address: int) -> str | None:
         if (opcode & 0xC7) == 0x06:
             return f"ld {registers[(opcode >> 3) & 7]},${value:02X}"
         immediate = {
-            0xC6: "add a,", 0xCE: "adc a,", 0xD6: "sub ",
-            0xDE: "sbc a,", 0xE6: "and ", 0xEE: "xor ",
-            0xF6: "or ", 0xFE: "cp ",
+            0xC6: "add a,",
+            0xCE: "adc a,",
+            0xD6: "sub ",
+            0xDE: "sbc a,",
+            0xE6: "and ",
+            0xEE: "xor ",
+            0xF6: "or ",
+            0xFE: "cp ",
         }
         if opcode in immediate:
             return f"{immediate[opcode]}${value:02X}"
@@ -731,8 +878,7 @@ def _z80_asm(raw: bytes, address: int) -> str | None:
             operation = ("bit", "res", "set")[(value >> 6) - 1]
             return f"{operation} {(value >> 3) & 7},{register}"
         if opcode == 0xED:
-            simple = {0x44: "neg", 0x56: "im 1", 0x5F: "ld a,r",
-                      0xA0: "ldi", 0xB0: "ldir"}
+            simple = {0x44: "neg", 0x56: "im 1", 0x5F: "ld a,r", 0xA0: "ldi", 0xB0: "ldir"}
             if value in simple:
                 return simple[value]
             if value in (0x42, 0x52, 0x62, 0x72):
@@ -742,8 +888,12 @@ def _z80_asm(raw: bytes, address: int) -> str | None:
         value = int.from_bytes(raw[1:], "little")
         if (opcode & 0xCF) == 0x01:
             return f"ld {pairs[(opcode >> 4) & 3]},${value:04X}"
-        memory_moves = {0x22: f"ld (${value:04X}),hl", 0x2A: f"ld hl,(${value:04X})",
-                        0x32: f"ld (${value:04X}),a", 0x3A: f"ld a,(${value:04X})"}
+        memory_moves = {
+            0x22: f"ld (${value:04X}),hl",
+            0x2A: f"ld hl,(${value:04X})",
+            0x32: f"ld (${value:04X}),a",
+            0x3A: f"ld a,(${value:04X})",
+        }
         if opcode in memory_moves:
             return memory_moves[opcode]
         if opcode in (0xC3, 0xCD):
@@ -764,9 +914,16 @@ def _z80_asm(raw: bytes, address: int) -> str | None:
                 return f"ld {indexed},{registers[subcode & 7]}"
             if subcode in (0x34, 0x35):
                 return f"{'inc' if subcode == 0x34 else 'dec'} {indexed}"
-            indexed_alu = {0x86: "add a,", 0x8E: "adc a,", 0x96: "sub ",
-                           0x9E: "sbc a,", 0xA6: "and ", 0xAE: "xor ",
-                           0xB6: "or ", 0xBE: "cp "}
+            indexed_alu = {
+                0x86: "add a,",
+                0x8E: "adc a,",
+                0x96: "sub ",
+                0x9E: "sbc a,",
+                0xA6: "and ",
+                0xAE: "xor ",
+                0xB6: "or ",
+                0xBE: "cp ",
+            }
             if subcode in indexed_alu:
                 return indexed_alu[subcode] + indexed
     if len(raw) == 4 and raw[0] == 0xED:
@@ -818,12 +975,8 @@ def _emit_z80_source(
         start = table.logical_start - base_address
         end = table.logical_end - base_address
         span = set(range(start, end))
-        if (not 0 <= start < end <= len(payload) or (end - start) % 2
-                or span & occupied):
-            raise MegaDriveEmitError(
-                f"Z80 dispatch table ${table.logical_start:04X} does not fit "
-                "between instructions"
-            )
+        if not 0 <= start < end <= len(payload) or (end - start) % 2 or span & occupied:
+            raise MegaDriveEmitError(f"Z80 dispatch table ${table.logical_start:04X} does not fit between instructions")
         tables[start] = end
         occupied.update(span)
         interiors.update(range(start + 1, end))
@@ -833,7 +986,7 @@ def _emit_z80_source(
     for start, end in tables.items():
         labels[start] = f"Z80_Table_{base_address + start:04X}"
         for entry in range(start, end, 2):
-            target = int.from_bytes(payload[entry:entry + 2], "little")
+            target = int.from_bytes(payload[entry : entry + 2], "little")
             offset = target - base_address
             if 0 <= offset < len(payload) and offset not in interiors:
                 labels.setdefault(offset, f"Z80_Loc_{target:04X}")
@@ -851,14 +1004,14 @@ def _emit_z80_source(
         table_end = tables.get(offset)
         if table_end is not None:
             for entry in range(offset, table_end, 2):
-                value = int.from_bytes(payload[entry:entry + 2], "little")
+                value = int.from_bytes(payload[entry : entry + 2], "little")
                 target = labels.get(value - base_address)
                 lines.append(f"    dw {target if target is not None else value}")
             offset = table_end
             continue
         fact = facts.get(offset)
         if fact is not None:
-            if payload[offset:offset + fact.length] != fact.raw:
+            if payload[offset : offset + fact.length] != fact.raw:
                 raise MegaDriveEmitError(f"Z80 fact disagrees with payload at {offset:#x}")
             asm = _z80_asm(fact.raw, base_address + offset)
             if asm is not None:
@@ -912,10 +1065,7 @@ def _emit_payload_module(
             image.data[start:limit],
         )
     }
-    event_offsets = (
-        set(facts) | set(tables) | set(boot_setups) | set(asset_ranges)
-        | set(primary) | ff_starts
-    )
+    event_offsets = set(facts) | set(tables) | set(boot_setups) | set(asset_ranges) | set(primary) | ff_starts
     while offset < limit:
         logical_address = image.header.rom_start + offset
         _emit_labels(lines, logical_address, primary, aliases)
@@ -949,10 +1099,8 @@ def _emit_payload_module(
             continue
         instruction = facts.get(offset)
         if instruction is not None:
-            if image.data[offset:offset + instruction.length] != instruction.raw:
-                raise MegaDriveEmitError(
-                    f"instruction facts disagree with ROM at {offset:#x}"
-                )
+            if image.data[offset : offset + instruction.length] != instruction.raw:
+                raise MegaDriveEmitError(f"instruction facts disagree with ROM at {offset:#x}")
             asm = _asm_instruction(instruction, primary)
             if asm is not None:
                 lines.append(f"{M68K_INDENT}{asm}")
@@ -989,8 +1137,13 @@ def _emit_payload_module(
         newline="\n",
     )
     return (
-        offset, instruction_bytes, pointer_bytes, asset_bytes, raw_bytes,
-        padding_bytes, symbolic_bytes,
+        offset,
+        instruction_bytes,
+        pointer_bytes,
+        asset_bytes,
+        raw_bytes,
+        padding_bytes,
+        symbolic_bytes,
     )
 
 
@@ -1021,20 +1174,15 @@ def emit_project(
         logical_address = image.header.rom_start + vector.index * 4
         _emit_labels(vector_lines, logical_address, primary, aliases)
         vector_lines.append(
-            f"{M68K_INDENT}dc.l    ${vector.raw_value:08X}"
-            f"    ; {vector.index}: {vector.name} -> ${vector.address:06X}"
+            f"{M68K_INDENT}dc.l    ${vector.raw_value:08X}    ; {vector.index}: {vector.name} -> ${vector.address:06X}"
         )
     vectors_path = source_root / "system" / "vectors.s"
-    vectors_path.write_text(
-        "\n".join(vector_lines) + "\n", encoding="utf-8", newline="\n"
-    )
+    vectors_path.write_text("\n".join(vector_lines) + "\n", encoding="utf-8", newline="\n")
 
     header_asset = asset_root / "header.bin"
     header_asset.write_bytes(image.header_data)
     header_source = source_root / "data" / "header.s"
-    header_source.write_text(
-        f'{M68K_INDENT}binclude "data/header.bin"\n', encoding="utf-8", newline="\n"
-    )
+    header_source.write_text(f'{M68K_INDENT}binclude "data/header.bin"\n', encoding="utf-8", newline="\n")
     assets: list[dict[str, object]] = [
         {
             "id": "megadrive.cartridge.header",
@@ -1057,7 +1205,7 @@ def emit_project(
         raise MegaDriveEmitError("Z80 dispatch tables must be given per extracted program")
     for index, copy in enumerate(z80_copies):
         offset = copy.source_start - image.header.rom_start
-        payload = image.data[offset:offset + copy.size]
+        payload = image.data[offset : offset + copy.size]
         name = f"z80-program{index:02d}.bin"
         path = asset_root / name
         path.write_bytes(payload)
@@ -1077,24 +1225,25 @@ def emit_project(
             base_address=base_address,
             dispatch_tables=z80_dispatch_tables[index] if z80_dispatch_tables else (),
         )
-        z80_builds.append({
-            "source": source_relative,
-            "object": f"build/z80-program{index:02d}.p",
-            "output": build_relative,
-        })
+        z80_builds.append(
+            {
+                "source": source_relative,
+                "object": f"build/z80-program{index:02d}.p",
+                "output": build_relative,
+            }
+        )
         # Distinct Z80 copies may share ROM bytes (including an inclusive
         # DBF boundary byte). Keep and build both complete Z80 programs, but
         # give every physical byte exactly one owner in the 68000 source.
         spans = [(offset, offset + copy.size)]
         for left, right in ranges:
-            spans = [(a, b) for start, end in spans
-                     for a, b in ((start, min(end, left)), (max(start, right), end))
-                     if a < b]
+            spans = [
+                (a, b) for start, end in spans for a, b in ((start, min(end, left)), (max(start, right), end)) if a < b
+            ]
         emission = []
         for start, end in spans:
             asset_ranges[start] = (end - start, build_relative)
-            emission.append({"rom_file_offset": start, "file_offset": start - offset,
-                             "size": end - start})
+            emission.append({"rom_file_offset": start, "file_offset": start - offset, "size": end - start})
             if start != offset or end - start != copy.size:
                 asset_slices[start] = (start - offset, end - start)
         ranges.append((offset, offset + copy.size))
@@ -1116,10 +1265,7 @@ def emit_project(
             }
         )
     tables = _selected_tables(pointer_candidates, tuple(ranges))
-    boot_setups = {
-        setup.physical_start: setup
-        for setup in discover_standard_boot_setups(image, m68k_facts)
-    }
+    boot_setups = {setup.physical_start: setup for setup in discover_standard_boot_setups(image, m68k_facts)}
     # A label inside a directive that emits several bytes cannot be defined at
     # that address.  Keep references to such addresses numeric as well.
     consumed_interiors = {
@@ -1136,14 +1282,9 @@ def emit_project(
     # has no label to name, and keeps its number.
     consumed_interiors |= {image.header.rom_start + offset for offset in range(0x100, 0x200)}
     consumed_interiors |= {image.header.rom_start + offset for offset in range(0x100) if offset % 4}
-    primary = {
-        address: symbol for address, symbol in primary.items()
-        if address not in consumed_interiors
-    }
+    primary = {address: symbol for address, symbol in primary.items() if address not in consumed_interiors}
     aliases = {address: names for address, names in aliases.items() if address in primary}
-    for start, end in _opaque_include_ranges(
-        image, m68k_facts, tables, asset_ranges, primary
-    ):
+    for start, end in _opaque_include_ranges(image, m68k_facts, tables, asset_ranges, primary):
         payload = image.data[start:end]
         name = f"opaque-{start:06x}.bin"
         relative = f"data/{name}"
@@ -1174,9 +1315,7 @@ def emit_project(
     counts = [0, 0, 0, 0, 0, 0]
     offset = 0x200
     while offset < len(image.data):
-        nominal_limit = min(
-            len(image.data), ((offset // MODULE_SIZE) + 1) * MODULE_SIZE
-        )
+        nominal_limit = min(len(image.data), ((offset // MODULE_SIZE) + 1) * MODULE_SIZE)
         name = f"rom-{offset:06x}.s"
         path = source_root / name
         result = _emit_payload_module(
@@ -1205,44 +1344,39 @@ def emit_project(
         f"{M68K_INDENT}org     $000000",
         "",
     ]
-    main_lines.extend(
-        f'{M68K_INDENT}include "{unit.removeprefix("src/")}"' for unit in source_units
-    )
+    main_lines.extend(f'{M68K_INDENT}include "{unit.removeprefix("src/")}"' for unit in source_units)
     referenced = {
-        (reference.address & 0xFFFFFF)
-        if 0xFFFF0000 <= reference.address <= 0xFFFFFFFF
-        else reference.address
+        (reference.address & 0xFFFFFF) if 0xFFFF0000 <= reference.address <= 0xFFFFFFFF else reference.address
         for fact in m68k_facts.values()
         for reference in fact.references
     }
     # The standard boot stream names its five device addresses too (dc.l
     # Io_...), which the code may reach only through registers.
     boot_devices = {
-        int.from_bytes(image.data[setup.physical_start + 6 + 4 * index:setup.physical_start + 10 + 4 * index], "big")
-        for setup in boot_setups.values() for index in range(5)
+        int.from_bytes(image.data[setup.physical_start + 6 + 4 * index : setup.physical_start + 10 + 4 * index], "big")
+        for setup in boot_setups.values()
+        for index in range(5)
     }
     hardware = sorted({address for address in referenced if 0xA00000 <= address <= 0xC0001F} | boot_devices)
     work_ram = sorted(address for address in referenced if 0xFF0000 <= address <= 0xFFFFFF)
     (source_root / "memory" / "hardware.inc").write_text(
         "; ROM-referenced Mega Drive hardware addresses.\n"
         + "".join(f"Io_{address:06X}: equ ${address:06X}\n" for address in hardware),
-        encoding="utf-8", newline="\n",
+        encoding="utf-8",
+        newline="\n",
     )
     (source_root / "memory" / "ram.inc").write_text(
         "; ROM-referenced work RAM addresses. Technical names only.\n"
         + "".join(f"Ram_{address:06X}: equ ${address:06X}\n" for address in work_ram),
-        encoding="utf-8", newline="\n",
+        encoding="utf-8",
+        newline="\n",
     )
-    (source_root / "main.s").write_text(
-        "\n".join(main_lines) + "\n", encoding="utf-8", newline="\n"
-    )
+    (source_root / "main.s").write_text("\n".join(main_lines) + "\n", encoding="utf-8", newline="\n")
     source_units.insert(0, "src/main.s")
     source_units.extend(item["source"] for item in z80_builds)
     covered = 0x100 + len(image.header_data) + sum(counts[:5])
     if covered != len(image.data):
-        raise MegaDriveEmitError(
-            f"emitter covered {covered} of {len(image.data)} ROM bytes"
-        )
+        raise MegaDriveEmitError(f"emitter covered {covered} of {len(image.data)} ROM bytes")
     return EmitResult(
         source_units=tuple(source_units),
         assets=tuple(assets),

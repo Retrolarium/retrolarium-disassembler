@@ -29,9 +29,9 @@ class TrapFrameTests(unittest.TestCase):
 
     def discover(self):
         data = bytearray(cartridge(size=0x800))
-        data[(32 + 5)*4:(33 + 5)*4] = (0x200).to_bytes(4, "big")
+        data[(32 + 5) * 4 : (33 + 5) * 4] = (0x200).to_bytes(4, "big")
         for fact in self.facts.values():
-            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         return discover_frame_inline_trap_calls(parse_megadrive(bytes(data)), self.facts)
 
     def test_fixed_frame_argument_has_continuation_without_dispatch_target(self):
@@ -83,18 +83,24 @@ class TrapFrameTests(unittest.TestCase):
 
     def test_width_qualified_stack_alias_cannot_hide_an_extra_pc_adjustment(self):
         for address in tuple(self.facts):
-            if 0x20e <= address < 0x300:
+            if 0x20E <= address < 0x300:
                 self.facts.pop(address)
-        self.facts.update({f.cpu_address: f for f in (
-            instruction(0x20e, '304f', 'MOVEA.W', 'A7w|A0'),
-            instruction(0x210, '58a8003e', 'ADDQ.L', '0x4|(0x3e,A0)'),
-            instruction(0x214, '4cdf7fff', 'MOVEM.L', '(SP)+|D0-A6'),
-            instruction(0x218, '4e73', 'RTE', flow='TERMINATOR'))})
+        self.facts.update(
+            {
+                f.cpu_address: f
+                for f in (
+                    instruction(0x20E, "304f", "MOVEA.W", "A7w|A0"),
+                    instruction(0x210, "58a8003e", "ADDQ.L", "0x4|(0x3e,A0)"),
+                    instruction(0x214, "4cdf7fff", "MOVEM.L", "(SP)+|D0-A6"),
+                    instruction(0x218, "4e73", "RTE", flow="TERMINATOR"),
+                )
+            }
+        )
         self.assertFalse(self.discover())
 
     def test_exception_pc_cannot_replace_the_active_stack_pointer(self):
-        self.facts[0x204] = instruction(0x204, '2e6f003e', 'MOVEA.L', '(0x3e,SP)|SP')
-        self.facts[0x20c] = instruction(0x20c, '301f', 'MOVE.W', '(SP)+|D0w')
+        self.facts[0x204] = instruction(0x204, "2e6f003e", "MOVEA.L", "(0x3e,SP)|SP")
+        self.facts[0x20C] = instruction(0x20C, "301f", "MOVE.W", "(SP)+|D0w")
         self.assertFalse(self.discover())
 
 

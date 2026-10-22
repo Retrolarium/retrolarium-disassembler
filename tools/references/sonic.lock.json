@@ -39,9 +39,7 @@
       "upstream_binary_sha256": "1b7f6635bd713f37f3c2f44f302b872c2e3c5f56e63637918dad4637146900fd",
       "matches_upstream": true,
       "source": "sonic1-rev01/main.s",
-      "matching_original_roms": [
-        "Sonic The Hedgehog (W) (REV01) [!].gen"
-      ]
+      "matching_original_roms": ["Sonic The Hedgehog (W) (REV01) [!].gen"]
     },
     {
       "name": "sonic2-rev01",
@@ -57,9 +55,7 @@
       "upstream_binary_sha256": "193bc4064ce0daf27ea9e908ed246d87ec576cc294833badebb590b6ad8e8f6b",
       "matches_upstream": true,
       "source": "sonic2-rev01/main.s",
-      "matching_original_roms": [
-        "Sonic The Hedgehog 2 (W) (REV01) [!].gen"
-      ]
+      "matching_original_roms": ["Sonic The Hedgehog 2 (W) (REV01) [!].gen"]
     },
     {
       "name": "sonic3-usa",
@@ -75,9 +71,7 @@
       "upstream_binary_sha256": "d6404843c5ba32486f4c8c744acb7e1932069376960d886b1de37969787d3f9c",
       "matches_upstream": true,
       "source": "sonic3-usa/main.s",
-      "matching_original_roms": [
-        "Sonic The Hedgehog 3 (U) [!].gen"
-      ]
+      "matching_original_roms": ["Sonic The Hedgehog 3 (U) [!].gen"]
     },
     {
       "name": "sonic-knuckles",
@@ -95,9 +89,7 @@
       "upstream_binary_sha256": "6e12e6b33c26ebfcd0be433251d21cf6284eafe9f71b027bda3767ae59affec1",
       "matches_upstream": true,
       "source": "sonic-knuckles/main.s",
-      "matching_original_roms": [
-        "Sonic and Knuckles (W) [!].gen"
-      ]
+      "matching_original_roms": ["Sonic and Knuckles (W) [!].gen"]
     },
     {
       "name": "chaotix-pwm",
@@ -145,9 +137,7 @@
       "upstream_binary_sha256": "70e1a92a982f2684be3bc315267e545fb9c530d533fd62b6d38bb625541ed957",
       "matches_upstream": true,
       "source": "chaotix/main/main.s",
-      "matching_original_roms": [
-        "Knuckles' Chaotix (32X) (JU) [!].32x"
-      ]
+      "matching_original_roms": ["Knuckles' Chaotix (32X) (JU) [!].32x"]
     },
     {
       "name": "sonic-cd-fm_driver",
@@ -243,9 +233,7 @@
       "matches_upstream": true,
       "source": "sonic-cd/04-ip/main.s",
       "matching_original_roms": [],
-      "matching_bundled_originals": [
-        "original/ip_japan.bin"
-      ]
+      "matching_bundled_originals": ["original/ip_japan.bin"]
     },
     {
       "name": "sonic-cd-ipx___",
@@ -284,9 +272,7 @@
       "matches_upstream": true,
       "source": "sonic-cd/06-sp/main.s",
       "matching_original_roms": [],
-      "matching_bundled_originals": [
-        "original/sp.bin"
-      ]
+      "matching_bundled_originals": ["original/sp.bin"]
     },
     {
       "name": "sonic-cd-spx___",

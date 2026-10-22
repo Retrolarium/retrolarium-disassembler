@@ -49,8 +49,7 @@ from retrolarium_kit.studio.project import (  # noqa: E402
 )
 
 
-SUPPORTED_PRESETS = frozenset({"castle-excellent", "doraemon", "pacman", "smb1",
-                               "solomons-key"})
+SUPPORTED_PRESETS = frozenset({"castle-excellent", "doraemon", "pacman", "smb1", "solomons-key"})
 
 
 def _project_id(game: str, revision: str) -> str:
@@ -80,9 +79,7 @@ def create_game_studio_preset(
         raise StudioProjectError(f"source game image does not exist: {rom}")
     output = output_directory.resolve()
     if output.exists():
-        raise StudioProjectError(
-            f"Studio output directory already exists; choose a new directory: {output}"
-        )
+        raise StudioProjectError(f"Studio output directory already exists; choose a new directory: {output}")
     if repository is not None and repository_profile(repository.resolve()) is None:
         raise StudioProjectError(f"{repository} keeps no game profile (config/game_profile.json)")
     discover_profiles(rom)
@@ -107,15 +104,13 @@ def create_game_studio_preset(
                 f"legacy Castle Excellent levels document does not exist: {legacy_castle_excellent_levels}"
             )
         try:
-            legacy_identity = json.loads(
-                legacy_castle_excellent_levels.read_text(encoding="utf-8")
-            )
+            legacy_identity = json.loads(legacy_castle_excellent_levels.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            raise StudioProjectError(
-                f"cannot read legacy Castle Excellent levels document: {exc}"
-            ) from exc
-        if not isinstance(legacy_identity, dict) \
-                or legacy_identity.get("schema") != "retrolarium.castle-excellent-levels":
+            raise StudioProjectError(f"cannot read legacy Castle Excellent levels document: {exc}") from exc
+        if (
+            not isinstance(legacy_identity, dict)
+            or legacy_identity.get("schema") != "retrolarium.castle-excellent-levels"
+        ):
             raise StudioProjectError(
                 "legacy Castle Excellent levels document must use retrolarium.castle-excellent-levels"
             )
@@ -127,9 +122,7 @@ def create_game_studio_preset(
     project_name = f"{inspection['name']} ({revision})"
     project_filename = f"{identifier}.rlj"
 
-    staging = Path(tempfile.mkdtemp(
-        prefix=f".{output.name}.rlj-stage-", dir=output.parent
-    ))
+    staging = Path(tempfile.mkdtemp(prefix=f".{output.name}.rlj-stage-", dir=output.parent))
     published = False
     try:
         disassemble_nes(
@@ -148,11 +141,8 @@ def create_game_studio_preset(
             else:
                 resource_documents[0].parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(legacy_castle_excellent_levels, resource_documents[0])
-            extract_game(
-                rom, resource_documents[1], resource="resource-bundle"
-            )
-            resource_documents += (staging / "documents" / "demo.json",
-                                   staging / "documents" / "screens.json")
+            extract_game(rom, resource_documents[1], resource="resource-bundle")
+            resource_documents += (staging / "documents" / "demo.json", staging / "documents" / "screens.json")
             extract_game(rom, resource_documents[2], resource="title-demo")
             extract_game(rom, resource_documents[3], resource="screens")
         elif game == "solomons-key":
@@ -169,13 +159,9 @@ def create_game_studio_preset(
             extract_game(rom, resource_documents[1], resource="room-art")
             extract_game(rom, resource_documents[2], resource="animations")
             extract_game(rom, resource_documents[3], resource="audio")
-            extract_game(
-                rom, resource_documents[4], resource="presentation"
-            )
+            extract_game(rom, resource_documents[4], resource="presentation")
             extract_game(rom, resource_documents[5], resource="text")
-            extract_game(
-                rom, resource_documents[6], resource="resource-bundle"
-            )
+            extract_game(rom, resource_documents[6], resource="resource-bundle")
         elif game == "smb1" and revision == "ju":
             resource_documents = (
                 staging / "documents" / "resources.json",
@@ -234,9 +220,7 @@ def create_game_studio_preset(
             if build:
                 verification = verify_studio_project(final_project)
                 if verification["status"] != "current":
-                    raise StudioProjectError(
-                        "relocated Studio preset did not verify current"
-                    )
+                    raise StudioProjectError("relocated Studio preset did not verify current")
         except Exception:
             os.replace(output, staging)
             raise

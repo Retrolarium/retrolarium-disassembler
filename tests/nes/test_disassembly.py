@@ -44,11 +44,7 @@ class DisassemblyTests(unittest.TestCase):
         candidates = detect_banked_pointer_candidates(image, {})
         assets = asset_manifest(image)["items"]
 
-        vectors = [
-            candidate
-            for candidate in candidates
-            if candidate.schema_id == "nes.interrupt_vectors"
-        ]
+        vectors = [candidate for candidate in candidates if candidate.schema_id == "nes.interrupt_vectors"]
         self.assertEqual([0, 1, 2, 3], [candidate.bank for candidate in vectors])
         chr_assets = [asset for asset in assets if asset["kind"] == "chr_bank"]
         self.assertEqual(4, len(chr_assets))
@@ -67,9 +63,7 @@ class DisassemblyTests(unittest.TestCase):
             bank_two = (root / "src/prg-bank02.asm").read_text(encoding="utf-8")
             linker = (root / "linker.cfg").read_text(encoding="utf-8")
             main = (root / "main.asm").read_text(encoding="utf-8")
-            symbols = json.loads(
-                (root / "symbols.json").read_text(encoding="utf-8")
-            )
+            symbols = json.loads((root / "symbols.json").read_text(encoding="utf-8"))
 
         self.assertIn("Func_B02_8000:", bank_two)
         self.assertIn("NmiVector_B02:", bank_two)
@@ -78,9 +72,7 @@ class DisassemblyTests(unittest.TestCase):
         self.assertIn("PRG03: start = $8000", linker)
         self.assertIn('.include "src/prg-bank03.asm"', main)
         bank_two_symbols = [
-            symbol
-            for symbol in symbols["symbols"]
-            if symbol["bank"] == 2 and symbol["cpu_address"] == 0x8000
+            symbol for symbol in symbols["symbols"] if symbol["bank"] == 2 and symbol["cpu_address"] == 0x8000
         ]
         self.assertEqual("Func_B02_8000", bank_two_symbols[0]["symbol_id"])
         self.assertEqual(0x10000, bank_two_symbols[0]["physical_offset"])
@@ -148,9 +140,7 @@ class DisassemblyTests(unittest.TestCase):
             self.assertIn('.include "src/prg.asm"', (root / "generated/main.asm").read_text())
             if os.name == "nt":
                 project = root / "generated"
-                suite = materialize_build_toolchain(
-                    "nes", cache_root=root / "toolchains"
-                )
+                suite = materialize_build_toolchain("nes", cache_root=root / "toolchains")
                 rebuilt = project / "build/rebuilt.nes"
                 _ca65_build(
                     {
@@ -208,27 +198,23 @@ class DisassemblyTests(unittest.TestCase):
 
     def test_vector_target_inside_vector_block_remains_numeric(self) -> None:
         rom = bytearray(nrom16_image())
-        rom[16 + 0x4000 - 6:16 + 0x4000] = b"\xff" * 6
+        rom[16 + 0x4000 - 6 : 16 + 0x4000] = b"\xff" * 6
         image = parse_ines(bytes(rom))
 
         source, result = prg_source(image, {})
 
         self.assertEqual(3, source.count("    .addr $FFFF"))
         self.assertNotIn("Func_B00_FFFF", source)
-        self.assertFalse(
-            any(symbol.cpu_address == 0xFFFF for symbol in result.symbols)
-        )
+        self.assertFalse(any(symbol.cpu_address == 0xFFFF for symbol in result.symbols))
 
     def test_rts_dispatch_targets_feed_one_bounded_seeded_pass(self) -> None:
         rom = bytearray(nrom16_image())
         rom[16:25] = bytes.fromhex("BD 44 C1 48 BD 40 C1 48 60")
         for address in (0xC010, 0xC020, 0xC030, 0xC040):
             rom[16 + address - 0xC000] = 0x60
-        rom[16 + 0x140:16 + 0x148] = bytes.fromhex("1F 0F 3F 2F C0 C0 C0 C0")
+        rom[16 + 0x140 : 16 + 0x148] = bytes.fromhex("1F 0F 3F 2F C0 C0 C0 C0")
         image = parse_ines(bytes(rom))
-        header = (
-            "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
-        )
+        header = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
         dispatch_rows = (
             "PRG0\tPRG0\tC000\t3\tBD 44 C1\tLDA\t0xc144,X\t\tFALL_THROUGH\t\tFUN_PRG0__c000\n"
             "PRG0\tPRG0\tC003\t1\t48\tPHA\t\t\tFALL_THROUGH\t\t\n"
@@ -247,9 +233,7 @@ class DisassemblyTests(unittest.TestCase):
                 json.dumps({"language": "6502:LE:16:default", "compiler": "default"}),
                 encoding="utf-8",
             )
-            return GhidraArtifacts(
-                facts=facts_path, report=report, log=workspace / "headless.log"
-            )
+            return GhidraArtifacts(facts=facts_path, report=report, log=workspace / "headless.log")
 
         def first_pass(image_path, workspace, ghidra_home, scripts):
             return write_artifacts(workspace, dispatch_rows)
@@ -258,18 +242,16 @@ class DisassemblyTests(unittest.TestCase):
             text = plan.read_text(encoding="utf-8")
             seed_plans.append(text)
             rows = "".join(
-                f"PRG0\tPRG0\t{line}\t1\t60\tRTS\t\t\tTERMINATOR\t\tFUN_PRG0__{line.lower()}\n"
-                for line in text.split()
+                f"PRG0\tPRG0\t{line}\t1\t60\tRTS\t\t\tTERMINATOR\t\tFUN_PRG0__{line.lower()}\n" for line in text.split()
             )
             return write_artifacts(workspace, dispatch_rows + rows)
 
-        with tempfile.TemporaryDirectory() as directory, mock.patch.object(
-            pipeline, "toolchain_status"
-        ), mock.patch.object(
-            pipeline, "run_nes_analysis", side_effect=first_pass
-        ), mock.patch.object(
-            pipeline, "_run_seeded_nes_analysis", side_effect=seeded_pass
-        ) as seeded:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(pipeline, "toolchain_status"),
+            mock.patch.object(pipeline, "run_nes_analysis", side_effect=first_pass),
+            mock.patch.object(pipeline, "_run_seeded_nes_analysis", side_effect=seeded_pass) as seeded,
+        ):
             facts, banks, _, candidates = pipeline._analyze_with_dispatch_passes(
                 image, Path(directory), Path(directory) / "ghidra"
             )
@@ -280,17 +262,9 @@ class DisassemblyTests(unittest.TestCase):
             self.assertIn(offset, facts)
         self.assertEqual(
             {"pass": 2, "requested": 4, "decoded": 4},
-            {
-                key: value
-                for key, value in banks[0]["entry_seed_pass"].items()
-                if key != "plan"
-            },
+            {key: value for key, value in banks[0]["entry_seed_pass"].items() if key != "plan"},
         )
-        table = next(
-            candidate
-            for candidate in candidates
-            if candidate.schema_id == "nes.split_lo_hi.rts_minus_one"
-        )
+        table = next(candidate for candidate in candidates if candidate.schema_id == "nes.split_lo_hi.rts_minus_one")
         self.assertEqual("accepted", table.status)
         self.assertEqual({}, pipeline.dispatch_entry_seeds(image, facts, candidates))
 

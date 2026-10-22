@@ -74,9 +74,13 @@ def validate_unused_fragment(
     returns = set()
     bases = set()
     for fact in fragment:
-        if (fact.cpu_address != cursor or fact.length < 2 or fact.length & 1
-                or len(fact.raw) != fact.length
-                or image.data[cursor:cursor + fact.length] != fact.raw):
+        if (
+            fact.cpu_address != cursor
+            or fact.length < 2
+            or fact.length & 1
+            or len(fact.raw) != fact.length
+            or image.data[cursor : cursor + fact.length] != fact.raw
+        ):
             return "incomplete_or_conflicting_decode", ()
         cursor += fact.length
         base = fact.mnemonic.upper().split(".", 1)[0]
@@ -91,8 +95,7 @@ def validate_unused_fragment(
             memory_operations += 1
         if base == "NOP" and fact.raw == b"\x4e\x71":
             signatures.add("nop")
-        if base in {"MOVEM", "LINK", "UNLK"} and (
-                "SP" in fact.operands.upper() or "A7" in fact.operands.upper()):
+        if base in {"MOVEM", "LINK", "UNLK"} and ("SP" in fact.operands.upper() or "A7" in fact.operands.upper()):
             signatures.add("stack_frame")
         if any(start <= address < end for address in absolute_referenced_addresses({0: fact})):
             return "fragment_read_as_data", ()
@@ -175,8 +178,12 @@ def discover_validated_unused_candidates(
         previous = known[address]
         start = address + previous.length
         end = addresses[index + 1] if index + 1 < len(addresses) else len(image.data)
-        if (previous.flow_type.upper() not in _TERMINALS or start in known
-                or start & 1 or not 2 <= end - start <= MAX_UNUSED_GAP):
+        if (
+            previous.flow_type.upper() not in _TERMINALS
+            or start in known
+            or start & 1
+            or not 2 <= end - start <= MAX_UNUSED_GAP
+        ):
             continue
         # Stop at the first explicit data base instead of decoding beyond it.
         data_index = bisect_left(data_sorted, start)
@@ -193,24 +200,38 @@ def discover_validated_unused_candidates(
             if fact.mnemonic.upper() != "RTS":
                 continue
             reason, signatures = validate_unused_fragment(
-                image, tuple(fragment), known, data_addresses=data_addresses,
-                protected_ranges=protected_ranges, render_instruction=render_instruction,
+                image,
+                tuple(fragment),
+                known,
+                data_addresses=data_addresses,
+                protected_ranges=protected_ranges,
+                render_instruction=render_instruction,
             )
             if reason is not None:
                 # A forward branch can bypass an early return to a later RTS.
                 # Keep decoding that same entry, never skip the rejected prefix.
                 continue
-            accepted.append(UnusedCodeCandidate(
-                address=start, end=cursor, preceding_address=previous.cpu_address,
-                instruction_count=len(fragment), signatures=signatures,
-                instruction_addresses=tuple(fact.cpu_address for fact in fragment),
-                evidence="complete renderable CFG ending in RTS; no known data use or caller",
-            ))
+            accepted.append(
+                UnusedCodeCandidate(
+                    address=start,
+                    end=cursor,
+                    preceding_address=previous.cpu_address,
+                    instruction_count=len(fragment),
+                    signatures=signatures,
+                    instruction_addresses=tuple(fact.cpu_address for fact in fragment),
+                    evidence="complete renderable CFG ending in RTS; no known data use or caller",
+                )
+            )
             previous = fragment[-1]
             start = cursor
             fragment = []
             reason = "incomplete_decode"
         if start < end:
-            rejected.append({"address": start, "end": end, "reason":
-                             "known_data_reference" if limit == start else reason or "incomplete_decode"})
+            rejected.append(
+                {
+                    "address": start,
+                    "end": end,
+                    "reason": "known_data_reference" if limit == start else reason or "incomplete_decode",
+                }
+            )
     return tuple(accepted), tuple(rejected)

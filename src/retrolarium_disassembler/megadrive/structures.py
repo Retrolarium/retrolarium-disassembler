@@ -47,9 +47,7 @@ def discover_long_ff_padding(
 ) -> tuple[tuple[int, int], ...]:
     """Return long all-FF file ranges that contain no decoded instruction."""
     occupied = {
-        offset
-        for fact in facts.values()
-        for offset in range(fact.physical_offset, fact.physical_offset + fact.length)
+        offset for fact in facts.values() for offset in range(fact.physical_offset, fact.physical_offset + fact.length)
     }
     ranges: list[tuple[int, int]] = []
     offset = 0
@@ -60,9 +58,7 @@ def discover_long_ff_padding(
         end = offset + 1
         while end < len(image.data) and image.data[end] == 0xFF:
             end += 1
-        if end - offset >= minimum_size and not any(
-            byte in occupied for byte in range(offset, end)
-        ):
+        if end - offset >= minimum_size and not any(byte in occupied for byte in range(offset, end)):
             ranges.append((offset, end))
         offset = end
     return tuple(ranges)
@@ -82,24 +78,17 @@ def discover_standard_boot_setups(
     for loader in ordered:
         if loader.mnemonic.upper() != "LEA" or not loader.operands.upper().endswith("|A5"):
             continue
-        starts = {
-            reference.address
-            for reference in loader.references
-            if "DATA" in reference.reference_type
-        }
+        starts = {reference.address for reference in loader.references if "DATA" in reference.reference_type}
         for logical_start in starts:
             physical_start = logical_start - image.header.rom_start
             physical_end = physical_start + STANDARD_BOOT_SETUP_SIZE
             logical_end = logical_start + STANDARD_BOOT_SETUP_SIZE
             if physical_start < 0 or physical_end > len(image.data):
                 continue
-            if any(
-                physical_start <= fact.physical_offset < physical_end
-                for fact in facts.values()
-            ):
+            if any(physical_start <= fact.physical_offset < physical_end for fact in facts.values()):
                 continue
             hardware = tuple(
-                int.from_bytes(image.data[offset:offset + 4], "big")
+                int.from_bytes(image.data[offset : offset + 4], "big")
                 for offset in range(physical_start + 6, physical_start + 26, 4)
             )
             if hardware != STANDARD_BOOT_HARDWARE:
@@ -107,29 +96,23 @@ def discover_standard_boot_setups(
             readers = tuple(
                 fact.mnemonic.upper()
                 for fact in ordered
-                if (
-                    loader.cpu_address < fact.cpu_address < logical_start
-                    and _source_operand(fact) == "(A5)+"
-                )
+                if (loader.cpu_address < fact.cpu_address < logical_start and _source_operand(fact) == "(A5)+")
             )
             if readers != _STANDARD_STREAM_READS:
                 continue
-            preceding = [
-                fact for fact in ordered if fact.cpu_address < logical_start
-            ]
+            preceding = [fact for fact in ordered if fact.cpu_address < logical_start]
             if not preceding:
                 continue
             exit_branch = preceding[-1]
-            if (
-                not exit_branch.mnemonic.upper().startswith("BRA")
-                or logical_end not in exit_branch.flows
-            ):
+            if not exit_branch.mnemonic.upper().startswith("BRA") or logical_end not in exit_branch.flows:
                 continue
-            results.append(StandardBootSetup(
-                physical_start=physical_start,
-                physical_end=physical_end,
-                logical_start=logical_start,
-                logical_end=logical_end,
-                loader_address=loader.cpu_address,
-            ))
+            results.append(
+                StandardBootSetup(
+                    physical_start=physical_start,
+                    physical_end=physical_end,
+                    logical_start=logical_start,
+                    logical_end=logical_end,
+                    loader_address=loader.cpu_address,
+                )
+            )
     return tuple(results)

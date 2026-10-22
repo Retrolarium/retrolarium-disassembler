@@ -20,7 +20,7 @@ from megadrive.builders import fact
 class MegaDriveSymbolTests(unittest.TestCase):
     def test_ignores_data_references_inside_long_ff_padding(self) -> None:
         data = bytearray(cartridge())
-        data[0x280:0x340] = b"\xFF" * 0xC0
+        data[0x280:0x340] = b"\xff" * 0xC0
         image = parse_megadrive(bytes(data))
         source = replace(
             fact(0x200, "MOVE.L", "#0x2a0|D0"),
@@ -48,7 +48,8 @@ class MegaDriveSymbolTests(unittest.TestCase):
         image = parse_megadrive(cartridge(size=0x1000))
         instruction = replace(
             fact(0x8A0, "MOVEM.W", "(0x30,PC)|{ D0 D1 D2 D3 D4 D5}"),
-            raw=bytes.fromhex("4C BA 00 3F 00 30"), length=6,
+            raw=bytes.fromhex("4C BA 00 3F 00 30"),
+            length=6,
         )
         symbols = generate_symbols(image, {0x8A0: instruction}, ())
         by_address = {symbol.logical_address: symbol for symbol in symbols}
@@ -60,25 +61,23 @@ class MegaDriveSymbolTests(unittest.TestCase):
         image = parse_megadrive(cartridge())
         call = replace(
             fact(0x240, "JSR", "(0x248,PC,D0w*0x1)"),
-            raw=bytes.fromhex("4E BB 00 06"), length=4,
+            raw=bytes.fromhex("4E BB 00 06"),
+            length=4,
             flow_type="COMPUTED_CALL",
         )
         first_entry = replace(
             fact(0x248, "BRA.W", "0x300", flows=(0x300,)),
-            raw=bytes.fromhex("60 00 00 B6"), length=4,
+            raw=bytes.fromhex("60 00 00 B6"),
+            length=4,
         )
-        symbols = generate_symbols(
-            image, {0x240: call, 0x248: first_entry}, ()
-        )
+        symbols = generate_symbols(image, {0x240: call, 0x248: first_entry}, ())
         by_address = {symbol.logical_address: symbol for symbol in symbols}
         self.assertEqual("tbl_M68K_000248", by_address[0x248].name)
 
     def test_names_are_address_stable_and_evidence_classified(self) -> None:
         data = bytearray(cartridge())
         targets = (0x200, 0x206, 0x23C, 0x23E)
-        data[0x240:0x250] = b"".join(
-            target.to_bytes(4, "big") for target in targets
-        )
+        data[0x240:0x250] = b"".join(target.to_bytes(4, "big") for target in targets)
         image = parse_megadrive(bytes(data))
         entry = replace(
             fact(0x200, "BSR.W", "0x206", flows=(0x206,)),

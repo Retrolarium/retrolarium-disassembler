@@ -4,6 +4,7 @@ Discovery requires decoded executable readers. ROM values and instructions
 provide all evidence; reference symbols, game identities and addresses are
 never used.
 """
+
 from __future__ import annotations
 
 import re
@@ -19,8 +20,7 @@ ABS = re.compile(r"\((-?0x[0-9a-f]+)\)\.[wl]", re.I)
 
 
 def _zero(fact, register):
-    return (fact.mnemonic.upper() == "MOVEQ"
-            and re.fullmatch(r"#?0x0\|" + register, fact.operands, re.I) is not None)
+    return fact.mnemonic.upper() == "MOVEQ" and re.fullmatch(r"#?0x0\|" + register, fact.operands, re.I) is not None
 
 
 def _ram_word(operand, image):
@@ -33,13 +33,18 @@ def _ram_word(operand, image):
 
 def _target(image, value, interiors):
     physical = value - image.header.rom_start
-    return (not value & 1 and 0x200 <= physical <= len(image.data) - 2
-            and physical not in interiors
-            and image.data[physical:physical + 2] not in {b"\0\0", b"\xff\xff"})
+    return (
+        not value & 1
+        and 0x200 <= physical <= len(image.data) - 2
+        and physical not in interiors
+        and image.data[physical : physical + 2] not in {b"\0\0", b"\xff\xff"}
+    )
 
 
 def discover_word_ram_callback_seeds(
-    image: MegaDriveImage, facts: dict[int, InstructionFact], *,
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
     execution_facts: dict[int, InstructionFact] | None = None,
 ) -> tuple[DecoderSeed, ...]:
     """Prove MOVEQ 0 / RAM word / MOVEA.L / indirect call, then its writers.
@@ -65,10 +70,16 @@ def discover_word_ram_callback_seeds(
         convert = by_address.get(load.cpu_address + load.length)
         ar = re.fullmatch(dr + r"\|(A[0-6])", convert.operands, re.I) if convert else None
         call = by_address.get(convert.cpu_address + convert.length) if convert else None
-        if (zero is None or not _zero(zero, dr)
-                or convert is None or convert.mnemonic.upper() != "MOVEA.L" or ar is None
-                or call is None or call.mnemonic.upper() not in {"JMP", "JSR"}
-                or call.operands.upper() != f"({ar[1].upper()})"):
+        if (
+            zero is None
+            or not _zero(zero, dr)
+            or convert is None
+            or convert.mnemonic.upper() != "MOVEA.L"
+            or ar is None
+            or call is None
+            or call.mnemonic.upper() not in {"JMP", "JSR"}
+            or call.operands.upper() != f"({ar[1].upper()})"
+        ):
             continue
         slots.setdefault(slot, {})[load.cpu_address] = call.cpu_address
     if not slots:
@@ -113,15 +124,20 @@ def discover_word_ram_callback_seeds(
         if slot in rejected:
             continue
         for writer, target in entries:
-            result[target] = DecoderSeed(target, "word_ram_callback", "proven",
+            result[target] = DecoderSeed(
+                target,
+                "word_ram_callback",
+                "proven",
                 f"RAM word slot {slot:06X} zero-extended by MOVEQ/MOVE.W/MOVEA.L "
                 f"and called at {min(slots[slot].values()):06X}; immediate writer {writer.cpu_address:06X}",
-                writer.cpu_address)
+                writer.cpu_address,
+            )
     return tuple(result[key] for key in sorted(result))
 
 
 def discover_nested_word_resolver_seeds(
-    image: MegaDriveImage, facts: dict[int, InstructionFact],
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
 ) -> tuple[DecoderSeed, ...]:
     """LEA / JSR leaf resolver / JSR (An), with long outer and word inner tables."""
     by_address = {f.cpu_address: f for f in facts.values()}
@@ -149,18 +165,37 @@ def discover_nested_word_resolver_seeds(
         if pointer is None or pointer[1].upper() != pointer[2].upper():
             continue
         ar = pointer[1].upper()
-        expected = {2: ("ADD.W", f"{dr}W|{dr}W"), 3: ("ADD.W", f"{dr}W|{dr}W"),
-                    6: ("ADD.W", f"{dr}W|{dr}W"), 7: ("MOVE.W", f"(0X0,{ar},{dr}W*0X1)|{dr}W"),
-                    8: ("MOVEA.L", f"{dr}|{ar}")}
-        if (body[4].mnemonic.upper() != "MOVEA.L"
-                or any(f.flow_type.upper() != "FALL_THROUGH" for f in body[:-1])
-                or any(body[i].mnemonic.upper() != op or body[i].operands.upper() != operands for i, (op, operands) in expected.items())
-                or any(body[i].mnemonic.upper() != "MOVE.W" or not body[i].operands.upper().endswith(f"|{dr}W")
-                       or _ram_word(body[i].operands.split("|")[0], image) is None for i in (1, 5))):
+        expected = {
+            2: ("ADD.W", f"{dr}W|{dr}W"),
+            3: ("ADD.W", f"{dr}W|{dr}W"),
+            6: ("ADD.W", f"{dr}W|{dr}W"),
+            7: ("MOVE.W", f"(0X0,{ar},{dr}W*0X1)|{dr}W"),
+            8: ("MOVEA.L", f"{dr}|{ar}"),
+        }
+        if (
+            body[4].mnemonic.upper() != "MOVEA.L"
+            or any(f.flow_type.upper() != "FALL_THROUGH" for f in body[:-1])
+            or any(
+                body[i].mnemonic.upper() != op or body[i].operands.upper() != operands
+                for i, (op, operands) in expected.items()
+            )
+            or any(
+                body[i].mnemonic.upper() != "MOVE.W"
+                or not body[i].operands.upper().endswith(f"|{dr}W")
+                or _ram_word(body[i].operands.split("|")[0], image) is None
+                for i in (1, 5)
+            )
+        ):
             continue
         lea, call = ends.get(caller.cpu_address), by_address.get(caller.cpu_address + caller.length)
-        if (lea is None or lea.mnemonic.upper() != "LEA" or lea.operands.rsplit("|", 1)[-1].upper() != ar
-                or call is None or call.mnemonic.upper() not in {"JMP", "JSR"} or call.operands.upper() != f"({ar})"):
+        if (
+            lea is None
+            or lea.mnemonic.upper() != "LEA"
+            or lea.operands.rsplit("|", 1)[-1].upper() != ar
+            or call is None
+            or call.mnemonic.upper() not in {"JMP", "JSR"}
+            or call.operands.upper() != f"({ar})"
+        ):
             continue
         table = pc_displacement_target(lea)
         absolute = ABS.fullmatch(lea.operands.split("|")[0])
@@ -178,10 +213,9 @@ def discover_nested_word_resolver_seeds(
                 break
             if at != table - origin and origin + at in boundaries:
                 break
-            target = int.from_bytes(data[at:at+4], "big")
+            target = int.from_bytes(data[at : at + 4], "big")
             physical = target - origin
-            if (target & 1 or not 0x200 <= physical <= len(data) - 2
-                    or table <= target < origin + at + 4):
+            if target & 1 or not 0x200 <= physical <= len(data) - 2 or table <= target < origin + at + 4:
                 break
             secondary.append(target)
             if physical > at:
@@ -191,13 +225,12 @@ def discover_nested_word_resolver_seeds(
         targets = set()
         for table2 in set(secondary):
             start = table2 - origin
-            limit = min([len(data), start + 2 * 256,
-                         *(other - origin for other in secondary if other > table2)])
+            limit = min([len(data), start + 2 * 256, *(other - origin for other in secondary if other > table2)])
             at = start
             while at + 2 <= limit:
                 if at != start and origin + at in boundaries:
                     break
-                target = int.from_bytes(data[at:at+2], "big")
+                target = int.from_bytes(data[at : at + 2], "big")
                 if not _target(image, target, set()) or start <= target - origin < at + 2:
                     break
                 # The executed resolver proves that these slots are data.
@@ -211,8 +244,12 @@ def discover_nested_word_resolver_seeds(
         if len(targets) < 4 or not targets & starts:
             continue
         for target in targets:
-            result[target] = DecoderSeed(target, "nested_word_resolver", "proven",
+            result[target] = DecoderSeed(
+                target,
+                "nested_word_resolver",
+                "proven",
                 f"LEA outer table {table:06X}; leaf resolver {body[0].cpu_address:06X} "
                 f"selects longword subtable, zero-extends an absolute word and returns {ar}; call {call.cpu_address:06X}",
-                caller.cpu_address)
+                caller.cpu_address,
+            )
     return tuple(result[key] for key in sorted(result))

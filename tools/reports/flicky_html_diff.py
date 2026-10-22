@@ -16,9 +16,30 @@ from tools.benchmarks.source import read_listing
 
 LISTING_LINE = re.compile(r"^(?:\(\d+\))?\s*\d+/\s*([0-9A-Fa-f]+)\s+: (.*)$")
 LABEL = re.compile(r"^[A-Za-z_.$][\w.$]*:\s*(.*)$")
-DIRECTIVES = {"binclude", "dc", "ds", "equ", "org", "cpu", "page",
-              "supmode", "padding", "align", "cnop", "set", "if", "else",
-              "endif", "rept", "endr", "macro", "endm", "even", "db", "dw"}
+DIRECTIVES = {
+    "binclude",
+    "dc",
+    "ds",
+    "equ",
+    "org",
+    "cpu",
+    "page",
+    "supmode",
+    "padding",
+    "align",
+    "cnop",
+    "set",
+    "if",
+    "else",
+    "endif",
+    "rept",
+    "endr",
+    "macro",
+    "endm",
+    "even",
+    "db",
+    "dw",
+}
 ROM_NAME = "Flicky (UE) [!].bin"
 EQUIVALENT_STATUSES = {
     "same-source",
@@ -63,9 +84,7 @@ def binary_includes(generated: Path) -> tuple[BinaryInclude, ...]:
     return tuple(sorted(includes, key=lambda item: item.start))
 
 
-def listing_source(
-    path: Path, *, max_address: int | None = None
-) -> dict[int, SourceAtAddress]:
+def listing_source(path: Path, *, max_address: int | None = None) -> dict[int, SourceAtAddress]:
     if not path.is_file():
         raise ValueError(f"missing assembler listing: {path}")
     result: dict[int, SourceAtAddress] = {}
@@ -119,9 +138,7 @@ def _encoded_bytes(record: SourceAtAddress) -> str:
     return re.sub(r"\s+", "", "".join(record.encoded)).lower()
 
 
-def _same_instruction(
-    reference: SourceAtAddress, generated: SourceAtAddress
-) -> bool:
+def _same_instruction(reference: SourceAtAddress, generated: SourceAtAddress) -> bool:
     original = _operation(reference.lines)
     produced = _operation(generated.lines)
     if not original or not produced:
@@ -131,11 +148,7 @@ def _same_instruction(
     if original_base in DIRECTIVES or produced_base in DIRECTIVES:
         return False
     encoded = _encoded_bytes(reference)
-    return (
-        original_base == produced_base
-        and bool(encoded)
-        and encoded == _encoded_bytes(generated)
-    )
+    return original_base == produced_base and bool(encoded) and encoded == _encoded_bytes(generated)
 
 
 def _data_or_label(record: SourceAtAddress) -> bool:
@@ -161,23 +174,21 @@ def _status(reference: SourceAtAddress, generated: SourceAtAddress) -> str:
         return "reference-only"
     original = _operation(reference.lines)
     produced = _operation(generated.lines)
-    if (original and original.split(".", 1)[0] not in DIRECTIVES
-            and produced in {"dc.b", "dc.w", "dc.l", "db", "dw", "dl"}):
+    if (
+        original
+        and original.split(".", 1)[0] not in DIRECTIVES
+        and produced in {"dc.b", "dc.w", "dc.l", "db", "dw", "dl"}
+    ):
         return "raw-fallback"
     original_directive = _directive_kind(original)
     produced_directive = _directive_kind(produced)
-    if (
-        original_directive is not None
-        and produced_directive is not None
-        and original_directive != produced_directive
-    ):
+    if original_directive is not None and produced_directive is not None and original_directive != produced_directive:
         return "data-structure"
     original_bytes = _encoded_bytes(reference)
     produced_bytes = _encoded_bytes(generated)
     if original_bytes and produced_bytes and original_bytes != produced_bytes:
         return "data-structure" if original_directive else "different-encoding"
-    normalized = lambda lines: tuple(re.sub(r"\s+", "", item.split(";", 1)[0]).lower()
-                                     for item in lines)
+    normalized = lambda lines: tuple(re.sub(r"\s+", "", item.split(";", 1)[0]).lower() for item in lines)
     if normalized(reference.lines) == normalized(generated.lines):
         return "same-source"
     if _same_instruction(reference, generated):
@@ -250,21 +261,19 @@ def write_html(
             status = "same-include" if _data_or_label(ref) else "code-in-include"
             if not gen.lines:
                 relative = address - include.start
-                gen = SourceAtAddress(
-                    lines=[
-                        f'; covered by binclude "{include.path}" + 0x{relative:X}'
-                    ]
-                )
+                gen = SourceAtAddress(lines=[f'; covered by binclude "{include.path}" + 0x{relative:X}'])
         else:
             status = _status(ref, gen)
-        if (opcodes_only and address in instruction_addresses[0]
-                and address in instruction_addresses[1]
-                and _encoded_bytes(ref) == _encoded_bytes(gen)):
+        if (
+            opcodes_only
+            and address in instruction_addresses[0]
+            and address in instruction_addresses[1]
+            and _encoded_bytes(ref) == _encoded_bytes(gen)
+        ):
             # BHS/BCC, DBRA/DBF and size aliases encode the same instruction.
             # Opcode reports compare complete bytes, independent of spelling.
             status = "same-instruction"
-        if (opcodes_only and address in instruction_addresses[1]
-                and address not in instruction_addresses[0]):
+        if opcodes_only and address in instruction_addresses[1] and address not in instruction_addresses[0]:
             # Same bytes do not make a mnemonic equivalent to reference data.
             status = "generated-only"
         if differences_only and not _is_difference(status):
@@ -275,27 +284,26 @@ def write_html(
         rows.append(
             f'<tr id="a{address:06X}" class="{status}">'
             f'<th scope="row"><a href="#a{address:06X}">${address:06X}</a></th>'
-            f'<td>{_cell(ref)}</td><td>{_cell(gen)}</td></tr>'
+            f"<td>{_cell(ref)}</td><td>{_cell(gen)}</td></tr>"
         )
-    summary = " · ".join(f"{name}: {counts[key]}" for key, name in (
-        ("same-source", "same text"),
-        ("same-instruction", "same instruction"),
-        ("same-include", "same data in a binclude"),
-        ("same-data", "same ROM data"),
-        ("same-bytes", "same bytes, different text"),
-        ("data-structure", "different data structure"),
-        ("raw-fallback", "instruction left as dc.b"),
-        ("code-in-include", "code hidden in a binclude"),
-        ("different-encoding", "different length or bytes"),
-        ("different-instruction", "different instruction"),
-        ("reference-only", "reference only"),
-        ("generated-only", "kit only"),
-    ))
-    report_title = (
-        f"{title} — source differences only"
-        if differences_only
-        else f"{title} — source comparison"
+    summary = " · ".join(
+        f"{name}: {counts[key]}"
+        for key, name in (
+            ("same-source", "same text"),
+            ("same-instruction", "same instruction"),
+            ("same-include", "same data in a binclude"),
+            ("same-data", "same ROM data"),
+            ("same-bytes", "same bytes, different text"),
+            ("data-structure", "different data structure"),
+            ("raw-fallback", "instruction left as dc.b"),
+            ("code-in-include", "code hidden in a binclude"),
+            ("different-encoding", "different length or bytes"),
+            ("different-instruction", "different instruction"),
+            ("reference-only", "reference only"),
+            ("generated-only", "kit only"),
+        )
     )
+    report_title = f"{title} — source differences only" if differences_only else f"{title} — source comparison"
     report_note = (
         "Only addresses with a different data structure, "
         "unrecognised instructions or a line on one side only are shown."
@@ -308,18 +316,24 @@ def write_html(
     navigation = "".join(
         f'<a href="#a{target:06X}">{label}</a>'
         for start, end, label in (
-            (start, min(start + 0x10000, len(reference_rom)),
-             f"${start:06X}–${min(start + 0x10000, len(reference_rom)) - 1:06X}")
+            (
+                start,
+                min(start + 0x10000, len(reference_rom)),
+                f"${start:06X}–${min(start + 0x10000, len(reference_rom)) - 1:06X}",
+            )
             for start in range(0, len(reference_rom), 0x10000)
         )
-        if (target := next(
-            (address for address in visible_addresses if start <= address < end),
-            None,
-        )) is not None
+        if (
+            target := next(
+                (address for address in visible_addresses if start <= address < end),
+                None,
+            )
+        )
+        is not None
     )
-    row_data = json.dumps(
-        list(zip(visible_addresses, visible_statuses, rows)), ensure_ascii=False
-    ).replace("<", "\\u003c")
+    row_data = json.dumps(list(zip(visible_addresses, visible_statuses, rows)), ensure_ascii=False).replace(
+        "<", "\\u003c"
+    )
     script = r"""
 const records=JSON.parse(document.getElementById('row-data').textContent);
 const filter=document.getElementById('filter'),visible=document.getElementById('visible');
@@ -390,8 +404,11 @@ def main(default_title: str = "Flicky") -> None:
     parser.add_argument("--reference-listing", type=Path)
     parser.add_argument("--generated-listing", type=Path)
     parser.add_argument("--title", default=default_title)
-    parser.add_argument("--opcodes-only", action="store_true",
-                        help="include only instruction addresses, retaining missing and extra code")
+    parser.add_argument(
+        "--opcodes-only",
+        action="store_true",
+        help="include only instruction addresses, retaining missing and extra code",
+    )
     parser.add_argument(
         "--differences-only",
         action="store_true",

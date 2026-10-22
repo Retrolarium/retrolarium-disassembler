@@ -1,4 +1,5 @@
 """A disassembled SNES project builds and launches through the kit's project runner."""
+
 from __future__ import annotations
 
 import os

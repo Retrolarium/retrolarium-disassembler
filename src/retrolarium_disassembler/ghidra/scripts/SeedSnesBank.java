@@ -1,5 +1,5 @@
 // Seed one physical SNES ROM bank using an independently computed context plan.
-//@category Retrolarium
+// @category Retrolarium
 
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
@@ -9,6 +9,7 @@ import ghidra.program.model.lang.RegisterValue;
 import ghidra.program.model.listing.ProgramContext;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
+
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,11 +22,8 @@ public class SeedSnesBank extends GhidraScript {
     }
 
     private static void setContext(
-            ProgramContext context,
-            Register register,
-            Address start,
-            Address end,
-            String raw) throws Exception {
+            ProgramContext context, Register register, Address start, Address end, String raw)
+            throws Exception {
         if (raw.equals("?")) {
             return;
         }
@@ -34,10 +32,7 @@ public class SeedSnesBank extends GhidraScript {
             throw new IllegalArgumentException("context bits must be 0, 1 or ?");
         }
         context.setRegisterValue(
-            start,
-            end,
-            new RegisterValue(register, BigInteger.valueOf(value))
-        );
+                start, end, new RegisterValue(register, BigInteger.valueOf(value)));
     }
 
     @Override
@@ -45,8 +40,7 @@ public class SeedSnesBank extends GhidraScript {
         String[] args = getScriptArgs();
         if (args.length != 3) {
             throw new IllegalArgumentException(
-                "expected block name, entry hex address and context TSV path"
-            );
+                    "expected block name, entry hex address and context TSV path");
         }
         Memory memory = currentProgram.getMemory();
         MemoryBlock rom = memory.getBlock(args[0]);
@@ -64,9 +58,8 @@ public class SeedSnesBank extends GhidraScript {
             throw new IllegalStateException("65816 E/M/X context registers not found");
         }
 
-        List<String> lines = Files.readAllLines(
-            Path.of(args[2]).toAbsolutePath(), StandardCharsets.UTF_8
-        );
+        List<String> lines =
+                Files.readAllLines(Path.of(args[2]).toAbsolutePath(), StandardCharsets.UTF_8);
         int ranges = 0;
         for (String line : lines) {
             if (line.isBlank() || line.startsWith("#")) {

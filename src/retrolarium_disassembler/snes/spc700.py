@@ -61,19 +61,14 @@ def _u16(instruction: Instruction) -> int:
     return int.from_bytes(instruction.raw[1:], "little")
 
 
-def _chain(
-    instructions: dict[int, Instruction], start: Instruction
-) -> tuple[Instruction, ...] | None:
+def _chain(instructions: dict[int, Instruction], start: Instruction) -> tuple[Instruction, ...] | None:
     chain: list[Instruction] = []
     current = start
     for expected in _PATTERN:
         if (current.mnemonic, current.addressing_mode) != expected:
             return None
         chain.append(current)
-        next_address = (
-            (current.logical_address & 0xFF0000)
-            | ((current.logical_address + current.length) & 0xFFFF)
-        )
+        next_address = (current.logical_address & 0xFF0000) | ((current.logical_address + current.length) & 0xFFFF)
         if len(chain) != len(_PATTERN):
             following = instructions.get(next_address)
             if following is None:
@@ -86,14 +81,9 @@ def _apu_bank(bank: int | None) -> bool:
     return bank is not None and (bank <= 0x3F or 0x80 <= bank <= 0xBF)
 
 
-def detect_spc700_copies(
-    image: SnesImage, analysis: AnalysisResult
-) -> tuple[CrossCpuCopy, ...]:
+def detect_spc700_copies(image: SnesImage, analysis: AnalysisResult) -> tuple[CrossCpuCopy, ...]:
     """Recognize only a fixed-count indexed upload with explicit APU evidence."""
-    instructions = {
-        instruction.logical_address: instruction
-        for instruction in analysis.instructions
-    }
+    instructions = {instruction.logical_address: instruction for instruction in analysis.instructions}
     occupied = {
         offset
         for instruction in analysis.instructions
@@ -111,10 +101,23 @@ def detect_spc700_copies(
         if chain is None:
             continue
         (
-            _phk, plb, wide, destination_load, destination_store,
-            index_load, loop_start, source_load, data_store, txa,
-            counter_store, accumulator_wide, increment, count_compare,
-            branch, accumulator_narrow, _return,
+            _phk,
+            plb,
+            wide,
+            destination_load,
+            destination_store,
+            index_load,
+            loop_start,
+            source_load,
+            data_store,
+            txa,
+            counter_store,
+            accumulator_wide,
+            increment,
+            count_compare,
+            branch,
+            accumulator_narrow,
+            _return,
         ) = chain
         if not (
             wide.raw[1] & 0x30 == 0x30
@@ -134,9 +137,7 @@ def detect_spc700_copies(
             and _apu_bank(source_load.state_before.dbr)
         ):
             continue
-        branch_targets = {
-            flow.target for flow in branch.flows if flow.kind == "branch"
-        }
+        branch_targets = {flow.target for flow in branch.flows if flow.kind == "branch"}
         if loop_start.logical_address not in branch_targets:
             continue
 
@@ -154,13 +155,11 @@ def detect_spc700_copies(
         except SnesError:
             continue
         source_physical_start = physical_offsets[0]
-        if physical_offsets != list(
-            range(source_physical_start, source_physical_start + size)
-        ):
+        if physical_offsets != list(range(source_physical_start, source_physical_start + size)):
             continue
         if occupied.intersection(physical_offsets):
             continue
-        payload = image.data[source_physical_start:source_physical_start + size]
+        payload = image.data[source_physical_start : source_physical_start + size]
         if len(payload) != size:
             continue
         key = (source_physical_start, target_start, size)
@@ -169,10 +168,7 @@ def detect_spc700_copies(
         seen.add(key)
         copies.append(
             CrossCpuCopy(
-                edge_id=(
-                    f"snes.cross.w65c816-spc700."
-                    f"{source_start:06X}.{target_start:04X}"
-                ),
+                edge_id=(f"snes.cross.w65c816-spc700.{source_start:06X}.{target_start:04X}"),
                 schema_id="snes.w65c816-spc700.fixed-indexed-apu-upload",
                 source_cpu_id="w65c816",
                 source_space="snes-rom",
@@ -194,9 +190,7 @@ def detect_spc700_copies(
 
 
 def payload_for_copy(image: SnesImage, copy: CrossCpuCopy) -> bytes:
-    payload = image.data[
-        copy.source_physical_start:copy.source_physical_end + 1
-    ]
+    payload = image.data[copy.source_physical_start : copy.source_physical_end + 1]
     if len(payload) != copy.size or hashlib.sha256(payload).hexdigest() != copy.payload_sha256:
         raise AnalysisError("SPC700 copy evidence no longer matches immutable ROM bytes")
     return payload

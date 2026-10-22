@@ -1,4 +1,5 @@
 """Prove an ordinary subroutine ABI that consumes an inline word."""
+
 import re
 
 from retrolarium_disassembler.m68k.abstract import _register_list
@@ -11,7 +12,7 @@ def _consumes_word(facts, start):
     if first is None or first.raw[:2] != b"\x48\xe7" or len(first.raw) != 4:
         return False
     saved = set(_register_list(first.operands.split("|", 1)[0]))
-    if not saved or 'a7' in saved or len(saved) != int.from_bytes(first.raw[2:], "big").bit_count():
+    if not saved or "a7" in saved or len(saved) != int.from_bytes(first.raw[2:], "big").bit_count():
         return False
     slot = f"(0X{4 * len(saved):X},SP)"
     cursor = start + first.length
@@ -28,10 +29,14 @@ def _consumes_word(facts, start):
         return False
     register = match[1]
     value = re.fullmatch(r"\(" + register + r"\)\+\|(D[0-7])W", read.operands.upper())
-    if (read.mnemonic.upper() != "MOVE.W" or value is None
-            or register.lower() not in saved or value[1].lower() not in saved
-            or write.mnemonic.upper() != "MOVE.L"
-            or write.operands.upper() != register + "|" + slot):
+    if (
+        read.mnemonic.upper() != "MOVE.W"
+        or value is None
+        or register.lower() not in saved
+        or value[1].lower() not in saved
+        or write.mnemonic.upper() != "MOVE.L"
+        or write.operands.upper() != register + "|" + slot
+    ):
         return False
     # The saved PC has advanced exactly two bytes. Only straight-line work
     # with no further stack access is accepted before its balanced restore.
@@ -42,8 +47,11 @@ def _consumes_word(facts, start):
         operands = fact.operands.upper().split("|")
         if fact.raw[:2] == b"\x4c\xdf" and len(fact.raw) == 4:
             restored = set(_register_list(operands[-1]))
-            if (operands[0] != "(SP)+" or restored != saved
-                    or len(restored) != int.from_bytes(fact.raw[2:], "big").bit_count()):
+            if (
+                operands[0] != "(SP)+"
+                or restored != saved
+                or len(restored) != int.from_bytes(fact.raw[2:], "big").bit_count()
+            ):
                 return False
             following = facts.get(cursor + fact.length)
             return following is not None and following.raw == b"\x4e\x75"
@@ -52,7 +60,8 @@ def _consumes_word(facts, start):
         opcode = int.from_bytes(fact.raw[:2], "big")
         call = opcode & 0xFFC0 == 0x4E80 or opcode & 0xFF00 == 0x6100
         if fact.flow_type.upper() != "FALL_THROUGH" and not (
-                call and fact.flow_type.upper() == "UNCONDITIONAL_CALL" and len(fact.flows) == 1):
+            call and fact.flow_type.upper() == "UNCONDITIONAL_CALL" and len(fact.flows) == 1
+        ):
             return False
         cursor += fact.length
     return False

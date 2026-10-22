@@ -39,12 +39,12 @@ class RamRecordDispatchTests(unittest.TestCase):
     def discover(self):
         data = bytearray(cartridge(size=0x800))
         for fact in self.facts.values():
-            data[fact.cpu_address:fact.cpu_address+fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         data[0x300:0x304] = bytes.fromhex("00200050")
         for base in (0x320, 0x350):
             for i, target in enumerate(self.targets):
-                data[base+i*8:base+i*8+8] = bytes.fromhex("07040715") + target.to_bytes(4, "big")
-                data[target:target+2] = bytes.fromhex("4e75")
+                data[base + i * 8 : base + i * 8 + 8] = bytes.fromhex("07040715") + target.to_bytes(4, "big")
+                data[target : target + 2] = bytes.fromhex("4e75")
         return discover_ram_record_dispatch_seeds(parse_megadrive(bytes(data)), self.facts)
 
     def test_relative_and_direct_returned_groups_saved_in_ram(self):
@@ -63,8 +63,12 @@ class RamRecordDispatchTests(unittest.TestCase):
         self.assertFalse(self.discover())
 
     def test_ram_slot_stride_and_executed_field_must_agree(self):
-        for address, operand in [(0x260, "(0xffffec90).w|A0"), (0x268, "#0x1|D0w"),
-                                 (0x26A, "(0x0,A0,D1w*0x1)|A0"), (0x272, "(A1)")]:
+        for address, operand in [
+            (0x260, "(0xffffec90).w|A0"),
+            (0x268, "#0x1|D0w"),
+            (0x26A, "(0x0,A0,D1w*0x1)|A0"),
+            (0x272, "(A1)"),
+        ]:
             self.setUp()
             self.facts[address] = replace(self.facts[address], operands=operand)
             self.assertFalse(self.discover())

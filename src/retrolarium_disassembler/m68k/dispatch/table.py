@@ -1,4 +1,5 @@
 """LEA-based indexed calls and exception-vector relative-table dispatch."""
+
 from __future__ import annotations
 
 import re
@@ -30,16 +31,25 @@ def _targets(image, facts, table, width):
     result = []
     slot = start
     while slot + width <= limit:
-        if (slot < 0x200 or slot & 1 or any(slot + b in occupied for b in range(width))
-                or slot != start and origin + slot in boundaries):
+        if (
+            slot < 0x200
+            or slot & 1
+            or any(slot + b in occupied for b in range(width))
+            or slot != start
+            and origin + slot in boundaries
+        ):
             break
-        target = int.from_bytes(data[slot:slot + width], "big", signed=width == 2)
+        target = int.from_bytes(data[slot : slot + width], "big", signed=width == 2)
         if width == 2:
             target += table
         physical = target - origin
-        if (target & 1 or not 0x200 <= physical <= len(data) - 2
-                or physical in interiors or start <= physical < slot + width
-                or data[physical:physical + 2] in {b"\x00\x00", b"\xff\xff"}):
+        if (
+            target & 1
+            or not 0x200 <= physical <= len(data) - 2
+            or physical in interiors
+            or start <= physical < slot + width
+            or data[physical : physical + 2] in {b"\x00\x00", b"\xff\xff"}
+        ):
             break
         result.append(target)
         if physical >= start:
@@ -67,24 +77,38 @@ def discover_lea_indexed_call_seeds(image: MegaDriveImage, facts: dict[int, Inst
                 break
             operands = lea.operands.upper().split("|")
             destination_operand = operands[-1]
-            if (re.fullmatch(base + r"[BWL]?", destination_operand)
-                    and not lea.mnemonic.upper().startswith(("CMP", "TST", "BTST"))
-                    or lea.mnemonic.upper().startswith("MOVEM") and operands[0] == "(SP)+"
-                    and base.lower() in _register_list(destination_operand)):
+            if (
+                re.fullmatch(base + r"[BWL]?", destination_operand)
+                and not lea.mnemonic.upper().startswith(("CMP", "TST", "BTST"))
+                or lea.mnemonic.upper().startswith("MOVEM")
+                and operands[0] == "(SP)+"
+                and base.lower() in _register_list(destination_operand)
+            ):
                 lea = None
                 break
             lea = ends.get(lea.cpu_address)
         call = by_address.get(load.cpu_address + load.length)
-        if (lea is None or call is None or call.mnemonic.upper() not in {"JSR", "JMP"}
-                or call.operands.upper() != f"({destination})"):
+        if (
+            lea is None
+            or call is None
+            or call.mnemonic.upper() not in {"JSR", "JMP"}
+            or call.operands.upper() != f"({destination})"
+        ):
             continue
         table = _lea_base(lea, base)
         if table is None:
             continue
         table += int(displacement, 0)
-        result.extend(DecoderSeed(target, "lea_indexed_call", "high",
-                      f"LEA table {table:06X}; indexed MOVEA.L and call at {call.cpu_address:06X}",
-                      load.cpu_address) for target in _targets(image, facts, table, 4))
+        result.extend(
+            DecoderSeed(
+                target,
+                "lea_indexed_call",
+                "high",
+                f"LEA table {table:06X}; indexed MOVEA.L and call at {call.cpu_address:06X}",
+                load.cpu_address,
+            )
+            for target in _targets(image, facts, table, 4)
+        )
     return tuple(result)
 
 
@@ -104,9 +128,14 @@ def discover_trap_relative_dispatch_seeds(image: MegaDriveImage, facts: dict[int
         match = re.fullmatch(r"\(0x0,(A[0-6])," + index[1] + r"w\*0x1\)\|\1", second.operands, re.I)
         third = by_address.get(second.cpu_address + second.length)
         fourth = by_address.get(third.cpu_address + third.length) if third else None
-        if (match is None or third is None or third.mnemonic.upper() != "JSR"
-                or third.operands.upper() != f"({match[1].upper()})"
-                or fourth is None or fourth.raw != b"\x4e\x73"):
+        if (
+            match is None
+            or third is None
+            or third.mnemonic.upper() != "JSR"
+            or third.operands.upper() != f"({match[1].upper()})"
+            or fourth is None
+            or fourth.raw != b"\x4e\x73"
+        ):
             continue
         handlers[number] = (entry, match[1].upper())
     result = []
@@ -123,14 +152,24 @@ def discover_trap_relative_dispatch_seeds(image: MegaDriveImage, facts: dict[int
                 break
             table = _lea_base(preceding, register)
             if table is not None:
-                result.extend(DecoderSeed(target, "trap_relative_dispatch", "high",
-                    f"TRAP at {call.cpu_address:06X}; vector handler {handler:06X} doubles index "
-                    f"and adds signed table word to LEA base {table:06X}", call.cpu_address)
-                    for target in _targets(image, facts, table, 2))
+                result.extend(
+                    DecoderSeed(
+                        target,
+                        "trap_relative_dispatch",
+                        "high",
+                        f"TRAP at {call.cpu_address:06X}; vector handler {handler:06X} doubles index "
+                        f"and adds signed table word to LEA base {table:06X}",
+                        call.cpu_address,
+                    )
+                    for target in _targets(image, facts, table, 2)
+                )
                 break
             destination = preceding.operands.rsplit("|", 1)[-1].upper()
-            if (destination == register or register in preceding.operands.upper()
-                    and ("+" in preceding.operands or "-(" in preceding.operands)):
+            if (
+                destination == register
+                or register in preceding.operands.upper()
+                and ("+" in preceding.operands or "-(" in preceding.operands)
+            ):
                 break
             preceding = ends.get(preceding.cpu_address)
     return tuple(result)

@@ -24,9 +24,7 @@ def cartridge(
     data[0x180:0x18E] = b"GM TEST-001-00"
     data[0x190:0x1A0] = b"J".ljust(16)
     data[0x1A0:0x1A4] = (0).to_bytes(4, "big")
-    data[0x1A4:0x1A8] = (
-        size - 1 if declared_end is None else declared_end
-    ).to_bytes(4, "big")
+    data[0x1A4:0x1A8] = (size - 1 if declared_end is None else declared_end).to_bytes(4, "big")
     data[0x1A8:0x1AC] = (0xFF0000).to_bytes(4, "big")
     data[0x1AC:0x1B0] = (0xFFFFFF).to_bytes(4, "big")
     data[0x1F0:0x200] = b"JUE".ljust(16)
@@ -67,7 +65,7 @@ def dispatch_image(*targets: int):
     data[0x300:0x320] = bytes(0x20)
     for index, target in enumerate(targets):
         offset = 0x300 + index * 4
-        data[offset:offset + 4] = target.to_bytes(4, "big")
+        data[offset : offset + 4] = target.to_bytes(4, "big")
     return parse_megadrive(bytes(data))
 
 
@@ -88,7 +86,7 @@ def word_dispatch_image():
     data[0x300:0x308] = b"".join(((target - 0x340) & 0xFFFF).to_bytes(2, "big") for target in targets)
     data[0x308:0x30A] = bytes.fromhex("FF FF")
     for target in targets:
-        data[target:target + 2] = bytes.fromhex("4E75")
+        data[target : target + 2] = bytes.fromhex("4E75")
     items = (
         replace(fact(0x200, "MOVEA.W", "(0x300,PC,D2w*0x1)|A4"), length=4),
         replace(fact(0x204, "ADDA.L", "#0x340|A4"), length=6),

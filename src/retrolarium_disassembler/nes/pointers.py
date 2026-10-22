@@ -81,24 +81,17 @@ class PointerCandidate:
         }
 
 
-def accepted_u16le(
-    candidates: tuple[PointerCandidate, ...]
-) -> tuple[PointerCandidate, ...]:
+def accepted_u16le(candidates: tuple[PointerCandidate, ...]) -> tuple[PointerCandidate, ...]:
     return tuple(
-        candidate
-        for candidate in candidates
-        if candidate.schema_id == "nes.u16le" and candidate.status == "accepted"
+        candidate for candidate in candidates if candidate.schema_id == "nes.u16le" and candidate.status == "accepted"
     )
 
 
-def accepted_pointer_tables(
-    candidates: tuple[PointerCandidate, ...]
-) -> tuple[PointerCandidate, ...]:
+def accepted_pointer_tables(candidates: tuple[PointerCandidate, ...]) -> tuple[PointerCandidate, ...]:
     return tuple(
         candidate
         for candidate in candidates
-        if candidate.schema_id in {"nes.u16le", "nes.split_lo_hi"}
-        and candidate.status == "accepted"
+        if candidate.schema_id in {"nes.u16le", "nes.split_lo_hi"} and candidate.status == "accepted"
     )
 
 
@@ -107,9 +100,7 @@ DISPATCH_WINDOW = 8
 DISPATCH_EVIDENCE_PREFIX = "dispatch_reference="
 
 
-def accepted_code_entry_tables(
-    candidates: tuple[PointerCandidate, ...]
-) -> tuple[PointerCandidate, ...]:
+def accepted_code_entry_tables(candidates: tuple[PointerCandidate, ...]) -> tuple[PointerCandidate, ...]:
     """Accepted tables whose targets are backed by dispatch code evidence."""
     return tuple(
         candidate
@@ -117,17 +108,12 @@ def accepted_code_entry_tables(
         if candidate.status == "accepted"
         and (
             candidate.schema_id in RTS_SCHEMAS
-            or any(
-                item.startswith(DISPATCH_EVIDENCE_PREFIX)
-                for item in candidate.evidence
-            )
+            or any(item.startswith(DISPATCH_EVIDENCE_PREFIX) for item in candidate.evidence)
         )
     )
 
 
-def _dispatch_references(
-    image: InesImage, facts: dict[int, InstructionFact]
-) -> dict[int, str]:
+def _dispatch_references(image: InesImage, facts: dict[int, InstructionFact]) -> dict[int, str]:
     """Map indexed-load table offsets to the dispatch idiom that consumes them.
 
     ``rts`` means the loaded byte is pushed and consumed by RTS (target - 1);
@@ -151,7 +137,7 @@ def _dispatch_references(
         pushed = False
         kind: str | None = None
         expected = fact.physical_offset + fact.length
-        for follower in ordered[index + 1:index + 1 + DISPATCH_WINDOW]:
+        for follower in ordered[index + 1 : index + 1 + DISPATCH_WINDOW]:
             if follower.physical_offset != expected:
                 break
             expected += follower.length
@@ -173,7 +159,8 @@ def _dispatch_references(
 
 
 def _instruction_sets(
-    image: InesImage, facts: dict[int, InstructionFact],
+    image: InesImage,
+    facts: dict[int, InstructionFact],
 ) -> tuple[set[int], set[int], set[int], set[int]]:
     occupied: set[int] = set()
     interiors: set[int] = set()
@@ -181,9 +168,7 @@ def _instruction_sets(
     control_targets: set[int] = set()
     for fact in facts.values():
         occupied.update(range(fact.physical_offset, fact.physical_offset + fact.length))
-        interiors.update(
-            range(fact.physical_offset + 1, fact.physical_offset + fact.length)
-        )
+        interiors.update(range(fact.physical_offset + 1, fact.physical_offset + fact.length))
         for target in fact.flows:
             try:
                 control_targets.add(cpu_to_prg_offset(image, target))
@@ -204,9 +189,7 @@ def _operand_references(facts: dict[int, InstructionFact]) -> set[int]:
     return references
 
 
-def _operand_reference_offsets(
-    image: InesImage, facts: dict[int, InstructionFact]
-) -> set[int]:
+def _operand_reference_offsets(image: InesImage, facts: dict[int, InstructionFact]) -> set[int]:
     offsets: set[int] = set()
     for address in _operand_references(facts):
         try:
@@ -275,9 +258,7 @@ def _evaluate_u16le(
         score += 10
 
     target_offsets = tuple(cpu_to_prg_offset(image, target) for target in targets)
-    instruction_target_count = sum(
-        offset in instruction_starts for offset in target_offsets
-    )
+    instruction_target_count = sum(offset in instruction_starts for offset in target_offsets)
     if instruction_target_count:
         evidence.append(f"instruction_targets={instruction_target_count}")
         score += min(instruction_target_count, 5)
@@ -293,21 +274,13 @@ def _evaluate_u16le(
         score -= 30
 
     hard_rejection = bool(contradictions)
-    promotion_evidence = (
-        referenced or dispatch is not None or span <= MAX_UNREFERENCED_TARGET_SPAN
-    )
+    promotion_evidence = referenced or dispatch is not None or span <= MAX_UNREFERENCED_TARGET_SPAN
     if not promotion_evidence:
         evidence.append("awaiting_reference_or_tighter_target_cluster")
-    accepted = (
-        len(entries) >= MIN_ACCEPTED_ENTRIES
-        and not hard_rejection
-        and promotion_evidence
-    )
+    accepted = len(entries) >= MIN_ACCEPTED_ENTRIES and not hard_rejection and promotion_evidence
     status = "accepted" if accepted else "rejected" if hard_rejection else "candidate"
     return PointerCandidate(
-        candidate_id=(
-            f"PtrTableRts_B00_{cpu_start:04X}" if rts else f"PtrTable_B00_{cpu_start:04X}"
-        ),
+        candidate_id=(f"PtrTableRts_B00_{cpu_start:04X}" if rts else f"PtrTable_B00_{cpu_start:04X}"),
         schema_id="nes.u16le.rts_minus_one" if rts else "nes.u16le",
         physical_start=start,
         physical_end=end,
@@ -320,12 +293,8 @@ def _evaluate_u16le(
     )
 
 
-def _u16le_candidates(
-    image: InesImage, facts: dict[int, InstructionFact]
-) -> list[PointerCandidate]:
-    occupied, interiors, instruction_starts, control_targets = _instruction_sets(
-        image, facts
-    )
+def _u16le_candidates(image: InesImage, facts: dict[int, InstructionFact]) -> list[PointerCandidate]:
+    occupied, interiors, instruction_starts, control_targets = _instruction_sets(image, facts)
     operand_reference_offsets = _operand_reference_offsets(image, facts)
     dispatch_references = _dispatch_references(image, facts)
     candidates: list[PointerCandidate] = []
@@ -340,7 +309,7 @@ def _u16le_candidates(
             if offset in occupied or offset + 1 in occupied:
                 offset += 2
                 continue
-            target = int.from_bytes(image.prg[offset:offset + 2], "little")
+            target = int.from_bytes(image.prg[offset : offset + 2], "little")
             if not _mapped_target(image, target):
                 offset += 2
                 continue
@@ -349,20 +318,15 @@ def _u16le_candidates(
             while offset + 1 < scan_end:
                 if offset in occupied or offset + 1 in occupied:
                     break
-                target = int.from_bytes(image.prg[offset:offset + 2], "little")
+                target = int.from_bytes(image.prg[offset : offset + 2], "little")
                 if not _mapped_target(image, target):
                     break
                 entries.append(PointerEntry(offset, cpu_base + offset, target))
                 offset += 2
             if len(entries) >= MIN_CANDIDATE_ENTRIES:
-                dispatch = dispatch_references.get(
-                    start, dispatch_references.get(start + 1)
-                )
+                dispatch = dispatch_references.get(start, dispatch_references.get(start + 1))
                 if dispatch == "rts":
-                    adjusted = [
-                        replace(entry, target=(entry.target + 1) & 0xFFFF)
-                        for entry in entries
-                    ]
+                    adjusted = [replace(entry, target=(entry.target + 1) & 0xFFFF) for entry in entries]
                     if all(_mapped_target(image, entry.target) for entry in adjusted):
                         entries = adjusted
                     else:
@@ -377,8 +341,7 @@ def _u16le_candidates(
                     dispatch,
                 )
                 instruction_target_count = sum(
-                    cpu_to_prg_offset(image, entry.target) in instruction_starts
-                    for entry in entries
+                    cpu_to_prg_offset(image, entry.target) in instruction_starts for entry in entries
                 )
                 interesting = (
                     "targets_strictly_increasing" in evaluated.evidence
@@ -393,20 +356,12 @@ def _u16le_candidates(
     return candidates
 
 
-def _split_lo_hi_candidates(
-    image: InesImage, facts: dict[int, InstructionFact]
-) -> list[PointerCandidate]:
-    occupied, interiors, instruction_starts, control_targets = _instruction_sets(
-        image, facts
-    )
+def _split_lo_hi_candidates(image: InesImage, facts: dict[int, InstructionFact]) -> list[PointerCandidate]:
+    occupied, interiors, instruction_starts, control_targets = _instruction_sets(image, facts)
     cpu_base = canonical_prg_start(image)
     scan_end = max(0, len(image.prg) - 6)
     dispatch_references = _dispatch_references(image, facts)
-    referenced_offsets = sorted(
-        offset
-        for offset in _operand_reference_offsets(image, facts)
-        if offset < scan_end
-    )
+    referenced_offsets = sorted(offset for offset in _operand_reference_offsets(image, facts) if offset < scan_end)
 
     candidates: list[PointerCandidate] = []
     for low_offset in referenced_offsets:
@@ -415,21 +370,14 @@ def _split_lo_hi_candidates(
             if count < MIN_ACCEPTED_ENTRIES or count > 0x100:
                 continue
             end = high_offset + count
-            if end > scan_end or any(
-                offset in occupied for offset in range(low_offset, end)
-            ):
+            if end > scan_end or any(offset in occupied for offset in range(low_offset, end)):
                 continue
             low_dispatch = dispatch_references.get(low_offset)
             high_dispatch = dispatch_references.get(high_offset)
             dispatch = low_dispatch if low_dispatch == high_dispatch else None
             rts = dispatch == "rts"
             targets = tuple(
-                (
-                    image.prg[low_offset + index]
-                    | (image.prg[high_offset + index] << 8)
-                )
-                + (1 if rts else 0)
-                & 0xFFFF
+                (image.prg[low_offset + index] | (image.prg[high_offset + index] << 8)) + (1 if rts else 0) & 0xFFFF
                 for index in range(count)
             )
             if not all(_mapped_target(image, target) for target in targets):
@@ -461,9 +409,7 @@ def _split_lo_hi_candidates(
             span = max(targets) - min(targets)
             evidence.append(f"target_span={span}")
 
-            target_offsets = tuple(
-                cpu_to_prg_offset(image, target) for target in targets
-            )
+            target_offsets = tuple(cpu_to_prg_offset(image, target) for target in targets)
             if any(offset in interiors for offset in target_offsets):
                 contradictions.append("target_inside_instruction")
                 score -= 30
@@ -474,9 +420,7 @@ def _split_lo_hi_candidates(
                 contradictions.append("control_target_inside_table")
                 score -= 30
 
-            instruction_target_count = sum(
-                offset in instruction_starts for offset in target_offsets
-            )
+            instruction_target_count = sum(offset in instruction_starts for offset in target_offsets)
             if instruction_target_count:
                 evidence.append(f"instruction_targets={instruction_target_count}")
                 score += min(instruction_target_count, 5)
@@ -493,13 +437,8 @@ def _split_lo_hi_candidates(
             )
             candidates.append(
                 PointerCandidate(
-                    candidate_id=(
-                        f"PtrTableSplit{'Rts' if rts else ''}_B00_"
-                        f"{low_address:04X}_{high_address:04X}"
-                    ),
-                    schema_id=(
-                        "nes.split_lo_hi.rts_minus_one" if rts else "nes.split_lo_hi"
-                    ),
+                    candidate_id=(f"PtrTableSplit{'Rts' if rts else ''}_B00_{low_address:04X}_{high_address:04X}"),
+                    schema_id=("nes.split_lo_hi.rts_minus_one" if rts else "nes.split_lo_hi"),
                     physical_start=low_offset,
                     physical_end=end,
                     cpu_start=low_address,
@@ -513,12 +452,8 @@ def _split_lo_hi_candidates(
     return candidates
 
 
-def _interleaved_u16le_candidates(
-    image: InesImage, facts: dict[int, InstructionFact]
-) -> list[PointerCandidate]:
-    occupied, interiors, instruction_starts, control_targets = _instruction_sets(
-        image, facts
-    )
+def _interleaved_u16le_candidates(image: InesImage, facts: dict[int, InstructionFact]) -> list[PointerCandidate]:
+    occupied, interiors, instruction_starts, control_targets = _instruction_sets(image, facts)
     scan_end = max(0, len(image.prg) - 6)
     cpu_base = canonical_prg_start(image)
     candidates: list[PointerCandidate] = []
@@ -530,7 +465,7 @@ def _interleaved_u16le_candidates(
             while offset + 1 < scan_end and len(entries) < MAX_INTERLEAVED_ENTRIES:
                 if offset in occupied or offset + 1 in occupied:
                     break
-                target = int.from_bytes(image.prg[offset:offset + 2], "little")
+                target = int.from_bytes(image.prg[offset : offset + 2], "little")
                 if not _mapped_target(image, target):
                     break
                 entries.append(PointerEntry(offset, cpu_base + offset, target))
@@ -547,28 +482,18 @@ def _interleaved_u16le_candidates(
                     continue
                 even_lane = targets[0::2]
                 odd_lane = targets[1::2]
-                if not all(
-                    left < right for left, right in zip(even_lane, even_lane[1:])
-                ):
+                if not all(left < right for left, right in zip(even_lane, even_lane[1:])):
                     continue
-                if not all(
-                    left < right for left, right in zip(odd_lane, odd_lane[1:])
-                ):
+                if not all(left < right for left, right in zip(odd_lane, odd_lane[1:])):
                     continue
                 even_span = max(even_lane) - min(even_lane)
                 odd_span = max(odd_lane) - min(odd_lane)
-                if (
-                    even_span > MAX_INTERLEAVED_LANE_SPAN
-                    or odd_span > MAX_INTERLEAVED_LANE_SPAN
-                ):
+                if even_span > MAX_INTERLEAVED_LANE_SPAN or odd_span > MAX_INTERLEAVED_LANE_SPAN:
                     continue
                 end = start + count * 2
-                target_offsets = tuple(
-                    cpu_to_prg_offset(image, target) for target in targets
-                )
+                target_offsets = tuple(cpu_to_prg_offset(image, target) for target in targets)
                 if any(
-                    target_offset < end
-                    or target_offset - end > MAX_INTERLEAVED_TARGET_DISTANCE
+                    target_offset < end or target_offset - end > MAX_INTERLEAVED_TARGET_DISTANCE
                     for target_offset in target_offsets
                 ):
                     continue
@@ -577,10 +502,7 @@ def _interleaved_u16le_candidates(
                 if any(start < target < end for target in control_targets):
                     continue
                 selected = window
-                instruction_target_count = sum(
-                    target_offset in instruction_starts
-                    for target_offset in target_offsets
-                )
+                instruction_target_count = sum(target_offset in instruction_starts for target_offset in target_offsets)
                 selected_evidence = (
                     "all_entries_map_to_prg",
                     f"entry_count={count}",
@@ -596,9 +518,7 @@ def _interleaved_u16le_candidates(
             end = selected[-1].physical_offset + 2
             candidates.append(
                 PointerCandidate(
-                    candidate_id=(
-                        f"PtrTableInterleaved_B00_{cpu_base + start:04X}_{len(selected):02X}"
-                    ),
+                    candidate_id=(f"PtrTableInterleaved_B00_{cpu_base + start:04X}_{len(selected):02X}"),
                     schema_id="nes.u16le",
                     physical_start=start,
                     physical_end=end,
@@ -618,9 +538,7 @@ def _anchored_u16le_candidates(
     facts: dict[int, InstructionFact],
     accepted: tuple[PointerCandidate, ...],
 ) -> list[PointerCandidate]:
-    occupied, interiors, instruction_starts, control_targets = _instruction_sets(
-        image, facts
-    )
+    occupied, interiors, instruction_starts, control_targets = _instruction_sets(image, facts)
     scan_end = max(0, len(image.prg) - 6)
     cpu_base = canonical_prg_start(image)
     anchors: set[int] = set()
@@ -642,7 +560,7 @@ def _anchored_u16le_candidates(
             while offset + 1 < scan_end and len(entries) < MAX_ANCHORED_ENTRIES:
                 if offset in occupied or offset + 1 in occupied:
                     break
-                target = int.from_bytes(image.prg[offset:offset + 2], "little")
+                target = int.from_bytes(image.prg[offset : offset + 2], "little")
                 if not _mapped_target(image, target):
                     break
                 entries.append(PointerEntry(offset, cpu_base + offset, target))
@@ -654,9 +572,7 @@ def _anchored_u16le_candidates(
             for count in range(len(entries), MIN_CANDIDATE_ENTRIES - 1, -1):
                 window = tuple(entries[:count])
                 end = start + count * 2
-                target_offsets = tuple(
-                    cpu_to_prg_offset(image, entry.target) for entry in window
-                )
+                target_offsets = tuple(cpu_to_prg_offset(image, entry.target) for entry in window)
                 span = max(target_offsets) - min(target_offsets)
                 if span > MAX_UNREFERENCED_TARGET_SPAN:
                     continue
@@ -672,12 +588,8 @@ def _anchored_u16le_candidates(
                 continue
 
             end = selected[-1].physical_offset + 2
-            target_offsets = tuple(
-                cpu_to_prg_offset(image, entry.target) for entry in selected
-            )
-            instruction_target_count = sum(
-                target_offset in instruction_starts for target_offset in target_offsets
-            )
+            target_offsets = tuple(cpu_to_prg_offset(image, entry.target) for entry in selected)
+            instruction_target_count = sum(target_offset in instruction_starts for target_offset in target_offsets)
             evidence = (
                 "all_entries_map_to_prg",
                 f"entry_count={len(selected)}",
@@ -688,9 +600,7 @@ def _anchored_u16le_candidates(
                 f"instruction_targets={instruction_target_count}",
             )
             candidate = PointerCandidate(
-                candidate_id=(
-                    f"PtrTableAnchored_B00_{cpu_base + start:04X}_{len(selected):02X}"
-                ),
+                candidate_id=(f"PtrTableAnchored_B00_{cpu_base + start:04X}_{len(selected):02X}"),
                 schema_id="nes.u16le",
                 physical_start=start,
                 physical_end=end,
@@ -713,8 +623,7 @@ def _interrupt_vectors(image: InesImage) -> PointerCandidate:
     cpu_start = canonical_prg_start(image) + start
     targets = struct.unpack_from("<HHH", image.prg, start)
     entries = tuple(
-        PointerEntry(start + index * 2, cpu_start + index * 2, target)
-        for index, target in enumerate(targets)
+        PointerEntry(start + index * 2, cpu_start + index * 2, target) for index, target in enumerate(targets)
     )
     mapped = sum(_mapped_target(image, target) for target in targets if target)
     return PointerCandidate(
@@ -755,8 +664,7 @@ def _resolve_overlaps(
                     candidate,
                     status="rejected",
                     score=max(0, candidate.score - 30),
-                    contradictions=candidate.contradictions
-                    + ("overlaps_stronger_candidate",),
+                    contradictions=candidate.contradictions + ("overlaps_stronger_candidate",),
                 )
             )
         else:
@@ -764,28 +672,20 @@ def _resolve_overlaps(
     return resolved
 
 
-def detect_pointer_candidates(
-    image: InesImage, facts: dict[int, InstructionFact]
-) -> tuple[PointerCandidate, ...]:
+def detect_pointer_candidates(image: InesImage, facts: dict[int, InstructionFact]) -> tuple[PointerCandidate, ...]:
     initial = (
         _u16le_candidates(image, facts)
         + _split_lo_hi_candidates(image, facts)
         + _interleaved_u16le_candidates(image, facts)
     )
     initial_resolved = _resolve_overlaps(initial)
-    anchored = _anchored_u16le_candidates(
-        image, facts, accepted_pointer_tables(tuple(initial_resolved))
-    )
+    anchored = _anchored_u16le_candidates(image, facts, accepted_pointer_tables(tuple(initial_resolved)))
     candidates = _resolve_overlaps(initial + anchored)
     candidates.append(_interrupt_vectors(image))
-    return tuple(
-        sorted(candidates, key=lambda candidate: (candidate.physical_start, candidate.schema_id))
-    )
+    return tuple(sorted(candidates, key=lambda candidate: (candidate.physical_start, candidate.schema_id)))
 
 
-def pointer_report(
-    image: InesImage, candidates: tuple[PointerCandidate, ...]
-) -> dict[str, object]:
+def pointer_report(image: InesImage, candidates: tuple[PointerCandidate, ...]) -> dict[str, object]:
     return {
         "schema": "retrolarium.nes.pointers",
         "schema_version": 1,
@@ -800,8 +700,7 @@ def pointer_report(
                 "maximum_accepted_target_span": MAX_ACCEPTED_TARGET_SPAN,
                 "maximum_unreferenced_target_span": MAX_UNREFERENCED_TARGET_SPAN,
                 "reporting_prefilter": (
-                    "increasing targets, a direct table reference, or at least "
-                    "two instruction targets"
+                    "increasing targets, a direct table reference, or at least two instruction targets"
                 ),
                 "accepted_evidence_patterns": [
                     "strictly increasing compact targets",
@@ -829,9 +728,7 @@ def pointer_report(
                 "entry_size": 2,
                 "endianness": "little",
                 "target_adjustment": 1,
-                "required_evidence": (
-                    "indexed table load pushed with PHA and consumed by RTS"
-                ),
+                "required_evidence": ("indexed table load pushed with PHA and consumed by RTS"),
                 "ordering": "confidence factor only",
             },
             {
@@ -840,9 +737,7 @@ def pointer_report(
                 "endianness": "little",
                 "layout": "adjacent low-byte array followed by high-byte array",
                 "target_adjustment": 1,
-                "required_evidence": (
-                    "both arrays loaded indexed, pushed with PHA and consumed by RTS"
-                ),
+                "required_evidence": ("both arrays loaded indexed, pushed with PHA and consumed by RTS"),
                 "ordering": "confidence factor only",
             },
         ],
@@ -850,9 +745,7 @@ def pointer_report(
     }
 
 
-def write_pointer_report(
-    path: Path, image: InesImage, candidates: tuple[PointerCandidate, ...]
-) -> None:
+def write_pointer_report(path: Path, image: InesImage, candidates: tuple[PointerCandidate, ...]) -> None:
     path.write_text(
         json.dumps(pointer_report(image, candidates), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -863,18 +756,14 @@ def write_pointer_report(
 BANK_ID_RE = re.compile(r"_B\d{2}_")
 
 
-def relocate_pointer_candidate(
-    candidate: PointerCandidate, *, bank: int, physical_delta: int
-) -> PointerCandidate:
+def relocate_pointer_candidate(candidate: PointerCandidate, *, bank: int, physical_delta: int) -> PointerCandidate:
     """Move a bank-local candidate into or out of the physical ROM address space."""
     entries = tuple(
         replace(
             entry,
             physical_offset=entry.physical_offset + physical_delta,
             high_physical_offset=(
-                None
-                if entry.high_physical_offset is None
-                else entry.high_physical_offset + physical_delta
+                None if entry.high_physical_offset is None else entry.high_physical_offset + physical_delta
             ),
             bank=bank,
         )

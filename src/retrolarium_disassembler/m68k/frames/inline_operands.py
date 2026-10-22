@@ -20,6 +20,7 @@ Writes through unknown or absolute addresses are assumed not to alias the
 handler's own stack frame; the return slot is only reachable through SP or a
 frame pointer derived from it.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -44,12 +45,14 @@ SP = 15
 
 class Sym(NamedTuple):
     """An address relative to a symbolic base: initial SP or return PC."""
+
     base: str
     offset: int
 
 
 class Part(NamedTuple):
     """A value of which only the bits set in ``mask`` are known."""
+
     value: int
     mask: int
 
@@ -160,8 +163,7 @@ class State:
         return State(list(self.regs), dict(self.flags), dict(self.stack), self.chain)
 
     def key(self):
-        return (tuple(self.regs), tuple(sorted(self.flags.items())),
-                tuple(sorted(self.stack.items())))
+        return (tuple(self.regs), tuple(sorted(self.flags.items())), tuple(sorted(self.stack.items())))
 
     def join(self, other):
         regs = [_join_value(a, b) for a, b in zip(self.regs, other.regs)]
@@ -191,7 +193,7 @@ class _Emulator:
         offset = address - self.origin
         if address & 1 or not 0 <= offset <= len(self.data) - 2:
             raise Unsupported(f"instruction fetch at {address:06X}")
-        return int.from_bytes(self.data[offset:offset + 2], "big")
+        return int.from_bytes(self.data[offset : offset + 2], "big")
 
     def read(self, state, address, size):
         if isinstance(address, Sym):
@@ -211,7 +213,7 @@ class _Emulator:
         address &= 0xFFFFFF
         offset = address - self.origin
         if 0 <= offset <= len(self.data) - size and address < 0x400000:
-            return int.from_bytes(self.data[offset:offset + size], "big")
+            return int.from_bytes(self.data[offset : offset + size], "big")
         return None
 
     def write(self, state, address, size, value):
@@ -239,8 +241,9 @@ class _Emulator:
         new_value, new_mask = _bits(value)
         old_value, old_mask = _bits(state.regs[index])
         keep = FULL & ~_MASK[size]
-        state.regs[index] = _make((old_value & keep) | (new_value & _MASK[size]),
-                                  (old_mask & keep) | (new_mask & _MASK[size]))
+        state.regs[index] = _make(
+            (old_value & keep) | (new_value & _MASK[size]), (old_mask & keep) | (new_mask & _MASK[size])
+        )
 
     def set_areg(self, state, index, size, value):
         if size == 2:
@@ -366,6 +369,7 @@ class _Emulator:
 
         def known(*values):
             return all(value is not None for value in values)
+
         if code == 0:
             return True
         if code == 1:
@@ -555,8 +559,7 @@ class _Emulator:
         if opcode & 0xFFF8 == 0x4840:
             value = state.regs[reg]
             bits, mask = _bits(None if isinstance(value, Sym) else value)
-            state.regs[reg] = _make(((bits << 16) | (bits >> 16)) & FULL,
-                                    ((mask << 16) | (mask >> 16)) & FULL)
+            state.regs[reg] = _make(((bits << 16) | (bits >> 16)) & FULL, ((mask << 16) | (mask >> 16)) & FULL)
             self.logic_flags(state, state.regs[reg], 4)
             return [(ext, state)]
         if opcode & 0xFFC0 == 0x4840:
@@ -627,8 +630,7 @@ class _Emulator:
                     self.write(state, address, size, state.regs[15 - index])
             state.regs[8 + reg] = address
             return [(ext, state)]
-        if mode in (0, 1, 4) or (to_registers and mode == 7 and reg == 4) or (
-                not to_registers and mode == 3):
+        if mode in (0, 1, 4) or (to_registers and mode == 7 and reg == 4) or (not to_registers and mode == 3):
             raise Unsupported("invalid MOVEM")
         if mode == 3:
             address = state.regs[8 + reg]
@@ -739,6 +741,7 @@ class _Emulator:
                 if left:
                     return ((word << rotate) | (word >> (bits - rotate))) & mask
                 return ((word >> rotate) | (word << (bits - rotate))) & mask
+
             result, result_known = turn(value), turn(known)
         elif left:
             result = (value << count) & mask if count < bits else 0
@@ -771,8 +774,7 @@ class _Emulator:
             if kind == 0 and left:
                 signs = {bool(((value << i) & mask) & _SIGN[size]) for i in range(min(count, bits) + 1)}
                 overflow = int(len(signs) > 1)
-            state.flags.update(N=int(bool(result & _SIGN[size])), Z=int(result == 0),
-                               V=overflow, C=carry)
+            state.flags.update(N=int(bool(result & _SIGN[size])), Z=int(result == 0), V=overflow, C=carry)
             if kind != 3:
                 state.flags["X"] = carry
         else:
@@ -837,8 +839,9 @@ class _Emulator:
         operand, ext = self.ea(state, ext, mode, reg, size)
         destination = _Operand("d", register)
         if group == 0xB and opmode < 4:
-            self.arith(state, self.get(state, destination, size),
-                       self.get(state, operand, size), size, True, compare=True)
+            self.arith(
+                state, self.get(state, destination, size), self.get(state, operand, size), size, True, compare=True
+            )
             return [(ext, state)]
         if opmode >= 4:
             source, target = destination, operand
@@ -950,8 +953,9 @@ class InlineOperandProver:
     def length(self, handler, following):
         key = handler, following
         if key not in self.lengths:
-            self.lengths[key] = (inline_operand_length(self.image, handler, following)
-                                 if self.consumes(handler) else None)
+            self.lengths[key] = (
+                inline_operand_length(self.image, handler, following) if self.consumes(handler) else None
+            )
         return self.lengths[key]
 
 
@@ -990,7 +994,9 @@ def _walk_continuation(image, start, known_starts, prover, budget):
 
 
 def discover_inline_operand_calls(
-    image: MegaDriveImage, facts: dict[int, InstructionFact], *,
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
     prover: InlineOperandProver | None = None,
 ) -> tuple[InlineTrapCall, ...]:
     """Calls whose handler provably skips variable-length inline operands."""
@@ -1015,5 +1021,6 @@ def discover_inline_operand_calls(
     # A backend fall-through decode can place a false call inside another
     # site's operands; only calls outside every proven operand range remain.
     covered = {address for call in calls for address in range(call.data_address, call.continuation)}
-    return tuple(sorted((call for call in calls if call.call_address not in covered),
-                        key=lambda call: call.call_address))
+    return tuple(
+        sorted((call for call in calls if call.call_address not in covered), key=lambda call: call.call_address)
+    )

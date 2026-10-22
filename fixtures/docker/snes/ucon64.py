@@ -15,12 +15,12 @@ def find_header(data: bytearray) -> int:
 
 def patch_checksum(data: bytearray, header: int) -> int:
     checksum_offset = header + 0x1C
-    data[checksum_offset:checksum_offset + 4] = bytes(4)
+    data[checksum_offset : checksum_offset + 4] = bytes(4)
     # A valid checksum/complement pair always contributes 0x1fe to the sum.
     checksum = (sum(data) + 0x1FE) & 0xFFFF
     complement = checksum ^ 0xFFFF
-    data[checksum_offset:checksum_offset + 2] = complement.to_bytes(2, "little")
-    data[checksum_offset + 2:checksum_offset + 4] = checksum.to_bytes(2, "little")
+    data[checksum_offset : checksum_offset + 2] = complement.to_bytes(2, "little")
+    data[checksum_offset + 2 : checksum_offset + 4] = checksum.to_bytes(2, "little")
     return checksum
 
 

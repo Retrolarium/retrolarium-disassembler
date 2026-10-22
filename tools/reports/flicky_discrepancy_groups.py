@@ -89,9 +89,7 @@ def semantic_kind(record: SourceAtAddress) -> str | None:
     if operation in {"dc.w", "dc.l"}:
         statement = _statement_for_operation(record, _operation(record.lines))
         operands = statement.split(None, 1)[1] if " " in statement else ""
-        without_numbers = re.sub(
-            r"\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|\b\d+\b", "", operands
-        )
+        without_numbers = re.sub(r"\$[0-9A-Fa-f]+|0x[0-9A-Fa-f]+|\b\d+\b", "", operands)
         suffix = "symbolic" if re.search(r"[A-Za-z_]", without_numbers) else "numeric"
         return f"{operation}.{suffix}"
     return operation
@@ -161,15 +159,11 @@ def _equivalent(reference_kind: str, generated_kind: str) -> bool:
 def difference_segments(
     reference: tuple[SourceSpan, ...], generated: tuple[SourceSpan, ...]
 ) -> tuple[DifferenceSegment, ...]:
-    boundaries = sorted(
-        {value for span in (*reference, *generated) for value in (span.start, span.end)}
-    )
+    boundaries = sorted({value for span in (*reference, *generated) for value in (span.start, span.end)})
     ref_index = gen_index = 0
     result = []
 
-    def active(
-        spans: tuple[SourceSpan, ...], address: int, index: int
-    ) -> tuple[SourceSpan | None, int]:
+    def active(spans: tuple[SourceSpan, ...], address: int, index: int) -> tuple[SourceSpan | None, int]:
         while index < len(spans) and spans[index].end <= address:
             index += 1
         if index < len(spans) and spans[index].start <= address < spans[index].end:
@@ -193,16 +187,12 @@ def difference_segments(
             and result[-1].generated_kind == gen_kind
         ):
             previous = result.pop()
-            segment = DifferenceSegment(
-                previous.start, end, category, ref_kind, gen_kind
-            )
+            segment = DifferenceSegment(previous.start, end, category, ref_kind, gen_kind)
         result.append(segment)
     return tuple(result)
 
 
-def _labels(
-    source: dict[int, SourceAtAddress], start: int, end: int
-) -> list[str]:
+def _labels(source: dict[int, SourceAtAddress], start: int, end: int) -> list[str]:
     result = []
     for address in sorted(key for key in source if start <= key < end):
         for line in source[address].lines:
@@ -232,23 +222,23 @@ def group_segments(
             size = item.end - item.start
             category_bytes[item.category] += size
             transitions[f"{item.reference_kind} -> {item.generated_kind}"] += size
-        result.append({
-            "id": f"M68K-{index:03d}",
-            "start": f"{start:06X}",
-            "end_exclusive": f"{end:06X}",
-            "size": end - start,
-            "categories": dict(category_bytes.most_common()),
-            "transitions": dict(transitions.most_common()),
-            "reference_labels": _labels(reference, start, end),
-            "generated_labels": _labels(generated, start, end),
-            "html_anchor": f"flicky-source-diff.html#a{start:06X}",
-        })
+        result.append(
+            {
+                "id": f"M68K-{index:03d}",
+                "start": f"{start:06X}",
+                "end_exclusive": f"{end:06X}",
+                "size": end - start,
+                "categories": dict(category_bytes.most_common()),
+                "transitions": dict(transitions.most_common()),
+                "reference_labels": _labels(reference, start, end),
+                "generated_labels": _labels(generated, start, end),
+                "html_anchor": f"flicky-source-diff.html#a{start:06X}",
+            }
+        )
     return result
 
 
-def instruction_groups(
-    addresses: set[int], instructions: dict[int, bytes], prefix: str
-) -> list[dict[str, object]]:
+def instruction_groups(addresses: set[int], instructions: dict[int, bytes], prefix: str) -> list[dict[str, object]]:
     groups = []
     for address in sorted(addresses):
         end = address + len(instructions[address])
@@ -257,13 +247,15 @@ def instruction_groups(
             groups[-1]["end_exclusive"] = f"{groups[-1]['_end']:04X}"
             groups[-1]["instruction_count"] += 1
             continue
-        groups.append({
-            "id": f"{prefix}-{len(groups) + 1:03d}",
-            "start": f"{address:04X}",
-            "end_exclusive": f"{end:04X}",
-            "instruction_count": 1,
-            "_end": end,
-        })
+        groups.append(
+            {
+                "id": f"{prefix}-{len(groups) + 1:03d}",
+                "start": f"{address:04X}",
+                "end_exclusive": f"{end:04X}",
+                "instruction_count": 1,
+                "_end": end,
+            }
+        )
     for group in groups:
         group.pop("_end")
     return groups
@@ -275,9 +267,7 @@ def _z80_groups(reference: Path, generated: Path, output: Path) -> dict[str, obj
     facts = generated.parent / "analysis" / "z80" / "program00" / "instructions.json"
     if not all(path.is_file() for path in (listing, driver, facts)):
         return {"available": False}
-    known = listing_instructions(
-        listing, driver.read_bytes(), source_column=36, hex_width=2
-    )
+    known = listing_instructions(listing, driver.read_bytes(), source_column=36, hex_width=2)
     analyzed = {
         item["physical_offset"]: bytes.fromhex(item["bytes"])
         for item in json.loads(facts.read_text(encoding="utf-8"))["instructions"]
@@ -334,31 +324,28 @@ def write_report(reference: Path, generated: Path, output: Path) -> dict[str, ob
         "",
         "## M68K summary",
         "",
-        f"Groups: **{len(groups)}**, bytes affected: "
-        f"**{sum(group['size'] for group in groups)}**.",
+        f"Groups: **{len(groups)}**, bytes affected: **{sum(group['size'] for group in groups)}**.",
         "",
         "| Category | Groups | Bytes | Direction for the heuristic |",
         "| --- | ---: | ---: | --- |",
     ]
     for category, count in category_groups.most_common():
         lines.append(
-            f"| {CATEGORY_LABELS[category]} | {count} | "
-            f"{category_bytes[category]} | {CATEGORY_HINTS[category]} |"
+            f"| {CATEGORY_LABELS[category]} | {count} | {category_bytes[category]} | {CATEGORY_HINTS[category]} |"
         )
-    lines.extend((
-        "",
-        "## All M68K groups",
-        "",
-        "| ID | Range | Bytes | Categories | Reference labels |",
-        "| --- | --- | ---: | --- | --- |",
-    ))
+    lines.extend(
+        (
+            "",
+            "## All M68K groups",
+            "",
+            "| ID | Range | Bytes | Categories | Reference labels |",
+            "| --- | --- | ---: | --- | --- |",
+        )
+    )
     for group in groups:
         start = group["start"]
         end = f"{int(group['end_exclusive'], 16) - 1:06X}"
-        categories = ", ".join(
-            f"{CATEGORY_LABELS[key]} ({value})"
-            for key, value in group["categories"].items()
-        )
+        categories = ", ".join(f"{CATEGORY_LABELS[key]} ({value})" for key, value in group["categories"].items())
         labels = ", ".join(group["reference_labels"][:8]) or "—"
         if len(group["reference_labels"]) > 8:
             labels += f" … +{len(group['reference_labels']) - 8}"
@@ -371,25 +358,22 @@ def write_report(reference: Path, generated: Path, output: Path) -> dict[str, ob
     if not z80["available"]:
         lines.append("There is no Z80 reference listing.")
     else:
-        lines.extend((
-            f"Missed instructions: **{z80['missed_instruction_count']}** in "
-            f"**{len(z80['missed_groups'])}** groups. Extra instructions: "
-            f"**{z80['extra_instruction_count']}** in "
-            f"**{len(z80['extra_groups'])}** groups.",
-            "",
-            "| ID | Range | Instructions |",
-            "| --- | --- | ---: |",
-        ))
+        lines.extend(
+            (
+                f"Missed instructions: **{z80['missed_instruction_count']}** in "
+                f"**{len(z80['missed_groups'])}** groups. Extra instructions: "
+                f"**{z80['extra_instruction_count']}** in "
+                f"**{len(z80['extra_groups'])}** groups.",
+                "",
+                "| ID | Range | Instructions |",
+                "| --- | --- | ---: |",
+            )
+        )
         for group in (*z80["missed_groups"], *z80["extra_groups"]):
             end = f"{int(group['end_exclusive'], 16) - 1:04X}"
-            lines.append(
-                f"| {group['id']} | `${group['start']}–{end}` | "
-                f"{group['instruction_count']} |"
-            )
+            lines.append(f"| {group['id']} | `${group['start']}–{end}` | {group['instruction_count']} |")
     lines.append("")
-    (output / "flicky-discrepancy-groups.md").write_text(
-        "\n".join(lines), encoding="utf-8", newline="\n"
-    )
+    (output / "flicky-discrepancy-groups.md").write_text("\n".join(lines), encoding="utf-8", newline="\n")
     return report
 
 
@@ -400,11 +384,17 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     report = write_report(args.reference, args.generated, args.output)
-    print(json.dumps({
-        "m68k_groups": report["m68k"]["group_count"],
-        "z80_missed_groups": len(report["z80"].get("missed_groups", [])),
-        "z80_extra_groups": len(report["z80"].get("extra_groups", [])),
-    }, ensure_ascii=False, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "m68k_groups": report["m68k"]["group_count"],
+                "z80_missed_groups": len(report["z80"].get("missed_groups", [])),
+                "z80_extra_groups": len(report["z80"].get("extra_groups", [])),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
 
 
 if __name__ == "__main__":

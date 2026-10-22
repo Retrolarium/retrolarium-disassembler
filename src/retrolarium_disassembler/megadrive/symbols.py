@@ -66,9 +66,7 @@ def _symbols_for_program(
     tables = tables or {}
     pointer_targets = pointer_targets or set()
     instruction_interiors = {
-        address
-        for fact in facts.values()
-        for address in range(fact.cpu_address + 1, fact.cpu_address + fact.length)
+        address for fact in facts.values() for address in range(fact.cpu_address + 1, fact.cpu_address + fact.length)
     }
     claims: dict[int, dict[str, set[str]]] = {}
 
@@ -128,8 +126,9 @@ def _symbols_for_program(
     # Z80 programs uploaded to the same addresses keep apart by number: the
     # first is Z80, the next Z80p1, Z80p2 and so on.
     program = cpu_id.partition(".")[2]
-    cpu_name = "M68K" if cpu_id == "m68k" else (
-        "Z80" if not program.isdigit() or int(program) == 0 else f"Z80p{int(program)}")
+    cpu_name = (
+        "M68K" if cpu_id == "m68k" else ("Z80" if not program.isdigit() or int(program) == 0 else f"Z80p{int(program)}")
+    )
     symbols: list[TechnicalSymbol] = []
     for address in sorted(claims):
         if not base_address <= address <= end_address:
@@ -139,18 +138,10 @@ def _symbols_for_program(
         kind = next(item for item in priorities if item in kind_claims)
         name = f"{prefixes[kind]}_{cpu_name}_{address:0{address_width}X}"
         aliases = tuple(sorted(vector_aliases.get(address, set())))
-        evidence = tuple(
-            sorted(
-                evidence
-                for values in kind_claims.values()
-                for evidence in values
-            )
-        )
+        evidence = tuple(sorted(evidence for values in kind_claims.values() for evidence in values))
         symbols.append(
             TechnicalSymbol(
-                symbol_id=(
-                    f"megadrive.{cpu_id}.{kind}.{address:0{address_width}x}"
-                ),
+                symbol_id=(f"megadrive.{cpu_id}.{kind}.{address:0{address_width}x}"),
                 name=name,
                 kind=kind,
                 cpu_id=cpu_id,
@@ -173,9 +164,7 @@ def generate_symbols(
     vector_aliases: dict[int, set[str]] = {}
     for vector in image.vector_table[1:]:
         if image.header.rom_start <= vector.address <= image.actual_rom_end:
-            vector_aliases.setdefault(vector.address, set()).add(
-                _vector_alias(vector.name, vector.address)
-            )
+            vector_aliases.setdefault(vector.address, set()).add(_vector_alias(vector.name, vector.address))
     tables: dict[int, list[str]] = {}
     pointer_targets: set[int] = set()
     for candidate in pointer_candidates:
@@ -183,9 +172,7 @@ def generate_symbols(
             tables.setdefault(candidate.logical_start, []).append(candidate.schema_id)
             pointer_targets.update(entry.target for entry in candidate.entries)
     for setup in discover_standard_boot_setups(image, m68k_facts):
-        tables.setdefault(setup.logical_start, []).append(
-            "megadrive.standard-boot-setup"
-        )
+        tables.setdefault(setup.logical_start, []).append("megadrive.standard-boot-setup")
     symbols = _symbols_for_program(
         m68k_facts,
         cpu_id="m68k",
@@ -200,11 +187,7 @@ def generate_symbols(
     )
     padding_ranges = discover_long_ff_padding(image, m68k_facts)
     symbols = [
-        symbol for symbol in symbols
-        if not any(
-            start <= symbol.physical_offset < end
-            for start, end in padding_ranges
-        )
+        symbol for symbol in symbols if not any(start <= symbol.physical_offset < end for start, end in padding_ranges)
     ]
     for cpu_id, base_address, facts in z80_programs:
         symbols.extend(
@@ -214,10 +197,12 @@ def generate_symbols(
                 address_space="z80",
                 address_width=4,
                 base_address=base_address,
-                end_address=base_address + max(
+                end_address=base_address
+                + max(
                     (fact.physical_offset + fact.length for fact in facts.values()),
                     default=0,
-                ) - 1,
+                )
+                - 1,
                 entry_addresses={base_address},
             )
         )
@@ -228,9 +213,7 @@ def generate_symbols(
     return tuple(symbols)
 
 
-def write_symbol_report(
-    path: Path, image: MegaDriveImage, symbols: tuple[TechnicalSymbol, ...]
-) -> None:
+def write_symbol_report(path: Path, image: MegaDriveImage, symbols: tuple[TechnicalSymbol, ...]) -> None:
     document = {
         "schema": "retrolarium.symbols",
         "schema_version": 1,

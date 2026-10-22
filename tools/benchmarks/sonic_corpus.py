@@ -1,4 +1,5 @@
 """Evaluate ROM-only Sonic disassembly against verified assembly references."""
+
 from __future__ import annotations
 
 import argparse
@@ -15,13 +16,15 @@ from tools.reports.flicky_html_diff import write_html
 from tools.benchmarks.source import LISTING_LINE, instruction_quality, read_listing, same_instruction
 
 
-M68K = set("""abcd add adda addi addq addx and andi asl asr bcc bcs beq bge bgt bhi
+M68K = set(
+    """abcd add adda addi addq addx and andi asl asr bcc bcs beq bge bgt bhi
 ble bls blt bmi bne bpl bra bsr bvc bvs bhs blo bchg bclr bset btst chk clr cmp
 cmpa cmpi cmpm dbcc dbcs dbeq dbf dbge dbgt dbhi dble dbls dblt dbmi dbne dbpl
 dbra dbt dbvc dbvs divs divu eor eori exg ext illegal jmp jsr lea link lsl lsr
 move movea movem movep moveq muls mulu nbcd neg negx nop not or ori pea reset
 rol ror roxl roxr rte rtr rts sbcd scc scs seq sf sge sgt shi sle sls slt smi
-sne spl st svc svs stop sub suba subi subq subx swap tas trap trapv tst unlk""".split())
+sne spl st svc svs stop sub suba subi subq subx swap tas trap trapv tst unlk""".split()
+)
 SN_LINE = re.compile(r"^([0-9A-Fa-f]{8}) (.{26})(.*)$")
 
 
@@ -36,7 +39,11 @@ def operation(source: str) -> str:
 
 
 def normalise_reference_listing(
-    listing: Path, rom: bytes, output: Path, *, sn: bool = False,
+    listing: Path,
+    rom: bytes,
+    output: Path,
+    *,
+    sn: bool = False,
     patched_ranges: tuple[tuple[int, int], ...] = (),
 ) -> tuple[dict[int, bytes], frozenset[int], dict]:
     """Keep M68K instructions, resolve address phases and verify opcode bytes.
@@ -137,7 +144,7 @@ def normalise_reference_listing(
         # Their encoding groups need not have the width of M68K opcodes.
         if words and all(re.fullmatch(r"(?:[0-9A-Fa-f]{2}|[0-9A-Fa-f]{4})", word) for word in words):
             boundary_raw = bytes.fromhex("".join(words))
-            if 0 <= physical < len(rom) and rom[physical:physical + len(boundary_raw)] == boundary_raw:
+            if 0 <= physical < len(rom) and rom[physical : physical + len(boundary_raw)] == boundary_raw:
                 boundaries.add(physical)
         if not words or not all(re.fullmatch(r"[0-9A-Fa-f]{4}", word) for word in words):
             continue
@@ -146,10 +153,11 @@ def normalise_reference_listing(
             if op.split(".", 1)[0] in M68K:
                 stats["instructions_outside_rom"] += 1
                 if len(unmapped_samples) < 12:
-                    unmapped_samples.append({"logical_address": address, "physical_offset": physical,
-                                             "source": source.strip()})
+                    unmapped_samples.append(
+                        {"logical_address": address, "physical_offset": physical, "source": source.strip()}
+                    )
             continue
-        actual = rom[physical:physical + len(raw)]
+        actual = rom[physical : physical + len(raw)]
         if op.split(".", 1)[0] not in M68K:
             if actual == raw:
                 boundaries.add(physical)
@@ -178,11 +186,13 @@ def normalise_reference_listing(
     found = {}
     open_ended = set()
     for address, (raw, source) in candidates.items():
-        if not sn and raw != rom[address:address + len(raw)]:
-            actual = rom[address:address + len(raw)]
+        if not sn and raw != rom[address : address + len(raw)]:
+            actual = rom[address : address + len(raw)]
             differences = [address + index for index, (left, right) in enumerate(zip(raw, actual)) if left != right]
-            if not all(any(start <= point < end for start, end in patched_ranges)
-                       or assembler_patches.get(point) == rom[point] for point in differences):
+            if not all(
+                any(start <= point < end for start, end in patched_ranges) or assembler_patches.get(point) == rom[point]
+                for point in differences
+            ):
                 raise ValueError(f"AS listing disagrees with original ROM: {address:#x}")
             stats["postprocessed_instructions"] += 1
             raw = actual
@@ -199,7 +209,7 @@ def normalise_reference_listing(
     # A common AS format lets the existing HTML comparison consume SN listings.
     interiors = bytearray(len(rom))
     for address, raw in found.items():
-        interiors[address + 1:address + len(raw)] = b"\x01" * (len(raw) - 1)
+        interiors[address + 1 : address + len(raw)] = b"\x01" * (len(raw) - 1)
         boundaries.add(address + len(raw))
     rows = []
     for address in sorted(boundaries | found.keys() | labels.keys()):
@@ -211,9 +221,15 @@ def normalise_reference_listing(
             continue
         if interiors[address] and address not in found:
             continue
-        raw, source = (found[address], candidates[address][1]) if address in found else (
-            rom[address:address + 2], f" dc.w ${int.from_bytes(rom[address:address + 2], 'big'):04X} ; listing boundary")
-        encoded = " ".join(raw[i:i + 2].hex().upper() for i in range(0, min(len(raw), 6), 2))
+        raw, source = (
+            (found[address], candidates[address][1])
+            if address in found
+            else (
+                rom[address : address + 2],
+                f" dc.w ${int.from_bytes(rom[address : address + 2], 'big'):04X} ; listing boundary",
+            )
+        )
+        encoded = " ".join(raw[i : i + 2].hex().upper() for i in range(0, min(len(raw), 6), 2))
         rows.append(f"{len(rows) + 1:8d}/{address:8X} : {encoded:<21}{source}")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(rows) + "\n", encoding="utf-8")
@@ -233,17 +249,24 @@ def group_spans(addresses: set[int], instructions: dict[int, bytes]) -> list[dic
 
 
 def compare(known: dict[int, bytes], known_open: frozenset[int], actual: dict[int, bytes]) -> dict:
-    matching = {address for address in known.keys() & actual.keys()
-                if same_instruction(known[address], actual[address], expected_open=address in known_open)}
+    matching = {
+        address
+        for address in known.keys() & actual.keys()
+        if same_instruction(known[address], actual[address], expected_open=address in known_open)
+    }
     missing = known.keys() - matching
     extra = actual.keys() - known.keys()
-    return {"reference_instructions": len(known), "generated_instructions": len(actual),
-            "matching_instructions": len(matching), "missing_instructions": len(missing),
-            "extra_instructions": len(extra),
-            "different_encodings": len(known.keys() & actual.keys() - matching),
-            **instruction_quality(len(matching), len(known), len(actual)),
-            "missing_groups": group_spans(missing, known),
-            "extra_groups": group_spans(extra, actual)}
+    return {
+        "reference_instructions": len(known),
+        "generated_instructions": len(actual),
+        "matching_instructions": len(matching),
+        "missing_instructions": len(missing),
+        "extra_instructions": len(extra),
+        "different_encodings": len(known.keys() & actual.keys() - matching),
+        **instruction_quality(len(matching), len(known), len(actual)),
+        "missing_groups": group_spans(missing, known),
+        "extra_groups": group_spans(extra, actual),
+    }
 
 
 def annotate_groups(groups: list[dict], listing: Path) -> None:
@@ -267,18 +290,22 @@ def below_source_recall_target(case: dict, minimum: Decimal) -> bool:
     source = case.get("source_emission")
     if source is None:
         return True
-    return (Decimal(100) * source["matching_instructions"]
-            < minimum * source["reference_instructions"])
+    return Decimal(100) * source["matching_instructions"] < minimum * source["reference_instructions"]
 
 
 def benchmark(
-    corpus: Path, projects: Path, output: Path, *, cartridge_only: bool = False,
+    corpus: Path,
+    projects: Path,
+    output: Path,
+    *,
+    cartridge_only: bool = False,
     only: frozenset[str] = frozenset(),
 ) -> dict:
     manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
     # The kit builds and verifies the generated projects.
     sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-kit" / "src"))
     from retrolarium_kit.core.project import build_project, verify_project
+
     reports = []
     for unit in manifest["units"]:
         if not unit.get("matching_original_roms"):
@@ -291,8 +318,7 @@ def benchmark(
         print(f"Comparing {name}...", flush=True)
         project, dest = projects / name, output / name
         dest.mkdir(parents=True, exist_ok=True)
-        result = {"name": name, "rom_sha256": unit["binary_sha256"],
-                  "reference_source_sha256": unit["source_sha256"]}
+        result = {"name": name, "rom_sha256": unit["binary_sha256"], "reference_source_sha256": unit["source_sha256"]}
         reports.append(result)
         try:
             if not unit.get("matches_upstream"):
@@ -319,8 +345,9 @@ def benchmark(
                 patches = ((offset, offset + 2),)
             listing = reference_dir / ("chaotix.lst" if name == "chaotix" else "reference.lst")
             normalized = dest / "reference-m68k.lst"
-            known, known_open, provenance = normalise_reference_listing(listing, rom, normalized,
-                                                                        sn=name == "chaotix", patched_ranges=patches)
+            known, known_open, provenance = normalise_reference_listing(
+                listing, rom, normalized, sn=name == "chaotix", patched_ranges=patches
+            )
             if known_open or provenance.get("instructions_outside_rom", 0):
                 raise ValueError("reference listing has unresolved lengths or unmapped M68K instructions")
             recovered, recovered_open = read_listing(normalized, rom)
@@ -344,8 +371,10 @@ def benchmark(
             passes = json.loads((project / "analysis/m68k/decoder-passes.json").read_text(encoding="utf-8"))
             result["decoder_passes"] = len(passes["passes"])
             result["decoder_converged"] = passes["converged"]
-            z80_facts = [json.loads(path.read_text(encoding="utf-8"))
-                         for path in (project / "analysis/z80").glob("*/instructions.json")]
+            z80_facts = [
+                json.loads(path.read_text(encoding="utf-8"))
+                for path in (project / "analysis/z80").glob("*/instructions.json")
+            ]
             result["z80_payloads"] = len(z80_facts)
             result["z80_programs"] = sum(bool(program["instructions"]) for program in z80_facts)
             if name == "chaotix":
@@ -353,40 +382,64 @@ def benchmark(
                     "Baseline Mega Drive backend lacks 32X banks and SH-2; this measures partial M68K recovery only. "
                     "The reference includes mars_init.bin without M68K source, so additional instructions can be genuine bootstrap code."
                 )
-            counts = write_html(reference_dir, project / "generated", dest / "opcode-differences.html",
-                                differences_only=True, opcodes_only=True, rom=rom_path,
-                                reference_listing=normalized, title=name)
+            counts = write_html(
+                reference_dir,
+                project / "generated",
+                dest / "opcode-differences.html",
+                differences_only=True,
+                opcodes_only=True,
+                rom=rom_path,
+                reference_listing=normalized,
+                title=name,
+            )
             result["html_status_counts"] = dict(counts)
             for key in ("missing", "extra"):
                 lines = ["start\tend_exclusive\tinstructions\treference_context"]
-                lines.extend(f"${group['start']:06X}\t${group['end']:06X}\t{group['instructions']}\t{group.get('reference_context', '')}"
-                             for group in result["source_emission"][key + "_groups"])
+                lines.extend(
+                    f"${group['start']:06X}\t${group['end']:06X}\t{group['instructions']}\t{group.get('reference_context', '')}"
+                    for group in result["source_emission"][key + "_groups"]
+                )
                 (dest / (key + "-groups.tsv")).write_text("\n".join(lines) + "\n", encoding="utf-8")
         except (ValueError, RuntimeError, OSError) as error:
             result["error"] = str(error)
         (dest / "comparison.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    report = {"schema": "retrolarium.sonic-corpus-benchmark", "schema_version": 1,
-              "reference_repositories": manifest["repositories"], "cases": reports,
-              "scope": ("Cartridge-only M68K opcodes. " if cartridge_only else "M68K opcodes. ")
-              + "Sonic CD is measured separately by sonic_cd_benchmark.py; Z80 recall needs separate decompressed-driver oracles."}
+    report = {
+        "schema": "retrolarium.sonic-corpus-benchmark",
+        "schema_version": 1,
+        "reference_repositories": manifest["repositories"],
+        "cases": reports,
+        "scope": ("Cartridge-only M68K opcodes. " if cartridge_only else "M68K opcodes. ")
+        + "Sonic CD is measured separately by sonic_cd_benchmark.py; Z80 recall needs separate decompressed-driver oracles.",
+    }
     (output / "summary.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    rows = ["# Sonic: automatic ROM disassembly", "",
-            "A match is a 68000 instruction with the same address, length and bytes.", "",
-            "| ROM | Reference | Analysis | ASM | Precision ASM | ROM rebuild | Differences |",
-            "| --- | ---: | ---: | ---: | ---: | --- | --- |"]
+    rows = [
+        "# Sonic: automatic ROM disassembly",
+        "",
+        "A match is a 68000 instruction with the same address, length and bytes.",
+        "",
+        "| ROM | Reference | Analysis | ASM | Precision ASM | ROM rebuild | Differences |",
+        "| --- | ---: | ---: | ---: | ---: | --- | --- |",
+    ]
     for case in reports:
         if "source_emission" in case:
             source, analysis = case["source_emission"], case["analysis"]
-            rows.append(f"| {case['name']} | {analysis['reference_instructions']} | "
-                        f"{analysis['instruction_recall_percentage']}% | {source['instruction_recall_percentage']}% | "
-                        f"{source['instruction_precision_percentage']}% | {case['rebuild_status']} | "
-                        f"[HTML]({case['name']}/opcode-differences.html) |")
+            rows.append(
+                f"| {case['name']} | {analysis['reference_instructions']} | "
+                f"{analysis['instruction_recall_percentage']}% | {source['instruction_recall_percentage']}% | "
+                f"{source['instruction_precision_percentage']}% | {case['rebuild_status']} | "
+                f"[HTML]({case['name']}/opcode-differences.html) |"
+            )
         else:
             rows.append(f"| {case['name']} | — | — | — | — | {case.get('rebuild_status', '—')} | {case.get('error')} |")
     rows.append("")
     if not cartridge_only:
-        rows.append("Chaotix: the current Mega Drive model does not support 32X banks and the SH-2; the result covers a partial M68K disassembly.")
-    rows += ["Sonic CD: the disc's MMD programs are compared by sonic_cd_benchmark.py. Z80 is not included in the M68K percentages.", ""]
+        rows.append(
+            "Chaotix: the current Mega Drive model does not support 32X banks and the SH-2; the result covers a partial M68K disassembly."
+        )
+    rows += [
+        "Sonic CD: the disc's MMD programs are compared by sonic_cd_benchmark.py. Z80 is not included in the M68K percentages.",
+        "",
+    ]
     (output / "summary.md").write_text("\n".join(rows), encoding="utf-8")
     return report
 
@@ -396,28 +449,46 @@ def main() -> None:
     parser.add_argument("--corpus", type=Path, default=Path("build/sonic-references"))
     parser.add_argument("--projects", type=Path, default=Path("build/sonic-disassembly"))
     parser.add_argument("--output", type=Path, default=Path("build/sonic-comparison"))
-    parser.add_argument("--cartridge-only", action="store_true",
-                        help="compare ordinary Mega Drive cartridges; exclude 32X")
-    parser.add_argument("--only", action="append", default=[],
-                        help="compare only the named case; repeat for multiple cases")
-    parser.add_argument("--minimum-source-recall", type=Decimal, metavar="PERCENT",
-                        help="fail unless every selected project's emitted ASM reaches this recall")
+    parser.add_argument(
+        "--cartridge-only", action="store_true", help="compare ordinary Mega Drive cartridges; exclude 32X"
+    )
+    parser.add_argument(
+        "--only", action="append", default=[], help="compare only the named case; repeat for multiple cases"
+    )
+    parser.add_argument(
+        "--minimum-source-recall",
+        type=Decimal,
+        metavar="PERCENT",
+        help="fail unless every selected project's emitted ASM reaches this recall",
+    )
     args = parser.parse_args()
     if args.minimum_source_recall is not None and not 0 <= args.minimum_source_recall <= 100:
         parser.error("--minimum-source-recall must be between 0 and 100")
     args.output.mkdir(parents=True, exist_ok=True)
-    report = benchmark(args.corpus.resolve(), args.projects.resolve(), args.output.resolve(),
-                       cartridge_only=args.cartridge_only, only=frozenset(args.only))
-    print(json.dumps([{key: value for key, value in case.items() if key in {"name", "error", "rebuild_status"}}
-                      for case in report["cases"]], indent=2))
+    report = benchmark(
+        args.corpus.resolve(),
+        args.projects.resolve(),
+        args.output.resolve(),
+        cartridge_only=args.cartridge_only,
+        only=frozenset(args.only),
+    )
+    print(
+        json.dumps(
+            [
+                {key: value for key, value in case.items() if key in {"name", "error", "rebuild_status"}}
+                for case in report["cases"]
+            ],
+            indent=2,
+        )
+    )
     if any("error" in case for case in report["cases"]):
         raise SystemExit(1)
     if args.minimum_source_recall is not None:
-        below = [case["name"] for case in report["cases"]
-                 if below_source_recall_target(case, args.minimum_source_recall)]
+        below = [
+            case["name"] for case in report["cases"] if below_source_recall_target(case, args.minimum_source_recall)
+        ]
         if below:
-            print(f"Below {args.minimum_source_recall}% source recall: {', '.join(below)}",
-                  file=sys.stderr)
+            print(f"Below {args.minimum_source_recall}% source recall: {', '.join(below)}", file=sys.stderr)
             raise SystemExit(1)
 
 

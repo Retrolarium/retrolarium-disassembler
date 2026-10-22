@@ -135,11 +135,7 @@ def _format_instruction(
         operand = f"[${int.from_bytes(raw[1:3], 'little'):04X}]"
     elif mode == "long":
         value = int.from_bytes(raw[1:4], "little")
-        operand = (
-            _symbol_value(control_target, symbols)
-            if control_target is not None
-            else f"f:${value:06X}"
-        )
+        operand = _symbol_value(control_target, symbols) if control_target is not None else f"f:${value:06X}"
     elif mode == "longx":
         operand = f"f:${int.from_bytes(raw[1:4], 'little'):06X},x"
     elif mode == "block":
@@ -154,9 +150,7 @@ def _pointer_lines(
     candidate: PointerCandidate,
     symbols: dict[int, TechnicalSymbol],
 ) -> list[str]:
-    lines = [
-        f"    ; {candidate.schema_id} at ROM ${candidate.physical_start:06X}"
-    ]
+    lines = [f"    ; {candidate.schema_id} at ROM ${candidate.physical_start:06X}"]
     targets = [_symbol_value(entry.target, symbols) for entry in candidate.entries]
     if candidate.schema_id == "snes.u16le.current-bank":
         lines.extend(f"    .word .loword({target})" for target in targets)
@@ -173,10 +167,7 @@ def _pointer_lines(
         )
     elif candidate.schema_id == "snes.s16le.table-base":
         base = candidate.logical_start
-        lines.extend(
-            f"    .word ({target} - ${base:06X}) & $FFFF"
-            for target in targets
-        )
+        lines.extend(f"    .word ({target} - ${base:06X}) & $FFFF" for target in targets)
     else:
         raise SnesEmitError(f"unsupported pointer schema: {candidate.schema_id}")
     return lines
@@ -212,10 +203,7 @@ def _write_linker(path: Path, image: SnesImage, bank_size: int) -> None:
     memory: list[str] = []
     segments: list[str] = []
     if image.copier_header:
-        memory.append(
-            f"    COPIER: start = $7D0000, size = ${len(image.copier_header):X}, "
-            "file = %O, fill = no;"
-        )
+        memory.append(f"    COPIER: start = $7D0000, size = ${len(image.copier_header):X}, file = %O, fill = no;")
         segments.append("    COPIER: load = COPIER, type = ro;")
     for bank in range(bank_count):
         name = f"BANK{bank:02X}"
@@ -224,13 +212,7 @@ def _write_linker(path: Path, image: SnesImage, bank_size: int) -> None:
             f"size = ${min(bank_size, len(image.data) - bank * bank_size):X}, file = %O, fill = no;"
         )
         segments.append(f"    {name}: load = {name}, type = ro;")
-    text = (
-        "MEMORY {\n"
-        + "\n".join(memory)
-        + "\n}\n\nSEGMENTS {\n"
-        + "\n".join(segments)
-        + "\n}\n"
-    )
+    text = "MEMORY {\n" + "\n".join(memory) + "\n}\n\nSEGMENTS {\n" + "\n".join(segments) + "\n}\n"
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
@@ -269,9 +251,7 @@ def emit_project(
         symbol_lines.append(f"{symbol.name} = ${symbol.logical_address:06X}")
         for alias in symbol.aliases:
             symbol_lines.append(f"{alias} = ${symbol.logical_address:06X}")
-    (output / "symbols.inc").write_text(
-        "\n".join(symbol_lines) + "\n", encoding="utf-8", newline="\n"
-    )
+    (output / "symbols.inc").write_text("\n".join(symbol_lines) + "\n", encoding="utf-8", newline="\n")
     (source_dir / "header.asm").write_text(
         "\n".join(_header_lines(image, symbols_by_address)) + "\n",
         encoding="utf-8",
@@ -285,22 +265,15 @@ def emit_project(
         if previous is None:
             instructions[instruction.physical_offset] = instruction
         elif previous.raw != instruction.raw:
-            diagnostics.append(
-                f"logical aliases disagree at ROM ${instruction.physical_offset:06X}"
-            )
+            diagnostics.append(f"logical aliases disagree at ROM ${instruction.physical_offset:06X}")
             instructions.pop(instruction.physical_offset, None)
 
     pointers: dict[int, PointerCandidate] = {}
     for candidate in pointer_candidates:
-        if (
-            candidate.status != "accepted"
-            or candidate.schema_id.startswith("snes.vectors")
-        ):
+        if candidate.status != "accepted" or candidate.schema_id.startswith("snes.vectors"):
             continue
         if candidate.physical_start in pointers:
-            diagnostics.append(
-                f"overlapping pointer claims at ROM ${candidate.physical_start:06X}"
-            )
+            diagnostics.append(f"overlapping pointer claims at ROM ${candidate.physical_start:06X}")
             continue
         pointers[candidate.physical_start] = candidate
 
@@ -361,9 +334,7 @@ def emit_project(
         name = f"bank{bank:02X}.asm"
         units.append(f"src/{name}")
         main_lines.extend((f'.segment "BANK{bank:02X}"', f'.include "src/{name}"', ""))
-        lines = [
-            f"; Physical ROM bank {bank:02X}, offsets ${bank_start:06X}-${bank_end - 1:06X}."
-        ]
+        lines = [f"; Physical ROM bank {bank:02X}, offsets ${bank_start:06X}-${bank_end - 1:06X}."]
         cursor = bank_start
         while cursor < bank_end:
             if cursor == header_start:
@@ -386,9 +357,7 @@ def emit_project(
                     instruction_offsets,
                 )
                 if formatted is None:
-                    lines.append(
-                        f"    ; {instruction.mnemonic} {instruction.addressing_mode}: exact fallback"
-                    )
+                    lines.append(f"    ; {instruction.mnemonic} {instruction.addressing_mode}: exact fallback")
                     lines.extend(_hex_bytes(instruction.raw))
                     fallback_bytes += instruction.length
                 else:
@@ -397,11 +366,7 @@ def emit_project(
                 cursor += instruction.length
                 continue
             stop = min(
-                (
-                    offset
-                    for offset in classified_starts
-                    if cursor < offset < bank_end
-                ),
+                (offset for offset in classified_starts if cursor < offset < bank_end),
                 default=bank_end,
             )
             payload = image.data[cursor:stop]
@@ -409,15 +374,11 @@ def emit_project(
             lines.extend(_hex_bytes(payload))
             raw_bytes += len(payload)
             cursor = stop
-        (source_dir / name).write_text(
-            "\n".join(lines) + "\n", encoding="utf-8", newline="\n"
-        )
+        (source_dir / name).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
     if instruction_bytes + fallback_bytes + pointer_bytes + 0x40 + raw_bytes != len(image.data):
         raise SnesEmitError("source ownership does not cover the ROM exactly once")
-    (output / "main.asm").write_text(
-        "\n".join(main_lines), encoding="utf-8", newline="\n"
-    )
+    (output / "main.asm").write_text("\n".join(main_lines), encoding="utf-8", newline="\n")
     _write_linker(output / "linker.cfg", image, bank_size)
     _write_makefile(output / "Makefile")
     result = EmissionResult(

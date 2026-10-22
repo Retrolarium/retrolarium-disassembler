@@ -46,8 +46,7 @@ class StudioPresetTests(unittest.TestCase):
             rom = root / "solomon.nes"
             rom.write_bytes(b"ROM")
 
-            def disassemble(_rom: Path, staging: Path, _ghidra: Path,
-                            **_kwargs: object) -> None:
+            def disassemble(_rom: Path, staging: Path, _ghidra: Path, **_kwargs: object) -> None:
                 (staging / "manifest.json").write_text("{}", encoding="utf-8")
 
             def extract(_rom: Path, document: Path, *, resource: str | None = None) -> None:
@@ -68,38 +67,65 @@ class StudioPresetTests(unittest.TestCase):
 
             def create(_manifest: Path, project: Path, **_kwargs: object) -> None:
                 self.assertEqual(
-                    ["levels.json", "room-art.json", "animations.json",
-                     "audio.json", "presentation.json", "text.json", "graphics.json"],
+                    [
+                        "levels.json",
+                        "room-art.json",
+                        "animations.json",
+                        "audio.json",
+                        "presentation.json",
+                        "text.json",
+                        "graphics.json",
+                    ],
                     [item.name for item in _kwargs["resource_documents"]],
                 )
                 project.write_text("project", encoding="utf-8")
 
             with (
-                patch("retrolarium_disassembler.preset.inspect_game",
-                      return_value=inspection("solomons-key")),
-                patch("retrolarium_disassembler.preset.disassemble_nes",
-                      side_effect=disassemble),
-                patch("retrolarium_disassembler.preset.extract_game",
-                      side_effect=extract),
-                patch("retrolarium_disassembler.preset.create_studio_project",
-                      side_effect=create),
-                patch("retrolarium_disassembler.preset.validate_studio_project",
-                      return_value={"enabled_tabs": [
-                          "rooms", "mirrors", "special", "room-art",
-                          "animations", "audio", "screens", "demo",
-                          "graphics", "palettes", "code"
-                      ]}),
-                patch("retrolarium_disassembler.preset.load_studio_project",
-                      return_value={"workspace": {"tabs": []}}),
+                patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection("solomons-key")),
+                patch("retrolarium_disassembler.preset.disassemble_nes", side_effect=disassemble),
+                patch("retrolarium_disassembler.preset.extract_game", side_effect=extract),
+                patch("retrolarium_disassembler.preset.create_studio_project", side_effect=create),
+                patch(
+                    "retrolarium_disassembler.preset.validate_studio_project",
+                    return_value={
+                        "enabled_tabs": [
+                            "rooms",
+                            "mirrors",
+                            "special",
+                            "room-art",
+                            "animations",
+                            "audio",
+                            "screens",
+                            "demo",
+                            "graphics",
+                            "palettes",
+                            "code",
+                        ]
+                    },
+                ),
+                patch("retrolarium_disassembler.preset.load_studio_project", return_value={"workspace": {"tabs": []}}),
             ):
                 result = create_game_studio_preset(
-                    rom, root / "studio", ghidra_home=root / "ghidra",
+                    rom,
+                    root / "studio",
+                    ghidra_home=root / "ghidra",
                     build=False,
                 )
             self.assertEqual("solomons-key", result["game"])
             self.assertEqual(
-                ["rooms", "mirrors", "special", "room-art", "animations", "audio",
-                 "screens", "demo", "graphics", "palettes", "code"],
+                [
+                    "rooms",
+                    "mirrors",
+                    "special",
+                    "room-art",
+                    "animations",
+                    "audio",
+                    "screens",
+                    "demo",
+                    "graphics",
+                    "palettes",
+                    "code",
+                ],
                 result["enabled_tabs"],
             )
             self.assertTrue(Path(result["project_file"]).is_file())
@@ -126,26 +152,21 @@ class StudioPresetTests(unittest.TestCase):
                 "artifact": {"path": "build/smb1-ju-edited.nes"},
             }
             with (
-                patch("retrolarium_disassembler.preset.inspect_game",
-                    return_value=inspection()),
-                patch("retrolarium_disassembler.preset.disassemble_nes",
-                    side_effect=disassemble),
-                patch("retrolarium_disassembler.preset.extract_game",
-                    side_effect=extract),
-                patch("retrolarium_disassembler.preset.create_studio_project",
-                    side_effect=create) as create_mock,
-                patch("retrolarium_disassembler.preset.validate_studio_project",
-                    return_value={"enabled_tabs": ["world", "levels", "code"]}),
-                patch("retrolarium_disassembler.preset.build_studio_project",
-                    return_value={"status": "built"}) as build_mock,
-                patch("retrolarium_disassembler.preset.verify_studio_project",
-                    return_value=verified) as verify_mock,
-                patch("retrolarium_disassembler.preset.load_studio_project",
-                    return_value={"workspace": {"tabs": []}}),
+                patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection()),
+                patch("retrolarium_disassembler.preset.disassemble_nes", side_effect=disassemble),
+                patch("retrolarium_disassembler.preset.extract_game", side_effect=extract),
+                patch("retrolarium_disassembler.preset.create_studio_project", side_effect=create) as create_mock,
+                patch(
+                    "retrolarium_disassembler.preset.validate_studio_project",
+                    return_value={"enabled_tabs": ["world", "levels", "code"]},
+                ),
+                patch(
+                    "retrolarium_disassembler.preset.build_studio_project", return_value={"status": "built"}
+                ) as build_mock,
+                patch("retrolarium_disassembler.preset.verify_studio_project", return_value=verified) as verify_mock,
+                patch("retrolarium_disassembler.preset.load_studio_project", return_value={"workspace": {"tabs": []}}),
             ):
-                result = create_game_studio_preset(
-                    rom, output, ghidra_home=root / "ghidra"
-                )
+                result = create_game_studio_preset(rom, output, ghidra_home=root / "ghidra")
 
             project = output / "smb1-ju.rlj"
             self.assertTrue(project.is_file())
@@ -165,16 +186,12 @@ class StudioPresetTests(unittest.TestCase):
             rom.write_bytes(b"ROM")
             output = root / "studio"
 
-            def disassemble(
-                _rom: Path, staging: Path, _ghidra: Path, **_kwargs: object
-            ) -> None:
+            def disassemble(_rom: Path, staging: Path, _ghidra: Path, **_kwargs: object) -> None:
                 (staging / "manifest.json").write_text("{}", encoding="utf-8")
 
             extracted: list[tuple[str, str | None]] = []
 
-            def extract(
-                _rom: Path, document: Path, *, resource: str | None = None
-            ) -> None:
+            def extract(_rom: Path, document: Path, *, resource: str | None = None) -> None:
                 document.parent.mkdir(parents=True, exist_ok=True)
                 document.write_text("{}", encoding="utf-8")
                 extracted.append((document.name, resource))
@@ -187,28 +204,21 @@ class StudioPresetTests(unittest.TestCase):
                 "artifact": {"path": "build/castle-excellent-edited.nes"},
             }
             with (
-                patch("retrolarium_disassembler.preset.inspect_game",
-                    return_value=inspection("castle-excellent")),
-                patch("retrolarium_disassembler.preset.disassemble_nes",
-                    side_effect=disassemble),
-                patch("retrolarium_disassembler.preset.extract_game",
-                    side_effect=extract),
-                patch("retrolarium_disassembler.preset.create_studio_project",
-                    side_effect=create) as create_mock,
-                patch("retrolarium_disassembler.preset.validate_studio_project",
-                    return_value={
-                        "enabled_tabs": ["rooms", "graphics", "palettes", "code"]
-                    }),
-                patch("retrolarium_disassembler.preset.build_studio_project",
-                    return_value={"status": "built"}) as build_mock,
-                patch("retrolarium_disassembler.preset.verify_studio_project",
-                    return_value=verified) as verify_mock,
-                patch("retrolarium_disassembler.preset.load_studio_project",
-                    return_value={"workspace": {"tabs": []}}),
+                patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection("castle-excellent")),
+                patch("retrolarium_disassembler.preset.disassemble_nes", side_effect=disassemble),
+                patch("retrolarium_disassembler.preset.extract_game", side_effect=extract),
+                patch("retrolarium_disassembler.preset.create_studio_project", side_effect=create) as create_mock,
+                patch(
+                    "retrolarium_disassembler.preset.validate_studio_project",
+                    return_value={"enabled_tabs": ["rooms", "graphics", "palettes", "code"]},
+                ),
+                patch(
+                    "retrolarium_disassembler.preset.build_studio_project", return_value={"status": "built"}
+                ) as build_mock,
+                patch("retrolarium_disassembler.preset.verify_studio_project", return_value=verified) as verify_mock,
+                patch("retrolarium_disassembler.preset.load_studio_project", return_value={"workspace": {"tabs": []}}),
             ):
-                result = create_game_studio_preset(
-                    rom, output, ghidra_home=root / "ghidra"
-                )
+                result = create_game_studio_preset(rom, output, ghidra_home=root / "ghidra")
 
             project = output / "castle-excellent-castlequest-usa.rlj"
             self.assertTrue(project.is_file())
@@ -219,8 +229,12 @@ class StudioPresetTests(unittest.TestCase):
                 result["enabled_tabs"],
             )
             self.assertEqual(
-                [("levels.json", "levels"), ("graphics.json", "resource-bundle"),
-                 ("demo.json", "title-demo"), ("screens.json", "screens")],
+                [
+                    ("levels.json", "levels"),
+                    ("graphics.json", "resource-bundle"),
+                    ("demo.json", "title-demo"),
+                    ("screens.json", "screens"),
+                ],
                 extracted,
             )
             resource_documents = create_mock.call_args.kwargs["resource_documents"]
@@ -244,14 +258,16 @@ class StudioPresetTests(unittest.TestCase):
             )
             output = root / "studio"
 
-            def disassemble(_rom: Path, staging: Path, _ghidra: Path,
-                            **_kwargs: object) -> None:
+            def disassemble(_rom: Path, staging: Path, _ghidra: Path, **_kwargs: object) -> None:
                 (staging / "manifest.json").write_text("{}", encoding="utf-8")
 
-            def extract(_rom: Path, document: Path, *,
-                        resource: str | None = None) -> None:
-                self.assertEqual({"graphics.json": "resource-bundle", "demo.json": "title-demo",
-                                  "screens.json": "screens"}[document.name], resource)
+            def extract(_rom: Path, document: Path, *, resource: str | None = None) -> None:
+                self.assertEqual(
+                    {"graphics.json": "resource-bundle", "demo.json": "title-demo", "screens.json": "screens"}[
+                        document.name
+                    ],
+                    resource,
+                )
                 document.parent.mkdir(parents=True, exist_ok=True)
                 document.write_text("{}", encoding="utf-8")
 
@@ -259,37 +275,37 @@ class StudioPresetTests(unittest.TestCase):
                 project.write_text("project", encoding="utf-8")
 
             with (
-                patch("retrolarium_disassembler.preset.inspect_game",
-                      return_value=inspection("castle-excellent")),
-                patch("retrolarium_disassembler.preset.validate_game",
-                      return_value={"status": "valid"}) as validate,
-                patch("retrolarium_disassembler.preset.disassemble_nes",
-                      side_effect=disassemble),
-                patch("retrolarium_disassembler.preset.extract_game",
-                      side_effect=extract) as extract_mock,
-                patch("retrolarium_disassembler.preset.create_studio_project",
-                      side_effect=create),
-                patch("retrolarium_disassembler.preset.validate_studio_project",
-                      return_value={"enabled_tabs": ["rooms", "code"]}),
-                patch("retrolarium_disassembler.preset.load_studio_project",
-                      return_value={"workspace": {"tabs": []}}),
+                patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection("castle-excellent")),
+                patch("retrolarium_disassembler.preset.validate_game", return_value={"status": "valid"}) as validate,
+                patch("retrolarium_disassembler.preset.disassemble_nes", side_effect=disassemble),
+                patch("retrolarium_disassembler.preset.extract_game", side_effect=extract) as extract_mock,
+                patch("retrolarium_disassembler.preset.create_studio_project", side_effect=create),
+                patch(
+                    "retrolarium_disassembler.preset.validate_studio_project",
+                    return_value={"enabled_tabs": ["rooms", "code"]},
+                ),
+                patch("retrolarium_disassembler.preset.load_studio_project", return_value={"workspace": {"tabs": []}}),
             ):
                 result = create_game_studio_preset(
-                    rom, output, ghidra_home=root / "ghidra", build=False,
+                    rom,
+                    output,
+                    ghidra_home=root / "ghidra",
+                    build=False,
                     legacy_castle_excellent_levels=legacy,
                 )
             validate.assert_called_once_with(rom.resolve(), legacy.resolve())
             self.assertEqual(3, extract_mock.call_count)
-            self.assertEqual(legacy.read_bytes(),
-                             (output / "documents/levels.json").read_bytes())
+            self.assertEqual(legacy.read_bytes(), (output / "documents/levels.json").read_bytes())
             self.assertEqual("ready", result["status"])
 
-            with patch("retrolarium_disassembler.preset.inspect_game",
-                       return_value=inspection("pacman")):
+            with patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection("pacman")):
                 with self.assertRaisesRegex(StudioProjectError, "only be imported"):
                     create_game_studio_preset(
-                        rom, root / "wrong", ghidra_home=root / "ghidra",
-                        build=False, legacy_castle_excellent_levels=legacy,
+                        rom,
+                        root / "wrong",
+                        ghidra_home=root / "ghidra",
+                        build=False,
+                        legacy_castle_excellent_levels=legacy,
                     )
             self.assertFalse((root / "wrong").exists())
 
@@ -305,15 +321,11 @@ class StudioPresetTests(unittest.TestCase):
                 raise OSError("analysis failed")
 
             with (
-                patch("retrolarium_disassembler.preset.inspect_game",
-                    return_value=inspection("pacman")),
-                patch("retrolarium_disassembler.preset.disassemble_nes",
-                    side_effect=fail),
+                patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection("pacman")),
+                patch("retrolarium_disassembler.preset.disassemble_nes", side_effect=fail),
             ):
                 with self.assertRaisesRegex(OSError, "analysis failed"):
-                    create_game_studio_preset(
-                        rom, output, ghidra_home=root / "ghidra"
-                    )
+                    create_game_studio_preset(rom, output, ghidra_home=root / "ghidra")
 
             self.assertFalse(output.exists())
             self.assertEqual([], list(root.glob(".studio.rlj-stage-*")))
@@ -325,9 +337,7 @@ class StudioPresetTests(unittest.TestCase):
             rom.write_bytes(b"ROM")
             output = root / "studio"
 
-            def disassemble(
-                _rom: Path, staging: Path, _ghidra: Path, **_kwargs: object
-            ) -> None:
+            def disassemble(_rom: Path, staging: Path, _ghidra: Path, **_kwargs: object) -> None:
                 (staging / "manifest.json").write_text("{}", encoding="utf-8")
 
             def extract(_rom: Path, document: Path, **_kwargs: object) -> None:
@@ -338,23 +348,20 @@ class StudioPresetTests(unittest.TestCase):
                 project.write_text("project", encoding="utf-8")
 
             with (
-                patch("retrolarium_disassembler.preset.inspect_game",
-                    return_value=inspection()),
-                patch("retrolarium_disassembler.preset.disassemble_nes",
-                    side_effect=disassemble),
-                patch("retrolarium_disassembler.preset.extract_game",
-                    side_effect=extract),
-                patch("retrolarium_disassembler.preset.create_studio_project",
-                    side_effect=create),
-                patch("retrolarium_disassembler.preset.validate_studio_project",
-                    return_value={"enabled_tabs": ["world"]}),
-                patch("retrolarium_disassembler.preset.load_studio_project",
-                    side_effect=StudioProjectError("relocation failed")),
+                patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection()),
+                patch("retrolarium_disassembler.preset.disassemble_nes", side_effect=disassemble),
+                patch("retrolarium_disassembler.preset.extract_game", side_effect=extract),
+                patch("retrolarium_disassembler.preset.create_studio_project", side_effect=create),
+                patch(
+                    "retrolarium_disassembler.preset.validate_studio_project", return_value={"enabled_tabs": ["world"]}
+                ),
+                patch(
+                    "retrolarium_disassembler.preset.load_studio_project",
+                    side_effect=StudioProjectError("relocation failed"),
+                ),
             ):
                 with self.assertRaisesRegex(StudioProjectError, "relocation failed"):
-                    create_game_studio_preset(
-                        rom, output, ghidra_home=root / "ghidra", build=False
-                    )
+                    create_game_studio_preset(rom, output, ghidra_home=root / "ghidra", build=False)
 
             self.assertFalse(output.exists())
             self.assertEqual([], list(root.glob(".studio.rlj-stage-*")))
@@ -367,16 +374,11 @@ class StudioPresetTests(unittest.TestCase):
             existing = root / "existing"
             existing.mkdir()
             with self.assertRaisesRegex(StudioProjectError, "already exists"):
-                create_game_studio_preset(
-                    rom, existing, ghidra_home=root / "ghidra"
-                )
+                create_game_studio_preset(rom, existing, ghidra_home=root / "ghidra")
 
-            with patch("retrolarium_disassembler.preset.inspect_game",
-                    return_value=inspection("honkeypong")):
+            with patch("retrolarium_disassembler.preset.inspect_game", return_value=inspection("honkeypong")):
                 with self.assertRaisesRegex(StudioProjectError, "limited"):
-                    create_game_studio_preset(
-                        rom, root / "new", ghidra_home=root / "ghidra"
-                    )
+                    create_game_studio_preset(rom, root / "new", ghidra_home=root / "ghidra")
 
 
 if __name__ == "__main__":

@@ -86,17 +86,11 @@ def pack(code: bytes, symbols: dict[str, int], mapping: str) -> bytes:
         0x3E: "NativeIrq",
     }
     for offset, name in vectors.items():
-        header[offset : offset + 2] = (symbols[name] & 0xFFFF).to_bytes(
-            2, "little"
-        )
+        header[offset : offset + 2] = (symbols[name] & 0xFFFF).to_bytes(2, "little")
     header.release()
     value = (checksum(image) + 0x1FE) & 0xFFFF
-    image[header_offset + 0x1C : header_offset + 0x1E] = (
-        value ^ 0xFFFF
-    ).to_bytes(2, "little")
-    image[header_offset + 0x1E : header_offset + 0x20] = value.to_bytes(
-        2, "little"
-    )
+    image[header_offset + 0x1C : header_offset + 0x1E] = (value ^ 0xFFFF).to_bytes(2, "little")
+    image[header_offset + 0x1E : header_offset + 0x20] = value.to_bytes(2, "little")
     if checksum(image) != value:
         raise ValueError("internal checksum construction failed")
     return bytes(image)
@@ -109,9 +103,7 @@ def main() -> int:
     parser.add_argument("labels", type=Path)
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
-    args.output.write_bytes(
-        pack(args.code.read_bytes(), labels(args.labels), args.mapping)
-    )
+    args.output.write_bytes(pack(args.code.read_bytes(), labels(args.labels), args.mapping))
     return 0
 
 

@@ -3,10 +3,7 @@
   "fixture_id": "nes.honkeypong",
   "input_sha256": "cce7bf2f71eb9e63de0dba15098679dde06a1da9d7553f2319aa60ea57a1193b",
   "coverage": "complete_for_evaluated_schemas",
-  "evaluated_schemas": [
-    "nes.u16le",
-    "nes.split_lo_hi"
-  ],
+  "evaluated_schemas": ["nes.u16le", "nes.split_lo_hi"],
   "provenance": {
     "upstream_commit": "f9ab7ad450ffebabec15623aa811a7564f079168",
     "build_map": "HonkeyPong_Debug.map",
@@ -20,13 +17,13 @@
       "physical_start": 5111,
       "physical_end": 5125,
       "entries": [
-        {"target": 54295},
-        {"target": 54300},
-        {"target": 54338},
-        {"target": 54357},
-        {"target": 54362},
-        {"target": 54385},
-        {"target": 54390}
+        { "target": 54295 },
+        { "target": 54300 },
+        { "target": 54338 },
+        { "target": 54357 },
+        { "target": 54362 },
+        { "target": 54385 },
+        { "target": 54390 }
       ]
     },
     {
@@ -35,11 +32,11 @@
       "physical_start": 5129,
       "physical_end": 5139,
       "entries": [
-        {"target": 54395},
-        {"target": 54404},
-        {"target": 54409},
-        {"target": 54416},
-        {"target": 54421}
+        { "target": 54395 },
+        { "target": 54404 },
+        { "target": 54409 },
+        { "target": 54416 },
+        { "target": 54421 }
       ]
     },
     {
@@ -47,11 +44,7 @@
       "schema_id": "nes.u16le",
       "physical_start": 5144,
       "physical_end": 5150,
-      "entries": [
-        {"target": 54306},
-        {"target": 54303},
-        {"target": 54303}
-      ]
+      "entries": [{ "target": 54306 }, { "target": 54303 }, { "target": 54303 }]
     },
     {
       "id": "sound_effect_region_variants",
@@ -59,12 +52,12 @@
       "physical_start": 5274,
       "physical_end": 5286,
       "entries": [
-        {"target": 54438},
-        {"target": 54634},
-        {"target": 54478},
-        {"target": 54668},
-        {"target": 54518},
-        {"target": 54702}
+        { "target": 54438 },
+        { "target": 54634 },
+        { "target": 54478 },
+        { "target": 54668 },
+        { "target": 54518 },
+        { "target": 54702 }
       ]
     }
   ]

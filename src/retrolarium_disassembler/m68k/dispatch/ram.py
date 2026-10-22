@@ -1,4 +1,5 @@
 """Indexed ROM function tables dispatched by a writable JMP abs.l stub."""
+
 from __future__ import annotations
 
 import re
@@ -42,17 +43,26 @@ def discover_inline_trap_calls(image, facts) -> tuple[InlineTrapCall, ...]:
             code.append(item)
             cursor += item.length
         for index in range(len(code) - 5):
-            adjust, pc, selector, save, lea, load = code[index:index + 6]
+            adjust, pc, selector, save, lea, load = code[index : index + 6]
             register = re.fullmatch(r"\(SP\)\|(A[0-6])", pc.operands, re.I)
-            if (adjust.mnemonic.upper() != "ADDA.L" or adjust.operands.upper() != "#0X2|SP"
-                    or pc.mnemonic.upper() != "MOVEA.L" or register is None):
+            if (
+                adjust.mnemonic.upper() != "ADDA.L"
+                or adjust.operands.upper() != "#0X2|SP"
+                or pc.mnemonic.upper() != "MOVEA.L"
+                or register is None
+            ):
                 continue
             ar = register[1].upper()
             word = re.fullmatch(r"\(" + ar + r"\)\+\|(D[0-7])w", selector.operands, re.I)
-            if (selector.mnemonic.upper() != "MOVE.W" or word is None
-                    or save.mnemonic.upper() != "MOVE.L" or save.operands.upper() != f"{ar}|(SP)"
-                    or lea.mnemonic.upper() != "LEA" or load.cpu_address not in stub_sites
-                    or load.operands.upper() != f"(0X0,{ar},{word[1].upper()}W*0X1)|{ar}"):
+            if (
+                selector.mnemonic.upper() != "MOVE.W"
+                or word is None
+                or save.mnemonic.upper() != "MOVE.L"
+                or save.operands.upper() != f"{ar}|(SP)"
+                or lea.mnemonic.upper() != "LEA"
+                or load.cpu_address not in stub_sites
+                or load.operands.upper() != f"(0X0,{ar},{word[1].upper()}W*0X1)|{ar}"
+            ):
                 continue
             table = pc_displacement_target(lea)
             if table is not None:
@@ -68,25 +78,27 @@ def discover_inline_trap_calls(image, facts) -> tuple[InlineTrapCall, ...]:
         argument = call.physical_offset + 2
         if argument + 2 > len(image.data):
             continue
-        index = int.from_bytes(image.data[argument:argument + 2], "big")
+        index = int.from_bytes(image.data[argument : argument + 2], "big")
         slot = table - image.header.rom_start + index
         if index % 4 or not 0x200 <= slot <= len(image.data) - 4:
             continue
-        target = int.from_bytes(image.data[slot:slot + 4], "big")
+        target = int.from_bytes(image.data[slot : slot + 4], "big")
         physical = target - image.header.rom_start
         if target & 1 or not 0x200 <= physical <= len(image.data) - 2:
             continue
-        result.append(InlineTrapCall(call.cpu_address, call.cpu_address + 2,
-                                     call.cpu_address + 4, target, handler))
+        result.append(InlineTrapCall(call.cpu_address, call.cpu_address + 2, call.cpu_address + 4, target, handler))
     from retrolarium_disassembler.m68k.frames.trap_frame import discover_frame_inline_trap_calls
+
     result.extend(discover_frame_inline_trap_calls(image, facts))
     from retrolarium_disassembler.m68k.repair.variable_traps import discover_variable_inline_trap_calls
+
     result.extend(discover_variable_inline_trap_calls(image, facts))
     return tuple({call.call_address: call for call in result}.values())
 
 
 def discover_ram_stub_dispatch_seeds(
-    image: MegaDriveImage, facts: dict[int, InstructionFact],
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
 ) -> tuple[DecoderSeed, ...]:
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
@@ -129,29 +141,44 @@ def discover_ram_stub_dispatch_seeds(
             elif pointer_at is None and item.operands.rsplit("|", 1)[-1].upper() == register:
                 break  # Original loaded value was clobbered before storage.
             cursor += item.length
-        if (jump is None or word_at is None or pointer_at != word_at + 2
-                or jump.flows[0] & 0xFFFFFF != word_at
-                or not image.header.ram_start <= word_at <= image.header.ram_end - 5):
+        if (
+            jump is None
+            or word_at is None
+            or pointer_at != word_at + 2
+            or jump.flows[0] & 0xFFFFFF != word_at
+            or not image.header.ram_start <= word_at <= image.header.ram_end - 5
+        ):
             continue
         start = table - image.header.rom_start
         targets = []
         for index in range(1024):
             slot = start + index * 4
-            if (slot < 0x200 or slot & 1 or slot + 4 > len(image.data)
-                    or any(slot + b in occupied for b in range(4))
-                    or index and image.header.rom_start + slot in boundaries):
+            if (
+                slot < 0x200
+                or slot & 1
+                or slot + 4 > len(image.data)
+                or any(slot + b in occupied for b in range(4))
+                or index
+                and image.header.rom_start + slot in boundaries
+            ):
                 break
-            target = int.from_bytes(image.data[slot:slot + 4], "big")
+            target = int.from_bytes(image.data[slot : slot + 4], "big")
             physical = target - image.header.rom_start
-            if (target & 1 or not 0x200 <= physical <= len(image.data) - 2
-                    or physical in interiors or start <= physical < slot + 4
-                    or image.data[physical:physical + 2] in {b"\x00\x00", b"\xff\xff"}):
+            if (
+                target & 1
+                or not 0x200 <= physical <= len(image.data) - 2
+                or physical in interiors
+                or start <= physical < slot + 4
+                or image.data[physical : physical + 2] in {b"\x00\x00", b"\xff\xff"}
+            ):
                 break
             targets.append(target)
         if len(set(targets)) < 3 or not (set(targets) & starts):
             continue
-        evidence = (f"indexed longword table {table:06X}; loaded pointer written to "
-                    f"RAM JMP abs.l operand {pointer_at:06X}; stub invoked at {jump.cpu_address:06X}")
+        evidence = (
+            f"indexed longword table {table:06X}; loaded pointer written to "
+            f"RAM JMP abs.l operand {pointer_at:06X}; stub invoked at {jump.cpu_address:06X}"
+        )
         for target in targets:
             result[target] = DecoderSeed(target, "ram_stub_dispatch", "high", evidence, load.cpu_address)
     return tuple(result[address] for address in sorted(result))

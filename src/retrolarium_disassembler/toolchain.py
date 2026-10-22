@@ -53,9 +53,7 @@ def verify_archive(path: Path, expected: dict[str, object]) -> None:
         raise ToolchainError(f"archive not found: {path}")
     expected_size = int(expected["size"])
     if path.stat().st_size != expected_size:
-        raise ToolchainError(
-            f"{path.name} size is {path.stat().st_size}, expected {expected_size}"
-        )
+        raise ToolchainError(f"{path.name} size is {path.stat().st_size}, expected {expected_size}")
     actual = sha256_file(path)
     wanted = str(expected["sha256"]).lower()
     if actual != wanted:
@@ -73,9 +71,7 @@ def download(expected: dict[str, object], cache: Path) -> Path:
             # A truncated or damaged download: fetched again, not kept.
             destination.unlink()
     temporary = destination.with_suffix(destination.suffix + ".part")
-    request = urllib.request.Request(
-        str(expected["url"]), headers={"User-Agent": "retrolarium-disassembler/0.1"}
-    )
+    request = urllib.request.Request(str(expected["url"]), headers={"User-Agent": "retrolarium-disassembler/0.1"})
     try:
         with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
             shutil.copyfileobj(response, output, length=1024 * 1024)
@@ -123,22 +119,12 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
     spc700_backend = entry(lock, "spc700_backend")
     application = ghidra_home / "Ghidra" / "application.properties"
     extension = ghidra_home / "Ghidra" / "Extensions" / "GhidraNes" / "extension.properties"
-    snes_root = (
-        ghidra_home
-        / "Ghidra"
-        / "Extensions"
-        / str(snes_backend["name"])
-    )
+    snes_root = ghidra_home / "Ghidra" / "Extensions" / str(snes_backend["name"])
     snes_properties = snes_root / "extension.properties"
     snes_language = snes_root / "data" / "languages" / "65816.ldefs"
     snes_compiled = snes_root / "data" / "languages" / "65816.sla"
     snes_license = snes_root / "LICENSE.upstream"
-    spc700_root = (
-        ghidra_home
-        / "Ghidra"
-        / "Extensions"
-        / str(spc700_backend["name"])
-    )
+    spc700_root = ghidra_home / "Ghidra" / "Extensions" / str(spc700_backend["name"])
     spc700_properties = spc700_root / "extension.properties"
     spc700_language = spc700_root / "data" / "languages" / "spc700.ldefs"
     spc700_compiled = spc700_root / "data" / "languages" / "spc700.sla"
@@ -161,26 +147,20 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
             raise ToolchainError(f"installed component not found: {path}")
     actual_version = property_value(application, "application.version")
     if actual_version != ghidra["version"]:
-        raise ToolchainError(
-            f"Ghidra version is {actual_version}, expected {ghidra['version']}"
-        )
+        raise ToolchainError(f"Ghidra version is {actual_version}, expected {ghidra['version']}")
     if property_value(extension, "name") != loader["name"]:
         raise ToolchainError("installed NES loader identity does not match lock")
     if property_value(snes_properties, "name") != snes_backend["name"]:
         raise ToolchainError("installed SNES backend identity does not match lock")
     if property_value(snes_properties, "retrolarium.sourceCommit") != snes_backend["commit"]:
         raise ToolchainError("installed SNES backend commit does not match lock")
-    if str(snes_backend["language_id"]) not in snes_language.read_text(
-        encoding="utf-8"
-    ):
+    if str(snes_backend["language_id"]) not in snes_language.read_text(encoding="utf-8"):
         raise ToolchainError("installed SNES language id does not match lock")
     if property_value(spc700_properties, "name") != spc700_backend["name"]:
         raise ToolchainError("installed SPC700 backend identity does not match lock")
     if property_value(spc700_properties, "retrolarium.sourceCommit") != spc700_backend["commit"]:
         raise ToolchainError("installed SPC700 backend commit does not match lock")
-    if str(spc700_backend["language_id"]) not in spc700_language.read_text(
-        encoding="utf-8"
-    ):
+    if str(spc700_backend["language_id"]) not in spc700_language.read_text(encoding="utf-8"):
         raise ToolchainError("installed SPC700 language id does not match lock")
     return {
         "status": "ready",
@@ -244,9 +224,7 @@ def install_processor_backend(
     language_definition_name: str,
     description: str,
 ) -> None:
-    destination = (
-        ghidra_home / "Ghidra" / "Extensions" / str(expected["name"])
-    )
+    destination = ghidra_home / "Ghidra" / "Extensions" / str(expected["name"])
     if destination.exists():
         return
     if staging.exists():
@@ -287,26 +265,16 @@ def install_processor_backend(
         suffix = ".bat" if os.name == "nt" else ""
         compiler = ghidra_home / "support" / f"sleigh{suffix}"
         specification = destination / "data" / "languages" / specification_name
-        language_definition = (
-            destination / "data" / "languages" / language_definition_name
-        )
-        if (
-            not compiler.is_file()
-            or not specification.is_file()
-            or not language_definition.is_file()
-        ):
+        language_definition = destination / "data" / "languages" / language_definition_name
+        if not compiler.is_file() or not specification.is_file() or not language_definition.is_file():
             raise ToolchainError("Ghidra SLEIGH compiler or processor source is missing")
         from retrolarium_disassembler.ghidra import run_launcher
 
-        result = run_launcher([str(compiler.resolve()), str(specification.resolve())],
-                              cwd=destination)
+        result = run_launcher([str(compiler.resolve()), str(specification.resolve())], cwd=destination)
         compiled = specification.with_suffix(".sla")
         if result.returncode or not compiled.is_file():
             tail = "\n".join(result.stdout.splitlines()[-60:])
-            raise ToolchainError(
-                f"processor SLEIGH compilation failed with exit code "
-                f"{result.returncode}\n{tail}"
-            )
+            raise ToolchainError(f"processor SLEIGH compilation failed with exit code {result.returncode}\n{tail}")
         finished = True
     finally:
         # Interrupted too (Ctrl+C): a half-built extension would pass for an
@@ -362,9 +330,7 @@ def install_toolchain(tool_root: Path) -> dict[str, object]:
         safe_extract(loader_archive, extension_staging)
         candidates = list(extension_staging.rglob("extension.properties"))
         if len(candidates) != 1:
-            raise ToolchainError(
-                f"expected one GhidraNes extension, found {len(candidates)}"
-            )
+            raise ToolchainError(f"expected one GhidraNes extension, found {len(candidates)}")
         destination = source / "Ghidra" / "Extensions" / "GhidraNes"
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(candidates[0].parent), destination)

@@ -1,4 +1,5 @@
 """Prove fixed inline-word TRAP ABIs with a saved MOVEM exception frame."""
+
 from collections import deque
 import re
 
@@ -34,8 +35,7 @@ def _handler_consumes_word(facts, handler):
             if advanced:
                 return False
             advanced = True
-        elif mnemonic == "MOVE.W" and pc_register and re.fullmatch(
-                r"\(" + pc_register + r"\)\+?\|D[0-7]W", operands):
+        elif mnemonic == "MOVE.W" and pc_register and re.fullmatch(r"\(" + pc_register + r"\)\+?\|D[0-7]W", operands):
             consumed = True
         elif _STACK.search(operands) or pc_register and operands.split("|")[-1] == pc_register:
             return False
@@ -69,8 +69,7 @@ def _handler_consumes_word(facts, handler):
         operands = fact.operands.upper().split("|")
         if discarded_sr:
             return False  # The adjusted exception frame must return immediately.
-        if (restored and fact.mnemonic.upper() == "ADDQ.L"
-                and operands == ["0X2", "SP"]):
+        if restored and fact.mnemonic.upper() == "ADDQ.L" and operands == ["0X2", "SP"]:
             discarded_sr = True
         elif fact.mnemonic.upper() == restore_mnemonic and operands[0] == "(SP)+":
             if restored or set(_register_list(operands[-1])) != saved:
@@ -84,7 +83,9 @@ def _handler_consumes_word(facts, handler):
         if flow in {"FALL_THROUGH", "UNCONDITIONAL_CALL", "CONDITIONAL_CALL"}:
             successors = {(following, restored, discarded_sr)}
         elif flow == "CONDITIONAL_JUMP":
-            successors = {(target, restored, discarded_sr) for target in targets} | {(following, restored, discarded_sr)}
+            successors = {(target, restored, discarded_sr) for target in targets} | {
+                (following, restored, discarded_sr)
+            }
         elif flow == "UNCONDITIONAL_JUMP" and targets:
             successors = {(target, restored, discarded_sr) for target in targets}
         else:
@@ -109,10 +110,13 @@ def _handler_consumes_word(facts, handler):
 
 def discover_frame_inline_trap_calls(image, facts):
     from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
+
     facts = {fact.cpu_address: fact for fact in facts.values()}
-    handlers = {number: image.vector_table[32 + number].address
-                for number in range(max(0, min(16, len(image.vector_table) - 32)))
-                if _handler_consumes_word(facts, image.vector_table[32 + number].address)}
+    handlers = {
+        number: image.vector_table[32 + number].address
+        for number in range(max(0, min(16, len(image.vector_table) - 32)))
+        if _handler_consumes_word(facts, image.vector_table[32 + number].address)
+    }
     calls = []
     for fact in facts.values():
         if fact.mnemonic.upper() != "TRAP" or len(fact.raw) != 2:
@@ -123,6 +127,7 @@ def discover_frame_inline_trap_calls(image, facts):
             continue
         if fact.physical_offset + 4 > len(image.data):
             continue
-        calls.append(InlineTrapCall(fact.cpu_address, fact.cpu_address + 2,
-                                    fact.cpu_address + 4, None, handlers[number]))
+        calls.append(
+            InlineTrapCall(fact.cpu_address, fact.cpu_address + 2, fact.cpu_address + 4, None, handlers[number])
+        )
     return tuple(calls)

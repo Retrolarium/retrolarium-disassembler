@@ -64,14 +64,17 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         payload[0x202:0x220] = bytes.fromhex("70 01 4E 75") + bytes(26)
         image = parse_megadrive(bytes(payload))
         facts = {
-            item.physical_offset: item for item in (
+            item.physical_offset: item
+            for item in (
                 replace(fact(0x200, "RTS", ""), flow_type="TERMINATOR"),
                 fact(0x202, "MOVEQ", "0x1|D0"),
                 replace(fact(0x204, "RTS", ""), flow_type="TERMINATOR"),
                 replace(fact(0x220, "RTS", ""), flow_type="TERMINATOR"),
             )
         }
-        seed = SimpleNamespace(address=0x220, evidence="known entry", kind="test", confidence="high", source_address=None)
+        seed = SimpleNamespace(
+            address=0x220, evidence="known entry", kind="test", confidence="high", source_address=None
+        )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with ExitStack() as stack:
@@ -99,17 +102,20 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         image = parse_megadrive(bytes(payload))
         # The installer runs in a subroutine, so the caller's state after the
         # call knows nothing about either slot; only the slot proof applies.
-        first_pass = {item.physical_offset: item for item in (
-            replace(fact(0x200, "BSR.B", "0x230"), flow_type="UNCONDITIONAL_CALL", flows=(0x230,)),
-            replace(fact(0x202, "MOVEA.L", "(0xffffc100).w|A0"), length=4),
-            replace(fact(0x206, "JSR", "(A0)"), flow_type="COMPUTED_CALL"),
-            replace(fact(0x208, "MOVEA.L", "(0xffffc200).w|A1"), length=4),
-            fact(0x20C, "MOVE.W", "(A1)|D0w"),
-            replace(fact(0x20E, "RTS", ""), flow_type="TERMINATOR"),
-            replace(fact(0x230, "MOVE.L", "#0x400|(0xffffc100).w"), length=8),
-            replace(fact(0x238, "MOVE.L", "#0x600|(0xffffc200).w"), length=8),
-            replace(fact(0x240, "RTS", ""), flow_type="TERMINATOR"),
-        )}
+        first_pass = {
+            item.physical_offset: item
+            for item in (
+                replace(fact(0x200, "BSR.B", "0x230"), flow_type="UNCONDITIONAL_CALL", flows=(0x230,)),
+                replace(fact(0x202, "MOVEA.L", "(0xffffc100).w|A0"), length=4),
+                replace(fact(0x206, "JSR", "(A0)"), flow_type="COMPUTED_CALL"),
+                replace(fact(0x208, "MOVEA.L", "(0xffffc200).w|A1"), length=4),
+                fact(0x20C, "MOVE.W", "(A1)|D0w"),
+                replace(fact(0x20E, "RTS", ""), flow_type="TERMINATOR"),
+                replace(fact(0x230, "MOVE.L", "#0x400|(0xffffc100).w"), length=8),
+                replace(fact(0x238, "MOVE.L", "#0x600|(0xffffc200).w"), length=8),
+                replace(fact(0x240, "RTS", ""), flow_type="TERMINATOR"),
+            )
+        }
         second_pass = {**first_pass, 0x400: replace(fact(0x400, "RTS", ""), flow_type="TERMINATOR")}
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -142,36 +148,34 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         payload[4:8] = (0x240).to_bytes(4, "big")
         image = parse_megadrive(bytes(payload))
         facts = dispatch_facts()
-        facts[0x400] = replace(
-            fact(0x400, "RTS", ""), flow_type="TERMINATOR"
-        )
+        facts[0x400] = replace(fact(0x400, "RTS", ""), flow_type="TERMINATOR")
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with ExitStack() as stack:
                 for name, replacement in (
                     ("load_megadrive", {"return_value": image}),
                     ("toolchain_status", {}),
-                    ("run_megadrive_analysis", {
-                        "return_value": SimpleNamespace(facts=root / "facts.tsv"),
-                    }),
+                    (
+                        "run_megadrive_analysis",
+                        {
+                            "return_value": SimpleNamespace(facts=root / "facts.tsv"),
+                        },
+                    ),
                     ("load_megadrive_ghidra_facts", {"return_value": facts}),
                     ("discover_initial_decoder_seeds", {"return_value": ()}),
                     ("discover_ram_handler_candidates", {"return_value": ()}),
                     ("discover_packed_orphan_candidates", {"return_value": ()}),
-                    ("detect_pointer_candidates", {
-                        "side_effect": _StopAfterAbstractAnalysis,
-                    }),
+                    (
+                        "detect_pointer_candidates",
+                        {
+                            "side_effect": _StopAfterAbstractAnalysis,
+                        },
+                    ),
                 ):
                     stack.enter_context(patch.object(pipeline, name, **replacement))
                 with self.assertRaises(_StopAfterAbstractAnalysis):
-                    pipeline.analyze_megadrive(
-                        root / "rom.bin", root / "out", root / "ghidra"
-                    )
-            analysis = json.loads(
-                (root / "out" / "m68k" / "abstract-analysis.json").read_text(
-                    encoding="utf-8"
-                )
-            )
+                    pipeline.analyze_megadrive(root / "rom.bin", root / "out", root / "ghidra")
+            analysis = json.loads((root / "out" / "m68k" / "abstract-analysis.json").read_text(encoding="utf-8"))
         self.assertTrue(analysis["converged"])
         self.assertEqual(2, len(analysis["passes"]))
         self.assertEqual(
@@ -186,58 +190,55 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         first_pass = dispatch_facts()
         second_pass = dict(first_pass)
         for target in (0x400, 0x410, 0x420):
-            second_pass[target] = replace(
-                fact(target, "RTS", ""), flow_type="TERMINATOR"
-            )
+            second_pass[target] = replace(fact(target, "RTS", ""), flow_type="TERMINATOR")
         interpreter_entrypoints: list[set[int]] = []
         real_interpret = m68k_abstract.interpret_known_cfg
 
         def interpret(image, facts, **kwargs):
-            interpreter_entrypoints.append(
-                set(kwargs.get("additional_entrypoints", ()))
-            )
+            interpreter_entrypoints.append(set(kwargs.get("additional_entrypoints", ())))
             return real_interpret(image, facts, **kwargs)
 
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with ExitStack() as stack:
-                stack.enter_context(patch.object(
-                    m68k_abstract, "interpret_known_cfg", new=interpret,
-                ))
+                stack.enter_context(
+                    patch.object(
+                        m68k_abstract,
+                        "interpret_known_cfg",
+                        new=interpret,
+                    )
+                )
                 for name, replacement in (
                     ("load_megadrive", {"return_value": image}),
                     ("toolchain_status", {}),
-                    ("run_megadrive_analysis", {
-                        "return_value": SimpleNamespace(
-                            facts=root / "facts.tsv"
-                        ),
-                    }),
-                    ("load_megadrive_ghidra_facts", {
-                        "side_effect": [first_pass, second_pass],
-                    }),
+                    (
+                        "run_megadrive_analysis",
+                        {
+                            "return_value": SimpleNamespace(facts=root / "facts.tsv"),
+                        },
+                    ),
+                    (
+                        "load_megadrive_ghidra_facts",
+                        {
+                            "side_effect": [first_pass, second_pass],
+                        },
+                    ),
                     ("discover_initial_decoder_seeds", {"return_value": ()}),
                     ("discover_ram_handler_candidates", {"return_value": ()}),
                     ("discover_packed_orphan_candidates", {"return_value": ()}),
-                    ("detect_pointer_candidates", {
-                        "side_effect": _StopAfterAbstractAnalysis,
-                    }),
+                    (
+                        "detect_pointer_candidates",
+                        {
+                            "side_effect": _StopAfterAbstractAnalysis,
+                        },
+                    ),
                 ):
-                    stack.enter_context(
-                        patch.object(pipeline, name, **replacement)
-                    )
+                    stack.enter_context(patch.object(pipeline, name, **replacement))
                 with self.assertRaises(_StopAfterAbstractAnalysis):
-                    pipeline.analyze_megadrive(
-                        root / "rom.bin", root / "out", root / "ghidra"
-                    )
+                    pipeline.analyze_megadrive(root / "rom.bin", root / "out", root / "ghidra")
             program_root = root / "out" / "m68k"
-            seed_plan = (program_root / "python-seeds.txt").read_text(
-                encoding="ascii"
-            )
-            analysis = json.loads(
-                (program_root / "abstract-analysis.json").read_text(
-                    encoding="utf-8"
-                )
-            )
+            seed_plan = (program_root / "python-seeds.txt").read_text(encoding="ascii")
+            analysis = json.loads((program_root / "abstract-analysis.json").read_text(encoding="utf-8"))
 
         handlers = {0x400, 0x410, 0x420}
         # The converged pass is reused after the loop.
@@ -246,22 +247,14 @@ class MegaDrivePipelineSeedTests(unittest.TestCase):
         self.assertTrue(handlers <= interpreter_entrypoints[1])
         self.assertEqual("000400\n000410\n000420\n", seed_plan)
         self.assertTrue(analysis["converged"])
-        self.assertEqual(
-            sorted(handlers), analysis["passes"][0]["new_seed_addresses"]
-        )
+        self.assertEqual(sorted(handlers), analysis["passes"][0]["new_seed_addresses"])
         self.assertEqual([], analysis["passes"][1]["new_seed_addresses"])
-        evidence = {
-            item["address"]: item for item in analysis["decoder_seed_evidence"]
-        }
-        self.assertEqual(
-            ["indexed_pointer_table_target"], evidence[0x400]["kinds"]
-        )
+        evidence = {item["address"]: item for item in analysis["decoder_seed_evidence"]}
+        self.assertEqual(["indexed_pointer_table_target"], evidence[0x400]["kinds"])
         self.assertEqual([0x202], evidence[0x400]["source_addresses"])
         # The dispatch site alone reaches at most four instructions; the
         # seeded handlers are interpreted too.
-        self.assertGreater(
-            analysis["control_flow"]["reached_instruction_count"], 4
-        )
+        self.assertGreater(analysis["control_flow"]["reached_instruction_count"], 4)
 
 
 if __name__ == "__main__":

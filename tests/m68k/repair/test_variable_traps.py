@@ -35,23 +35,24 @@ class VariableTrapTests(unittest.TestCase):
 
     def discover(self):
         data = bytearray(cartridge(size=0x800))
-        data[41*4:42*4] = (0x200).to_bytes(4, "big")
+        data[41 * 4 : 42 * 4] = (0x200).to_bytes(4, "big")
         for item in self.items.values():
-            data[item.cpu_address:item.cpu_address+item.length] = item.raw
+            data[item.cpu_address : item.cpu_address + item.length] = item.raw
         for index, target in enumerate((0x300, 0x400)):
-            data[0x218+index*2:0x21A+index*2] = (target-0x218).to_bytes(2, "big")
+            data[0x218 + index * 2 : 0x21A + index * 2] = (target - 0x218).to_bytes(2, "big")
         for address, value in zip((0x502, 0x512), self.selectors):
-            data[address:address+2] = value.to_bytes(2, "big")
+            data[address : address + 2] = value.to_bytes(2, "big")
         return discover_variable_inline_trap_calls(parse_megadrive(bytes(data)), self.items)
 
     def test_selector_proves_word_or_word_plus_long(self):
         calls = self.discover()
-        self.assertEqual([(0x502, 0x504, 2), (0x512, 0x518, 6)],
-                         [(c.data_address, c.continuation, c.data_size) for c in calls])
+        self.assertEqual(
+            [(0x502, 0x504, 2), (0x512, 0x518, 6)], [(c.data_address, c.continuation, c.data_size) for c in calls]
+        )
         self.assertTrue(all(c.target is None for c in calls))
 
     def test_invalid_selector_is_not_wrapped(self):
-        self.selectors = (2, 0xffff)
+        self.selectors = (2, 0xFFFF)
         self.assertFalse(self.discover())
 
     def test_cursor_and_saved_pc_must_agree(self):
@@ -82,16 +83,22 @@ class VariableTrapTests(unittest.TestCase):
         for address in tuple(self.items):
             if 0x300 <= address < 0x400:
                 self.items.pop(address)
-        self.items.update({f.cpu_address: f for f in (
-            instruction(0x300, '304f', 'MOVEA.W', 'A7w|A0'),
-            instruction(0x302, '58a8003e', 'ADDQ.L', '0x4|(0x3e,A0)'),
-            instruction(0x306, '4cdf7fff', 'MOVEM.L', '(SP)+|D0-A6'),
-            instruction(0x30a, '4e73', 'RTE', flow='TERMINATOR'))})
+        self.items.update(
+            {
+                f.cpu_address: f
+                for f in (
+                    instruction(0x300, "304f", "MOVEA.W", "A7w|A0"),
+                    instruction(0x302, "58a8003e", "ADDQ.L", "0x4|(0x3e,A0)"),
+                    instruction(0x306, "4cdf7fff", "MOVEM.L", "(SP)+|D0-A6"),
+                    instruction(0x30A, "4e73", "RTE", flow="TERMINATOR"),
+                )
+            }
+        )
         self.assertEqual([0x510], [c.call_address for c in self.discover()])
 
     def test_exception_pc_cannot_replace_the_active_stack_pointer(self):
-        self.items[0x204] = instruction(0x204, '2e6f003e', 'MOVEA.L', '(0x3e,SP)|SP')
-        self.items[0x208] = instruction(0x208, '301f', 'MOVE.W', '(SP)+|D0w')
+        self.items[0x204] = instruction(0x204, "2e6f003e", "MOVEA.L", "(0x3e,SP)|SP")
+        self.items[0x208] = instruction(0x208, "301f", "MOVE.W", "(SP)+|D0w")
         self.assertFalse(self.discover())
 
 

@@ -46,7 +46,8 @@ def kit_assemblers_built() -> bool:
 
 
 needs_kit_assemblers = unittest.skipUnless(
-    kit_assemblers_built(), "needs Retrolarium Kit with its assemblers built (tools/build_toolchains.ps1)")
+    kit_assemblers_built(), "needs Retrolarium Kit with its assemblers built (tools/build_toolchains.ps1)"
+)
 
 
 def nrom16_image() -> bytes:
@@ -83,15 +84,11 @@ def cartridge(
     from retrolarium_core.snes import HIROM_HEADER_OFFSET, LOROM_HEADER_OFFSET, cartridge_checksum
 
     data = bytearray([0xFF] * size)
-    header_offset = (
-        LOROM_HEADER_OFFSET if mapping == "lorom" else HIROM_HEADER_OFFSET
-    )
+    header_offset = LOROM_HEADER_OFFSET if mapping == "lorom" else HIROM_HEADER_OFFSET
     header = memoryview(data)[header_offset : header_offset + 0x40]
     header[:] = bytes(0x40)
     header[0:21] = b"RETROLARIUM SNES TEST".ljust(21)
-    header[0x15] = map_mode_byte if map_mode_byte is not None else (
-        0x30 if mapping == "lorom" else 0x21
-    )
+    header[0x15] = map_mode_byte if map_mode_byte is not None else (0x30 if mapping == "lorom" else 0x21)
     header[0x16] = chipset
     header[0x17] = size.bit_length() - 1 - 10
     header[0x18] = ram_size_code
@@ -110,12 +107,8 @@ def cartridge(
         header[offset : offset + 2] = value.to_bytes(2, "little")
     header.release()
     checksum = (cartridge_checksum(data) + 0x1FE) & 0xFFFF
-    data[header_offset + 0x1C : header_offset + 0x1E] = (
-        checksum ^ 0xFFFF
-    ).to_bytes(2, "little")
-    data[header_offset + 0x1E : header_offset + 0x20] = checksum.to_bytes(
-        2, "little"
-    )
+    data[header_offset + 0x1C : header_offset + 0x1E] = (checksum ^ 0xFFFF).to_bytes(2, "little")
+    data[header_offset + 0x1E : header_offset + 0x20] = checksum.to_bytes(2, "little")
     container = bytes(data)
     if copier_header:
         container = bytes([0x5A] * 0x200) + container

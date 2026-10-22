@@ -1,4 +1,5 @@
 """Prove selector-dependent inline TRAP lengths from saved exception-PC reads."""
+
 from collections import deque
 import re
 
@@ -27,33 +28,47 @@ def _dispatch(image, facts, handler):
         operands = fact.operands.upper()
         mnemonic = fact.mnemonic.upper()
         if mnemonic == "MOVEA.L" and operands.startswith(slot + "|"):
-            if pc_register: return None
+            if pc_register:
+                return None
             pc_register = operands.split("|", 1)[1]
-            if not re.fullmatch(r"A[0-6]", pc_register): return None
-        elif mnemonic == "MOVE.W" and pc_register and re.fullmatch(
-                r"\(" + pc_register + r"\)\+\|D[0-7]W", operands):
-            if index_register: return None
+            if not re.fullmatch(r"A[0-6]", pc_register):
+                return None
+        elif mnemonic == "MOVE.W" and pc_register and re.fullmatch(r"\(" + pc_register + r"\)\+\|D[0-7]W", operands):
+            if index_register:
+                return None
             index_register = operands.split("|", 1)[1]
         elif mnemonic == "ADDQ.L" and operands.lstrip("#") == "0X2|" + slot:
-            if advanced: return None
+            if advanced:
+                return None
             advanced = True
         elif _STACK.search(operands) or pc_register and operands.split("|")[-1] == pc_register:
             return None
         cursor += fact.length
-        if advanced and index_register: break
+        if advanced and index_register:
+            break
     double = facts.get(cursor)
-    if not double or double.mnemonic.upper() != "ADD.W" or double.operands.upper() != f"{index_register}|{index_register}":
+    if (
+        not double
+        or double.mnemonic.upper() != "ADD.W"
+        or double.operands.upper() != f"{index_register}|{index_register}"
+    ):
         return None
     load = facts.get(cursor + double.length)
     jump = facts.get(load.cpu_address + load.length) if load else None
     table = pc_indexed_target(load) if load else None
-    if (not table or not jump or load.mnemonic.upper() != "MOVE.W"
-            or load.operands.rsplit("|", 1)[-1].upper() != index_register
-            or jump.mnemonic.upper() != "JMP" or pc_indexed_target(jump) != table
-            or table[1:] != (int(index_register[1]), "d", "w")):
+    if (
+        not table
+        or not jump
+        or load.mnemonic.upper() != "MOVE.W"
+        or load.operands.rsplit("|", 1)[-1].upper() != index_register
+        or jump.mnemonic.upper() != "JMP"
+        or pc_indexed_target(jump) != table
+        or table[1:] != (int(index_register[1]), "d", "w")
+    ):
         return None
     targets = _targets(image, facts, table[0], 2)
-    if not targets: return None
+    if not targets:
+        return None
     return targets, slot, pc_register, saved, width
 
 
@@ -66,13 +81,15 @@ def _consumption(facts, start, slot, pc_register, saved, width):
     while pending and len(visited) < 512:
         node = pending.popleft()
         address, consumed, advanced, restored = node
-        if node in visited: continue
+        if node in visited:
+            continue
         visited.add(node)
         fact = facts.get(address)
         if not fact or not 2 <= consumed <= 32 or not 2 <= advanced <= 32:
             return None
         if fact.raw == b"\x4e\x73":
-            if not restored or consumed != advanced: return None
+            if not restored or consumed != advanced:
+                return None
             lengths.add(consumed)
             returns.add(node)
             edges[node] = set()
@@ -81,16 +98,19 @@ def _consumption(facts, start, slot, pc_register, saved, width):
         mnemonic = fact.mnemonic.upper()
         restore = "MOVEM.L" if width == 4 else "MOVEM.W"
         if mnemonic == restore and operands[0] == "(SP)+":
-            if restored or set(_register_list(operands[-1])) != saved: return None
+            if restored or set(_register_list(operands[-1])) != saved:
+                return None
             restored = True
         elif mnemonic == "ADDQ.L" and operands[-1] == slot:
-            try: advanced += int(operands[0].lstrip("#"), 0)
-            except ValueError: return None
+            try:
+                advanced += int(operands[0].lstrip("#"), 0)
+            except ValueError:
+                return None
         elif mnemonic in {"MOVE.W", "MOVE.L"} and operands[0] == f"({pc_register})+":
-            if restored: return None
+            if restored:
+                return None
             consumed += 4 if mnemonic.endswith(".L") else 2
-        elif (any(_STACK.search(operand) for operand in operands)
-              or any(pc_register in operand for operand in operands)):
+        elif any(_STACK.search(operand) for operand in operands) or any(pc_register in operand for operand in operands):
             return None
         flow = fact.flow_type.upper()
         following = address + fact.length
@@ -102,13 +122,16 @@ def _consumption(facts, start, slot, pc_register, saved, width):
             successors = targets | {following}
         elif flow == "UNCONDITIONAL_JUMP" and targets:
             successors = targets
-        else: return None
+        else:
+            return None
         edges[node] = {(target, consumed, advanced, restored) for target in successors}
         pending.extend(edges[node] - visited)
-    if pending or not returns or len(lengths) != 1: return None
+    if pending or not returns or len(lengths) != 1:
+        return None
     reverse = {node: set() for node in visited}
     for node, successors in edges.items():
-        for successor in successors: reverse[successor].add(node)
+        for successor in successors:
+            reverse[successor].add(node)
     can_return = set(returns)
     pending.extend(returns)
     while pending:
@@ -122,6 +145,7 @@ def discover_variable_inline_trap_calls(image, facts):
     from retrolarium_disassembler.m68k.dispatch.ram import InlineTrapCall
     from retrolarium_disassembler.m68k.callbacks.trap import executed_arrays, setter_array
     from retrolarium_disassembler.m68k.instructions import instruction_sets
+
     facts = {fact.cpu_address: fact for fact in facts.values()}
     arrays = executed_arrays(image, facts)
     _, interiors, _ = instruction_sets(facts)
@@ -129,17 +153,22 @@ def discover_variable_inline_trap_calls(image, facts):
     for number in range(max(0, min(16, len(image.vector_table) - 32))):
         handler = image.vector_table[32 + number].address
         dispatch = _dispatch(image, facts, handler)
-        if dispatch: handlers[number] = (handler, dispatch)
+        if dispatch:
+            handlers[number] = (handler, dispatch)
     calls, summaries, setters = [], {}, {}
     for fact in facts.values():
-        if fact.mnemonic.upper() != "TRAP" or len(fact.raw) != 2: continue
+        if fact.mnemonic.upper() != "TRAP" or len(fact.raw) != 2:
+            continue
         opcode = int.from_bytes(fact.raw, "big")
-        if opcode & 0xFFF0 != 0x4E40 or opcode & 15 not in handlers: continue
+        if opcode & 0xFFF0 != 0x4E40 or opcode & 15 not in handlers:
+            continue
         handler, (targets, slot, pc_register, saved, width) = handlers[opcode & 15]
         offset = fact.physical_offset + 2
-        if offset + 2 > len(image.data): continue
-        selector = int.from_bytes(image.data[offset:offset + 2], "big")
-        if selector >= len(targets): continue
+        if offset + 2 > len(image.data):
+            continue
+        selector = int.from_bytes(image.data[offset : offset + 2], "big")
+        if selector >= len(targets):
+            continue
         key = handler, selector
         if key not in summaries:
             summaries[key] = _consumption(facts, targets[selector], slot, pc_register, saved, width)
@@ -148,12 +177,18 @@ def discover_variable_inline_trap_calls(image, facts):
         if length and offset + length <= len(image.data):
             target = None
             if length == 6 and setters[key] in arrays:
-                pointer = int.from_bytes(image.data[offset + 2:offset + 6], "big") & 0xFFFFFF
+                pointer = int.from_bytes(image.data[offset + 2 : offset + 6], "big") & 0xFFFFFF
                 physical = pointer - image.header.rom_start
-                if (not pointer & 1 and 0x200 <= physical <= len(image.data) - 2
-                        and physical not in interiors
-                        and image.data[physical:physical + 2] not in {b"\x00\x00", b"\xff\xff"}):
+                if (
+                    not pointer & 1
+                    and 0x200 <= physical <= len(image.data) - 2
+                    and physical not in interiors
+                    and image.data[physical : physical + 2] not in {b"\x00\x00", b"\xff\xff"}
+                ):
                     target = pointer
-            calls.append(InlineTrapCall(fact.cpu_address, fact.cpu_address + 2,
-                         fact.cpu_address + 2 + length, target, handler, length))
+            calls.append(
+                InlineTrapCall(
+                    fact.cpu_address, fact.cpu_address + 2, fact.cpu_address + 2 + length, target, handler, length
+                )
+            )
     return tuple(calls)

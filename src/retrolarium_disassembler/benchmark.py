@@ -138,9 +138,7 @@ def _span_total(spans: dict[str, list[tuple[int, int]]]) -> int:
     return sum(end - start for items in spans.values() for start, end in items)
 
 
-def _span_intersection(
-    left: dict[str, list[tuple[int, int]]], right: dict[str, list[tuple[int, int]]]
-) -> int:
+def _span_intersection(left: dict[str, list[tuple[int, int]]], right: dict[str, list[tuple[int, int]]]) -> int:
     total = 0
     for schema, spans in left.items():
         for start, end in spans:
@@ -149,18 +147,12 @@ def _span_intersection(
     return total
 
 
-def score_pointer_report(
-    report_path: Path, oracle_path: Path, project_path: Path | None = None
-) -> dict[str, object]:
+def score_pointer_report(report_path: Path, oracle_path: Path, project_path: Path | None = None) -> dict[str, object]:
     report = _load_object(report_path, "pointer report")
     oracle = _load_object(oracle_path, "pointer oracle")
     report_hash = report.get("input_sha256")
     oracle_hash = oracle.get("input_sha256")
-    if (
-        not isinstance(report_hash, str)
-        or not isinstance(oracle_hash, str)
-        or report_hash != oracle_hash
-    ):
+    if not isinstance(report_hash, str) or not isinstance(oracle_hash, str) or report_hash != oracle_hash:
         raise BenchmarkError("pointer report and oracle refer to different ROM hashes")
     if oracle.get("coverage") != "complete_for_evaluated_schemas":
         raise BenchmarkError("pointer oracle does not declare complete evaluated coverage")
@@ -180,14 +172,11 @@ def score_pointer_report(
     if len(expected) != len(expected_values):
         raise BenchmarkError("pointer oracle contains duplicate table ranges")
     accepted_count = sum(
-        value.get("status") == "accepted" and value.get("schema_id") in schema_set
-        for value in candidate_values
+        value.get("status") == "accepted" and value.get("schema_id") in schema_set for value in candidate_values
     )
     asset_ranges = _project_asset_ranges(project_path) if project_path else ()
     selected_values = [
-        value
-        for value in select_emitted_tables(candidate_values, asset_ranges)
-        if value.get("schema_id") in schema_set
+        value for value in select_emitted_tables(candidate_values, asset_ranges) if value.get("schema_id") in schema_set
     ]
     accepted = {_table_key(value): value for value in selected_values}
     if len(accepted) != len(selected_values):

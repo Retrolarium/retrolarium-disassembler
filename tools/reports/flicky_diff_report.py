@@ -29,8 +29,7 @@ def _code(lines: list[str]) -> str:
 
 
 def _normalized(lines: list[str]) -> tuple[str, ...]:
-    return tuple(re.sub(r"\s+", "", line.split(";", 1)[0]).lower()
-                 for line in lines)
+    return tuple(re.sub(r"\s+", "", line.split(";", 1)[0]).lower() for line in lines)
 
 
 def write_report(reference: Path, generated: Path, output: Path) -> dict[str, object]:
@@ -45,8 +44,7 @@ def write_report(reference: Path, generated: Path, output: Path) -> dict[str, ob
     gen_source = listing_source(gen_listing)
     fact_path = generated.parent / "analysis" / "m68k" / "instructions.json"
     facts = {
-        item["physical_offset"]: item
-        for item in json.loads(fact_path.read_text(encoding="utf-8"))["instructions"]
+        item["physical_offset"]: item for item in json.loads(fact_path.read_text(encoding="utf-8"))["instructions"]
     }
 
     cases = []
@@ -66,31 +64,36 @@ def write_report(reference: Path, generated: Path, output: Path) -> dict[str, ob
         elif address not in gen_instructions:
             status = "raw_fallback" if gen_op in {"dc.b", "db"} else "not_emitted"
         elif ref_op != gen_op:
-            status = ("size_suffix_difference"
-                      if ref_op.split(".", 1)[0] == gen_op.split(".", 1)[0]
-                      else "mnemonic_difference")
+            status = (
+                "size_suffix_difference"
+                if ref_op.split(".", 1)[0] == gen_op.split(".", 1)[0]
+                else "mnemonic_difference"
+            )
         elif _normalized(ref_lines) != _normalized(gen_lines):
-            status = ("label_only_difference"
-                      if re.sub(r"\s+", "", ref_code).lower()
-                      == re.sub(r"\s+", "", gen_code).lower()
-                      else "operand_difference")
+            status = (
+                "label_only_difference"
+                if re.sub(r"\s+", "", ref_code).lower() == re.sub(r"\s+", "", gen_code).lower()
+                else "operand_difference"
+            )
         else:
             continue
         mnemonic = fact["mnemonic"] if status == "raw_fallback" else ref_op.upper()
         groups[(status, mnemonic)].append(address)
-        cases.append({
-            "address": f"{address:06X}",
-            "status": status,
-            "reference_bytes": ref_instructions[address].hex(" ").upper(),
-            "reference_source": ref_code,
-            "generated_source": gen_code,
-            "reference_operation": ref_op,
-            "generated_operation": gen_op,
-            "ghidra_mnemonic": fact["mnemonic"] if fact else None,
-            "ghidra_operands": fact["operands"] if fact else None,
-            "ghidra_bytes": fact["bytes"] if fact else None,
-            "html_anchor": f"flicky-source-diff.html#a{address:06X}",
-        })
+        cases.append(
+            {
+                "address": f"{address:06X}",
+                "status": status,
+                "reference_bytes": ref_instructions[address].hex(" ").upper(),
+                "reference_source": ref_code,
+                "generated_source": gen_code,
+                "reference_operation": ref_op,
+                "generated_operation": gen_op,
+                "ghidra_mnemonic": fact["mnemonic"] if fact else None,
+                "ghidra_operands": fact["operands"] if fact else None,
+                "ghidra_bytes": fact["bytes"] if fact else None,
+                "html_anchor": f"flicky-source-diff.html#a{address:06X}",
+            }
+        )
 
     summary = Counter(case["status"] for case in cases)
     report: dict[str, object] = {
@@ -100,18 +103,21 @@ def write_report(reference: Path, generated: Path, output: Path) -> dict[str, ob
         "generated_mnemonic_instructions": len(gen_instructions),
         "summary": dict(sorted(summary.items())),
         "groups": [
-            {"status": status, "mnemonic": mnemonic, "count": len(addresses),
-             "sample_addresses": [f"{address:06X}" for address in addresses[:8]]}
-            for (status, mnemonic), addresses in sorted(
-                groups.items(), key=lambda item: (-len(item[1]), item[0])
-            )
+            {
+                "status": status,
+                "mnemonic": mnemonic,
+                "count": len(addresses),
+                "sample_addresses": [f"{address:06X}" for address in addresses[:8]],
+            }
+            for (status, mnemonic), addresses in sorted(groups.items(), key=lambda item: (-len(item[1]), item[0]))
         ],
         "cases": cases,
     }
     output.mkdir(parents=True, exist_ok=True)
     (output / "flicky-diff.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8", newline="\n",
+        encoding="utf-8",
+        newline="\n",
     )
     lines = [
         "# Flicky: differences from the reference",
@@ -132,21 +138,24 @@ def write_report(reference: Path, generated: Path, output: Path) -> dict[str, ob
         "label_only_difference": "Only the labels differ",
     }
     lines.extend(f"| {labels[key]} | {summary[key]} |" for key in labels)
-    lines.extend(("", "## Most often left as dc.b", "",
-                  "| Ghidra | Count | Examples |", "| --- | ---: | --- |"))
+    lines.extend(("", "## Most often left as dc.b", "", "| Ghidra | Count | Examples |", "| --- | ---: | --- |"))
     raw_groups = [item for item in report["groups"] if item["status"] == "raw_fallback"]
     for item in raw_groups[:30]:
         examples = ", ".join(
-            f"[{address}](flicky-source-diff.html#a{address})"
-            for address in item["sample_addresses"][:4]
+            f"[{address}](flicky-source-diff.html#a{address})" for address in item["sample_addresses"][:4]
         )
         lines.append(f"| {item['mnemonic']} | {item['count']} | {examples} |")
-    lines.extend(("", "## Machine-readable data", "",
-                  "`flicky-diff.json` holds every case with its address, bytes, "
-                  "the lines of both sources and the Ghidra facts.", ""))
-    (output / "flicky-diff.md").write_text(
-        "\n".join(lines), encoding="utf-8", newline="\n"
+    lines.extend(
+        (
+            "",
+            "## Machine-readable data",
+            "",
+            "`flicky-diff.json` holds every case with its address, bytes, "
+            "the lines of both sources and the Ghidra facts.",
+            "",
+        )
     )
+    (output / "flicky-diff.md").write_text("\n".join(lines), encoding="utf-8", newline="\n")
     return report
 
 

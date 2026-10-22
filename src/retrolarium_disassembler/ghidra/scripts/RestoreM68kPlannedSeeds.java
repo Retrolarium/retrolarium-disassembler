@@ -1,17 +1,18 @@
 // Reapply planned roots erased by backend no-return analysis, without clearing.
-//@category Retrolarium
+// @category Retrolarium
+import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.app.script.GhidraScript;
 import ghidra.app.util.PseudoDisassembler;
-import ghidra.app.cmd.disassemble.DisassembleCommand;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.mem.MemoryBlock;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
@@ -20,7 +21,8 @@ public class RestoreM68kPlannedSeeds extends GhidraScript {
     public void run() throws Exception {
         if (getScriptArgs().length != 1) throw new IllegalArgumentException("expected seed plan");
         MemoryBlock rom = currentProgram.getMemory().getBlock("ROM");
-        if (rom == null || !rom.isInitialized()) throw new IllegalStateException("ROM block missing");
+        if (rom == null || !rom.isInitialized())
+            throw new IllegalStateException("ROM block missing");
         Listing listing = currentProgram.getListing();
         AddressSet protectedData = new AddressSet();
         List<Long> roots = new ArrayList<>();
@@ -29,11 +31,16 @@ public class RestoreM68kPlannedSeeds extends GhidraScript {
             if (line.isEmpty()) continue;
             if (line.startsWith("DATA ")) {
                 String[] fields = line.split("\\s+");
-                if (fields.length != 3) throw new IllegalArgumentException("invalid inline-data range");
+                if (fields.length != 3)
+                    throw new IllegalArgumentException("invalid inline-data range");
                 long offset = Long.parseLong(fields[1], 16);
                 int size = Integer.parseInt(fields[2]);
-                if (size < 2 || size > 32 || (size & 1) != 0 || offset < 0x200
-                        || (offset & 1) != 0 || offset + size > rom.getSize())
+                if (size < 2
+                        || size > 32
+                        || (size & 1) != 0
+                        || offset < 0x200
+                        || (offset & 1) != 0
+                        || offset + size > rom.getSize())
                     throw new IllegalArgumentException("invalid inline-data range");
                 Address begin = rom.getStart().add(offset);
                 protectedData.add(begin, begin.add(size - 1));
@@ -43,8 +50,10 @@ public class RestoreM68kPlannedSeeds extends GhidraScript {
         // A DATA plan range stays protected even if backend cleanup removed
         // its data declaration. Existing instructions and defined data never
         // enter the allowed set, including their operand/interior bytes.
-        AddressSet available = new AddressSet(listing.getUndefinedRanges(
-            new AddressSet(rom.getStart(), rom.getEnd()), false, monitor));
+        AddressSet available =
+                new AddressSet(
+                        listing.getUndefinedRanges(
+                                new AddressSet(rom.getStart(), rom.getEnd()), false, monitor));
         available.delete(protectedData);
         PseudoDisassembler decoder = new PseudoDisassembler(currentProgram);
         HashSet<Address> visited = new HashSet<>();
@@ -59,7 +68,8 @@ public class RestoreM68kPlannedSeeds extends GhidraScript {
             while (!pending.isEmpty()) {
                 monitor.checkCancelled();
                 Address cursor = pending.removeFirst();
-                if (!available.contains(cursor) || !visited.add(cursor)
+                if (!available.contains(cursor)
+                        || !visited.add(cursor)
                         || (cursor.getOffset() & 1) != 0) continue;
                 Instruction first;
                 try {
@@ -69,12 +79,16 @@ public class RestoreM68kPlannedSeeds extends GhidraScript {
                         | ghidra.program.model.lang.UnknownContextException exception) {
                     continue;
                 }
-                if (first == null || first.getLength() < 2 || (first.getLength() & 1) != 0
+                if (first == null
+                        || first.getLength() < 2
+                        || (first.getLength() & 1) != 0
                         || !available.contains(cursor, cursor.add(first.getLength() - 1))) continue;
                 // Ghidra's restricted set constrains instruction starts, not
                 // complete operand spans. Validate every successor separately.
-                AddressSet instructionBytes = new AddressSet(cursor, cursor.add(first.getLength() - 1));
-                DisassembleCommand command = new DisassembleCommand(cursor, instructionBytes, false);
+                AddressSet instructionBytes =
+                        new AddressSet(cursor, cursor.add(first.getLength() - 1));
+                DisassembleCommand command =
+                        new DisassembleCommand(cursor, instructionBytes, false);
                 command.enableCodeAnalysis(false);
                 command.applyTo(currentProgram, monitor);
                 AddressSet decoded = command.getDisassembledAddressSet();

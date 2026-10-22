@@ -25,24 +25,22 @@ class SnesEmitTests(unittest.TestCase):
             symbols = generate_symbols(image, analysis, pointers)
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                result = emit_project(
-                    root, image, analysis, pointers, symbols
-                )
+                result = emit_project(root, image, analysis, pointers, symbols)
                 main = (root / "main.asm").read_text(encoding="utf-8")
-                sources = "\n".join(
-                    (root / unit).read_text(encoding="utf-8")
-                    for unit in result.bank_units
-                )
+                sources = "\n".join((root / unit).read_text(encoding="utf-8") for unit in result.bank_units)
                 header = (root / "src/header.asm").read_text(encoding="utf-8")
 
                 self.assertEqual(expected_units[mapping], len(result.bank_units))
-                self.assertEqual(len(image.data), (
-                    result.instruction_bytes
-                    + result.instruction_fallback_bytes
-                    + result.pointer_bytes
-                    + result.header_bytes
-                    + result.raw_bytes
-                ))
+                self.assertEqual(
+                    len(image.data),
+                    (
+                        result.instruction_bytes
+                        + result.instruction_fallback_bytes
+                        + result.pointer_bytes
+                        + result.header_bytes
+                        + result.raw_bytes
+                    ),
+                )
                 self.assertEqual(0, result.instruction_fallback_bytes)
                 self.assertNotIn(".incbin", sources.lower())
                 self.assertNotIn(".incbin", main.lower())
@@ -59,7 +57,7 @@ class SnesEmitTests(unittest.TestCase):
         from helpers import cartridge
 
         data = bytearray(cartridge("hirom", size=0x18000))
-        data[0x9000] = 0xDB   # STP at the reset vector
+        data[0x9000] = 0xDB  # STP at the reset vector
         image = parse_snes(bytes(data))
         analysis = analyze_snes(image)
         pointers = detect_pointer_candidates(image, analysis)

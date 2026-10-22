@@ -13,22 +13,28 @@ from tools.benchmarks.megadrive_goal_check import check_goal, evaluate_case
 class MegaDriveGoalTests(unittest.TestCase):
     def setUp(self) -> None:
         self.case = {
-            "name": "test ROM", "minimum_source_recall_percentage": 95,
-            "reference_instructions": 100, "rom_sha256": "a" * 64,
+            "name": "test ROM",
+            "minimum_source_recall_percentage": 95,
+            "reference_instructions": 100,
+            "rom_sha256": "a" * 64,
         }
         self.report = {
-            "reference_rom_sha256": "a" * 64, "reference_instructions": 100,
+            "reference_rom_sha256": "a" * 64,
+            "reference_instructions": 100,
             "source_emission": {"matching_reference_instructions": 95, "mnemonic_instructions": 95},
         }
         self.verification = {
-            "status": "exact", "artifact": {"sha256": "a" * 64, "size": 1024},
+            "status": "exact",
+            "artifact": {"sha256": "a" * 64, "size": 1024},
             "expected": {"sha256": "a" * 64, "size": 1024},
         }
 
     def test_supports_both_benchmark_formats(self) -> None:
         self.assertTrue(evaluate_case(self.case, self.report, self.verification)["passed"])
         nested = {"instruction_comparison": self.report}
-        self.report["source_emission"]["emitted_mnemonic_instructions"] = self.report["source_emission"].pop("mnemonic_instructions")
+        self.report["source_emission"]["emitted_mnemonic_instructions"] = self.report["source_emission"].pop(
+            "mnemonic_instructions"
+        )
         result = evaluate_case({**self.case, "comparison_key": "instruction_comparison"}, nested, self.verification)
         self.assertTrue(result["passed"])
         self.assertEqual(100, result["source_precision_percentage"])
@@ -54,7 +60,9 @@ class MegaDriveGoalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             config = root / "goal.json"
-            config.write_text(json.dumps({"cases": [{**self.case, "report_path": "absent.json", "verification_path": "absent.json"}]}))
+            config.write_text(
+                json.dumps({"cases": [{**self.case, "report_path": "absent.json", "verification_path": "absent.json"}]})
+            )
             result = check_goal(config, root)
             self.assertFalse(result["goal_achieved"])
             self.assertIn("error", result["cases"][0])

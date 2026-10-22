@@ -34,7 +34,6 @@ class GameNamesTests(unittest.TestCase):
         self.assertEqual([], [f.render() for f in name_guard.check_tables(ROOT)])
 
 
-
 def standalone(root: Path) -> bool:
     """Whether root is the top of its own Git repository (a published
     clone), not a folder of a larger one."""

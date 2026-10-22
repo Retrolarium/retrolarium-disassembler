@@ -25,17 +25,11 @@ def boot_fixture() -> tuple[bytes, dict]:
     data = bytearray(cartridge())
     setup = bytearray()
     setup.extend(bytes.fromhex("80 00 3F FF 01 00"))
-    setup.extend(b"".join(
-        value.to_bytes(4, "big")
-        for value in (0xA00000, 0xA11100, 0xA11200, 0xC00000, 0xC00004)
-    ))
+    setup.extend(b"".join(value.to_bytes(4, "big") for value in (0xA00000, 0xA11100, 0xA11200, 0xC00000, 0xC00004)))
     setup.extend(bytes(range(24)))
     setup.extend((0x40000080).to_bytes(4, "big"))
     setup.extend(bytes(range(38)))
-    setup.extend(b"".join(
-        value.to_bytes(4, "big")
-        for value in (0x81048F02, 0xC0000000, 0x40000010)
-    ))
+    setup.extend(b"".join(value.to_bytes(4, "big") for value in (0x81048F02, 0xC0000000, 0x40000010)))
     setup.extend(bytes.fromhex("9F BF DF FF"))
     data[0x294:0x300] = setup
 
@@ -62,7 +56,7 @@ def boot_fixture() -> tuple[bytes, dict]:
 class MegaDriveStructureTests(unittest.TestCase):
     def test_discovers_uninterrupted_ff_padding(self) -> None:
         data = bytearray(cartridge())
-        data[0x280:0x340] = b"\xFF" * 0xC0
+        data[0x280:0x340] = b"\xff" * 0xC0
         image = parse_megadrive(bytes(data))
 
         self.assertIn((0x280, 0x340), discover_long_ff_padding(image, {}))
@@ -78,9 +72,7 @@ class MegaDriveStructureTests(unittest.TestCase):
         setups = discover_standard_boot_setups(image, facts)
 
         self.assertEqual(1, len(setups))
-        self.assertEqual((0x294, 0x300), (
-            setups[0].physical_start, setups[0].physical_end
-        ))
+        self.assertEqual((0x294, 0x300), (setups[0].physical_start, setups[0].physical_end))
         lines = _standard_boot_setup_lines(setups[0], image)
         self.assertEqual("                dc.w    $8000", lines[0])
         self.assertIn("                dc.l    Io_A00000", lines)
@@ -88,9 +80,7 @@ class MegaDriveStructureTests(unittest.TestCase):
         self.assertEqual("                dc.b    $9F, $BF, $DF, $FF", lines[-1])
 
         symbols = generate_symbols(image, facts, ())
-        setup_symbol = next(
-            symbol for symbol in symbols if symbol.logical_address == 0x294
-        )
+        setup_symbol = next(symbol for symbol in symbols if symbol.logical_address == 0x294)
         self.assertEqual("tbl_M68K_000294", setup_symbol.name)
 
     def test_rejects_boot_stream_with_wrong_hardware_layout(self) -> None:
@@ -98,9 +88,7 @@ class MegaDriveStructureTests(unittest.TestCase):
         broken = bytearray(data)
         broken[0x29D] ^= 1
 
-        self.assertEqual((), discover_standard_boot_setups(
-            parse_megadrive(bytes(broken)), facts
-        ))
+        self.assertEqual((), discover_standard_boot_setups(parse_megadrive(bytes(broken)), facts))
 
 
 if __name__ == "__main__":

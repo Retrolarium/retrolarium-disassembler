@@ -29,9 +29,7 @@ class ToolchainTests(unittest.TestCase):
         self.assertEqual("65816:LE:24:snes", lock["snes_backend"]["language_id"])
         self.assertEqual(64, len(lock["snes_backend"]["sha256"]))
         self.assertEqual("MIT", lock["spc700_backend"]["license"])
-        self.assertEqual(
-            "SPC700:LE:16:default", lock["spc700_backend"]["language_id"]
-        )
+        self.assertEqual("SPC700:LE:16:default", lock["spc700_backend"]["language_id"])
         self.assertEqual(64, len(lock["spc700_backend"]["sha256"]))
 
     def test_zip_path_escape_is_rejected(self) -> None:
@@ -58,9 +56,7 @@ class ToolchainTests(unittest.TestCase):
                     'id="65816:LE:24:snes"',
                 )
                 bundle.writestr(f"{source_root}/LICENSE", "MIT License")
-                bundle.writestr(
-                    f"{source_root}/src/main/java/UnwantedLoader.java", "loader"
-                )
+                bundle.writestr(f"{source_root}/src/main/java/UnwantedLoader.java", "loader")
             ghidra = root / "ghidra"
             support = ghidra / "support"
             support.mkdir(parents=True)
@@ -81,9 +77,7 @@ class ToolchainTests(unittest.TestCase):
                 "retrolarium_disassembler.ghidra.run_launcher",
                 side_effect=compile_language,
             ):
-                install_snes_backend(
-                    ghidra, archive, expected, root / "staging"
-                )
+                install_snes_backend(ghidra, archive, expected, root / "staging")
 
             installed = ghidra / "Ghidra" / "Extensions" / "Retrolarium65816"
             self.assertTrue((installed / "data/languages/65816.sla").is_file())
@@ -128,9 +122,7 @@ class ToolchainTests(unittest.TestCase):
                 "retrolarium_disassembler.ghidra.run_launcher",
                 side_effect=compile_language,
             ):
-                install_spc700_backend(
-                    ghidra, archive, expected, root / "staging"
-                )
+                install_spc700_backend(ghidra, archive, expected, root / "staging")
 
             installed = ghidra / "Ghidra" / "Extensions" / "RetrolariumSPC700"
             manifest = (installed / "Module.manifest").read_text(encoding="utf-8")

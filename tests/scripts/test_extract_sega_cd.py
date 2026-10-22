@@ -14,8 +14,7 @@ class ExtractSegaCdTests(unittest.TestCase):
             root = Path(directory)
             track = root / "disc-track1.bin"
             payloads = [bytes([1]) * 2048, bytes([2]) * 2048]
-            track.write_bytes(b"".join(SYNC + b"\0\0\0\1" + payload + bytes(288)
-                                       for payload in payloads))
+            track.write_bytes(b"".join(SYNC + b"\0\0\0\1" + payload + bytes(288) for payload in payloads))
             cue = root / "disc.cue"
             cue.write_text('FILE "disc-track1.bin" BINARY\n  TRACK 01 MODE1/2352\n', encoding="utf-8")
             output = root / "disc.iso"

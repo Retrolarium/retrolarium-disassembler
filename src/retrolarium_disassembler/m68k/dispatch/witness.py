@@ -1,4 +1,5 @@
 """Validate a speculative handler before using it to bound a dispatch table."""
+
 from __future__ import annotations
 
 from bisect import bisect_right
@@ -41,11 +42,14 @@ def make_dispatch_handler_validator(
     # proving the exception handler's inline-argument ABI must be rooted.
     trap_sites = {a: f for a, f in decoded.items() if f.mnemonic.upper() == "TRAP"}
     preserves_frame = make_trap_call_frame_validator(known)
-    inline_traps = {call.call_address: call for call in discover_inline_trap_calls(
-        image, {**trap_sites, **known}) if call.handler in known and preserves_frame(call.handler)}
+    inline_traps = {
+        call.call_address: call
+        for call in discover_inline_trap_calls(image, {**trap_sites, **known})
+        if call.handler in known and preserves_frame(call.handler)
+    }
     protected_ranges = tuple((origin + start, origin + end) for start, end in protected_ranges) + tuple(
-        (call.data_address, call.continuation)
-        for address, call in inline_traps.items() if address in known)
+        (call.data_address, call.continuation) for address, call in inline_traps.items() if address in known
+    )
     checked: dict[int, bool] = {}
     closure_validator = None
     closed_leaf_validator = None
@@ -56,30 +60,55 @@ def make_dispatch_handler_validator(
             return checked[address]
         index = bisect_right(starts, address)
         previous = known[starts[index - 1]] if index else None
-        if (address & 1 or not origin + 0x200 <= address < rom_end or address in known
-                or previous is not None and address < previous.cpu_address + previous.length):
+        if (
+            address & 1
+            or not origin + 0x200 <= address < rom_end
+            or address in known
+            or previous is not None
+            and address < previous.cpu_address + previous.length
+        ):
             checked[address] = False
             return False
-        end = min(address + 2048, rom_end,
-                  starts[index] if index < len(starts) else rom_end)
-        candidate = OrphanCandidate(address, address, end, end - address,
-                                    "high", "complete bounded dispatch handler CFG")
-        body = _complete_cfg(byte_image, candidate, known, decoded, protected_ranges,
-                             render_instruction, data, inline_traps, decode_request=decode_request)
+        end = min(address + 2048, rom_end, starts[index] if index < len(starts) else rom_end)
+        candidate = OrphanCandidate(
+            address, address, end, end - address, "high", "complete bounded dispatch handler CFG"
+        )
+        body = _complete_cfg(
+            byte_image,
+            candidate,
+            known,
+            decoded,
+            protected_ranges,
+            render_instruction,
+            data,
+            inline_traps,
+            decode_request=decode_request,
+        )
         first = body.get(address)
         checked[address] = bool(
-            len(body) >= 4 and first and not first.mnemonic.upper().startswith("ORI.")
+            len(body) >= 4
+            and first
+            and not first.mnemonic.upper().startswith("ORI.")
             and len({f.mnemonic.upper().split(".", 1)[0] for f in body.values()}) >= 3
             and any(set(f.flows) & known.keys() for f in body.values())
-            and not any(f.flow_type.upper() in {"COMPUTED_CALL", "COMPUTED_JUMP"}
-                        or f.mnemonic.upper() in {"RTE", "RTR", "ILLEGAL", "STOP", "RESET"}
-                        or f.mnemonic.upper() == "TRAP" and f.cpu_address not in inline_traps
-                        for f in body.values()))
+            and not any(
+                f.flow_type.upper() in {"COMPUTED_CALL", "COMPUTED_JUMP"}
+                or f.mnemonic.upper() in {"RTE", "RTR", "ILLEGAL", "STOP", "RESET"}
+                or f.mnemonic.upper() == "TRAP"
+                and f.cpu_address not in inline_traps
+                for f in body.values()
+            )
+        )
         if closure_validator is None:
             closure_validator = make_dispatch_closure_validator(
-                image, known, decoded, protected_ranges=protected_ranges,
-                render_instruction=render_instruction, decode_request=decode_request,
-                inline_traps=inline_traps)
+                image,
+                known,
+                decoded,
+                protected_ranges=protected_ranges,
+                render_instruction=render_instruction,
+                decode_request=decode_request,
+                inline_traps=inline_traps,
+            )
         if checked[address]:
             checked[address] = not closure_validator.has_conflict(body)
         else:
@@ -90,9 +119,15 @@ def make_dispatch_handler_validator(
         if not checked[address]:
             if closed_leaf_validator is None:
                 closed_leaf_validator = make_dispatch_closure_validator(
-                    image, known, decoded, protected_ranges=protected_ranges,
-                    render_instruction=render_instruction, decode_request=decode_request,
-                    inline_traps=inline_traps, allow_closed_leaves=True)
+                    image,
+                    known,
+                    decoded,
+                    protected_ranges=protected_ranges,
+                    render_instruction=render_instruction,
+                    decode_request=decode_request,
+                    inline_traps=inline_traps,
+                    allow_closed_leaves=True,
+                )
             checked[address] = closed_leaf_validator(address)
         return checked[address]
 

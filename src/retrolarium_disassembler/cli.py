@@ -56,14 +56,18 @@ def guard_output(rom: Path, output: Path, replace: bool) -> None:
         return
     written = max(path.stat().st_mtime for path in marks)
     edited = sorted(
-        path for path in generated.rglob("*")
-        if path.is_file() and path.suffix.lower() in _SOURCE_SUFFIXES
+        path
+        for path in generated.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in _SOURCE_SUFFIXES
         and "build" not in path.relative_to(generated).parts
         and path.stat().st_mtime > written + 1
     )
     if edited:
-        raise OutputError(f"{len(edited)} source file(s) in {generated} changed since the last run "
-                          f"(first: {edited[0].relative_to(generated).as_posix()}); --replace overwrites them")
+        raise OutputError(
+            f"{len(edited)} source file(s) in {generated} changed since the last run "
+            f"(first: {edited[0].relative_to(generated).as_posix()}); --replace overwrites them"
+        )
 
 
 def ghidra_home(args: argparse.Namespace) -> Path:
@@ -72,6 +76,7 @@ def ghidra_home(args: argparse.Namespace) -> Path:
 
 
 # ---------------------------------------------------------------- NES
+
 
 def command_nes_inspect(args: argparse.Namespace) -> None:
     from retrolarium_core.ines import load_ines
@@ -90,11 +95,11 @@ def command_nes_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.nes.pipeline import disassemble_nes
 
     guard_output(args.rom, args.output, args.replace)
-    print_json(disassemble_nes(args.rom, args.output, ghidra_home(args),
-                               build_container=args.build_container))
+    print_json(disassemble_nes(args.rom, args.output, ghidra_home(args), build_container=args.build_container))
 
 
 # ---------------------------------------------------------------- Mega Drive
+
 
 def command_megadrive_inspect(args: argparse.Namespace) -> None:
     from retrolarium_core.megadrive import image_manifest, load_megadrive
@@ -112,8 +117,7 @@ def command_megadrive_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.megadrive.pipeline import disassemble_megadrive
 
     guard_output(args.rom, args.output, args.replace)
-    print_json(disassemble_megadrive(args.rom, args.output, ghidra_home(args),
-                                     build_container=args.build_container))
+    print_json(disassemble_megadrive(args.rom, args.output, ghidra_home(args), build_container=args.build_container))
 
 
 def command_megadrive_emit(args: argparse.Namespace) -> None:
@@ -124,6 +128,7 @@ def command_megadrive_emit(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------- SNES
+
 
 def command_snes_inspect(args: argparse.Namespace) -> None:
     from retrolarium_core.snes import image_manifest, load_snes
@@ -172,11 +177,13 @@ def command_snes_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.snes.pipeline import disassemble_snes
 
     guard_output(args.rom, args.output, args.replace)
-    print_json(disassemble_snes(args.rom, args.output, ghidra_home=ghidra_home(args),
-                                build_container=args.build_container))
+    print_json(
+        disassemble_snes(args.rom, args.output, ghidra_home=ghidra_home(args), build_container=args.build_container)
+    )
 
 
 # ---------------------------------------------------------------- shared
+
 
 def command_verify(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.verify import verify_exact
@@ -232,9 +239,7 @@ def parser() -> argparse.ArgumentParser:
     inspect = nes_commands.add_parser("inspect", help="inspect an iNES image")
     inspect.add_argument("rom", type=Path)
     inspect.set_defaults(handler=command_nes_inspect)
-    analyze = nes_commands.add_parser(
-        "analyze", help="analyze every profiled PRG bank into neutral facts"
-    )
+    analyze = nes_commands.add_parser("analyze", help="analyze every profiled PRG bank into neutral facts")
     analyze.add_argument("rom", type=Path)
     analyze.add_argument("--output", type=Path, required=True)
     analyze.add_argument("--ghidra-home", type=Path)
@@ -252,20 +257,12 @@ def parser() -> argparse.ArgumentParser:
     )
     disassemble.set_defaults(handler=command_nes_disassemble)
 
-    megadrive = commands.add_parser(
-        "megadrive", help="Mega Drive cartridge and disassembly commands"
-    )
-    megadrive_commands = megadrive.add_subparsers(
-        dest="megadrive_command", required=True
-    )
-    megadrive_inspect = megadrive_commands.add_parser(
-        "inspect", help="inspect a Mega Drive cartridge image"
-    )
+    megadrive = commands.add_parser("megadrive", help="Mega Drive cartridge and disassembly commands")
+    megadrive_commands = megadrive.add_subparsers(dest="megadrive_command", required=True)
+    megadrive_inspect = megadrive_commands.add_parser("inspect", help="inspect a Mega Drive cartridge image")
     megadrive_inspect.add_argument("rom", type=Path)
     megadrive_inspect.set_defaults(handler=command_megadrive_inspect)
-    megadrive_analyze = megadrive_commands.add_parser(
-        "analyze", help="analyze cartridge 68000 code into neutral facts"
-    )
+    megadrive_analyze = megadrive_commands.add_parser("analyze", help="analyze cartridge 68000 code into neutral facts")
     megadrive_analyze.add_argument("rom", type=Path)
     megadrive_analyze.add_argument("--output", type=Path, required=True)
     megadrive_analyze.add_argument("--ghidra-home", type=Path)
@@ -275,7 +272,9 @@ def parser() -> argparse.ArgumentParser:
     )
     megadrive_disassemble.add_argument("rom", type=Path)
     megadrive_disassemble.add_argument("--output", type=Path, required=True)
-    megadrive_disassemble.add_argument("--replace", action="store_true", help="overwrite sources edited since the last run")
+    megadrive_disassemble.add_argument(
+        "--replace", action="store_true", help="overwrite sources edited since the last run"
+    )
     megadrive_disassemble.add_argument("--ghidra-home", type=Path)
     megadrive_disassemble.add_argument("--build-container")
     megadrive_disassemble.set_defaults(handler=command_megadrive_disassemble)
@@ -289,20 +288,14 @@ def parser() -> argparse.ArgumentParser:
 
     snes = commands.add_parser("snes", help="SNES cartridge commands")
     snes_commands = snes.add_subparsers(dest="snes_command", required=True)
-    snes_inspect = snes_commands.add_parser(
-        "inspect", help="inspect a plain LoROM or HiROM cartridge image"
-    )
+    snes_inspect = snes_commands.add_parser("inspect", help="inspect a plain LoROM or HiROM cartridge image")
     snes_inspect.add_argument("rom", type=Path)
     snes_inspect.set_defaults(handler=command_snes_inspect)
-    snes_analyze = snes_commands.add_parser(
-        "analyze", help="run independent bank-aware W65C816 state analysis"
-    )
+    snes_analyze = snes_commands.add_parser("analyze", help="run independent bank-aware W65C816 state analysis")
     snes_analyze.add_argument("rom", type=Path)
     snes_analyze.add_argument("--output", type=Path, required=True)
     snes_analyze.set_defaults(handler=command_snes_analyze)
-    snes_disassemble = snes_commands.add_parser(
-        "disassemble", help="emit a modular exact-first ca65 SNES project"
-    )
+    snes_disassemble = snes_commands.add_parser("disassemble", help="emit a modular exact-first ca65 SNES project")
     snes_disassemble.add_argument("rom", type=Path)
     snes_disassemble.add_argument("--output", type=Path, required=True)
     snes_disassemble.add_argument("--replace", action="store_true", help="overwrite sources edited since the last run")
@@ -324,15 +317,9 @@ def parser() -> argparse.ArgumentParser:
     status.add_argument("--ghidra-home", type=Path, help="default: RETROLARIUM_GHIDRA_HOME, else the tool root's")
     status.set_defaults(handler=command_ghidra_status)
 
-    benchmark = commands.add_parser(
-        "benchmark", help="score blind analysis artifacts against an isolated oracle"
-    )
-    benchmark_commands = benchmark.add_subparsers(
-        dest="benchmark_command", required=True
-    )
-    pointers = benchmark_commands.add_parser(
-        "pointers", help="score accepted pointer tables"
-    )
+    benchmark = commands.add_parser("benchmark", help="score blind analysis artifacts against an isolated oracle")
+    benchmark_commands = benchmark.add_subparsers(dest="benchmark_command", required=True)
+    pointers = benchmark_commands.add_parser("pointers", help="score accepted pointer tables")
     pointers.add_argument("report", type=Path)
     pointers.add_argument("oracle", type=Path)
     pointers.add_argument("--output", type=Path)
@@ -341,20 +328,24 @@ def parser() -> argparse.ArgumentParser:
     preset = commands.add_parser(
         "preset",
         help="disassemble a Castle Excellent, SMB1, Pac-Man, Solomon's Key or Doraemon ROM "
-             "into a Studio project (needs Retrolarium Kit)",
+        "into a Studio project (needs Retrolarium Kit)",
     )
     preset.add_argument("rom", type=Path)
     preset.add_argument("--output", type=Path, required=True)
     preset.add_argument("--ghidra-home", type=Path)
     preset.add_argument("--build-container")
     preset.add_argument("--toolchain-cache", type=Path)
-    preset.add_argument("--legacy-castle-excellent-levels", type=Path,
-                        help="import a validated legacy Castle Excellent levels JSON")
-    preset.add_argument("--repository", type=Path,
-                        help="the game's repository, whose profile recognizes the ROM "
-                             "(default: the one the ROM lies in)")
     preset.add_argument(
-        "--no-build", action="store_true",
+        "--legacy-castle-excellent-levels", type=Path, help="import a validated legacy Castle Excellent levels JSON"
+    )
+    preset.add_argument(
+        "--repository",
+        type=Path,
+        help="the game's repository, whose profile recognizes the ROM (default: the one the ROM lies in)",
+    )
+    preset.add_argument(
+        "--no-build",
+        action="store_true",
         help="create and validate the workspace without building its first artifact",
     )
     preset.set_defaults(handler=command_preset)

@@ -34,7 +34,8 @@ from retrolarium_disassembler.m68k.returns import discover_returning_call_seeds
 from retrolarium_disassembler.m68k.callbacks.register import discover_register_callback_seeds
 from retrolarium_disassembler.m68k.callbacks.abi import discover_callback_abi_seeds
 from retrolarium_disassembler.m68k.records.constructor import (
-    discover_constructor_record_seeds, discover_tail_allocator_callback_seeds,
+    discover_constructor_record_seeds,
+    discover_tail_allocator_callback_seeds,
 )
 from retrolarium_disassembler.m68k.dispatch.reaching import discover_reaching_word_dispatch_seeds
 from retrolarium_disassembler.m68k.bytecode_cursor import discover_bytecode_cursor_seeds
@@ -60,8 +61,11 @@ from retrolarium_disassembler.megadrive.pointers import (
 )
 from retrolarium_disassembler.megadrive.symbols import generate_symbols, write_symbol_report
 from retrolarium_disassembler.megadrive.z80 import (
-    CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
-    group_z80_copies, z80_im1_handler_seed,
+    CrossCpuCopy,
+    detect_z80_copies,
+    fragment_z80_facts,
+    group_z80_copies,
+    z80_im1_handler_seed,
 )
 from retrolarium_disassembler.toolchain import toolchain_status
 from retrolarium_disassembler.z80.dispatch import Z80DispatchTable, discover_z80_dispatch_tables
@@ -99,10 +103,7 @@ def _write_instructions(
                 "bytes": fact.raw.hex(" ").upper(),
                 "mnemonic": fact.mnemonic,
                 "operands": fact.operands,
-                "flows": [
-                    {"address_space": address_space, "logical_address": target}
-                    for target in fact.flows
-                ],
+                "flows": [{"address_space": address_space, "logical_address": target} for target in fact.flows],
                 "references": [
                     {
                         "address_space": address_space,
@@ -170,9 +171,7 @@ def _program_record(
     }
 
 
-def _edge_record(
-    copy: CrossCpuCopy, payload_path: str, *, target_cpu_id: str | None = None
-) -> dict[str, object]:
+def _edge_record(copy: CrossCpuCopy, payload_path: str, *, target_cpu_id: str | None = None) -> dict[str, object]:
     return {
         "id": copy.edge_id,
         "schema_id": copy.schema_id,
@@ -215,26 +214,29 @@ class _PassProbeContext:
     @property
     def decoded(self):
         if self._decoded is None:
-            probes = load_megadrive_ghidra_facts(
-                self.artifacts.orphan_facts, self.image, speculative=True)
+            probes = load_megadrive_ghidra_facts(self.artifacts.orphan_facts, self.image, speculative=True)
             self._decoded = {**probes, **self.facts}
         return self._decoded
 
     @property
     def z80_ranges(self):
         if self._z80_ranges is None:
-            self._z80_ranges = tuple((copy.source_start, copy.source_end + 1)
-                                    for copy in detect_z80_copies(self.image, self.trusted_facts))
+            self._z80_ranges = tuple(
+                (copy.source_start, copy.source_end + 1) for copy in detect_z80_copies(self.image, self.trusted_facts)
+            )
         return self._z80_ranges
 
     @property
     def protected(self):
         if self._protected is None:
-            self._protected = tuple(
-                (p.physical_start, p.physical_end)
-                for p in detect_pointer_candidates(self.image, self.trusted_facts)
-                if p.status == "accepted"
-            ) + self.z80_ranges
+            self._protected = (
+                tuple(
+                    (p.physical_start, p.physical_end)
+                    for p in detect_pointer_candidates(self.image, self.trusted_facts)
+                    if p.status == "accepted"
+                )
+                + self.z80_ranges
+            )
         return self._protected
 
 
@@ -247,28 +249,40 @@ def _discover_unused_code(
 ) -> tuple[tuple[UnusedCodeCandidate, ...], tuple[dict[str, object], ...]]:
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     return discover_validated_unused_candidates(
-        image, trusted_facts, context.decoded,
-        protected_ranges=context.protected, render_instruction=_asm_instruction,
+        image,
+        trusted_facts,
+        context.decoded,
+        protected_ranges=context.protected,
+        render_instruction=_asm_instruction,
     )
 
 
 def _discover_packed_code(image, trusted_facts, facts, artifacts, context=None):
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     return discover_packed_orphan_closure(
-        image, trusted_facts, context.decoded,
-        protected_ranges=context.protected, render_instruction=_asm_instruction,
+        image,
+        trusted_facts,
+        context.decoded,
+        protected_ranges=context.protected,
+        render_instruction=_asm_instruction,
     )
 
 
-def _discover_fallthrough_repairs(repairs, image, trusted_facts, facts, artifacts,
-                                  inline_data, planned_roots, decode_request, context=None):
+def _discover_fallthrough_repairs(
+    repairs, image, trusted_facts, facts, artifacts, inline_data, planned_roots, decode_request, context=None
+):
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     origin = image.header.rom_start
     protected = tuple((origin + start, origin + end) for start, end in context.protected)
     protected += tuple((start, start + size) for start, size in inline_data.items())
-    return repairs.discover(facts, trusted_facts, context.decoded,
-                            protected_ranges=protected, planned_roots=planned_roots,
-                            decode_request=decode_request)
+    return repairs.discover(
+        facts,
+        trusted_facts,
+        context.decoded,
+        protected_ranges=protected,
+        planned_roots=planned_roots,
+        decode_request=decode_request,
+    )
 
 
 def _dispatch_handler_validator(image, trusted_facts, facts, artifacts, context=None, *, decode_request=None):
@@ -281,9 +295,13 @@ def _dispatch_handler_validator(image, trusted_facts, facts, artifacts, context=
         nonlocal validator
         if validator is None:
             validator = make_dispatch_handler_validator(
-                image, trusted_facts, context.decoded,
-                protected_ranges=context.protected, render_instruction=_asm_instruction,
-                decode_request=decode_request)
+                image,
+                trusted_facts,
+                context.decoded,
+                protected_ranges=context.protected,
+                render_instruction=_asm_instruction,
+                decode_request=decode_request,
+            )
         accepted = validator(address)
         if not accepted and decode_request is not None:
             decode_request(address, address, "structural handler hypothesis")
@@ -296,11 +314,11 @@ def _discover_cursor_callbacks(image, trusted_facts, facts, artifacts, context=N
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     origin = image.header.rom_start
     return discover_bytecode_cursor_seeds(
-        image, facts, execution_facts=trusted_facts,
-        protected_ranges=tuple((origin + start, origin + end)
-                               for start, end in context.protected),
-        protected_stream_ranges=tuple((origin + start, origin + end)
-                                      for start, end in context.z80_ranges),
+        image,
+        facts,
+        execution_facts=trusted_facts,
+        protected_ranges=tuple((origin + start, origin + end) for start, end in context.protected),
+        protected_stream_ranges=tuple((origin + start, origin + end) for start, end in context.z80_ranges),
     )
 
 
@@ -308,22 +326,26 @@ def _discover_tail_callbacks(image, trusted_facts, facts, artifacts, context=Non
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     origin = image.header.rom_start
     return discover_tail_allocator_callback_seeds(
-        image, facts, execution_facts=trusted_facts,
-        protected_ranges=tuple((origin + start, origin + end)
-                               for start, end in context.protected),
+        image,
+        facts,
+        execution_facts=trusted_facts,
+        protected_ranges=tuple((origin + start, origin + end) for start, end in context.protected),
     )
 
 
-def _discover_relative_callbacks(image, trusted_facts, facts, artifacts, context=None, *,
-                                 decode_request=None, inline_data=None):
+def _discover_relative_callbacks(
+    image, trusted_facts, facts, artifacts, context=None, *, decode_request=None, inline_data=None
+):
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     origin = image.header.rom_start
     protected = tuple((origin + start, origin + end) for start, end in context.protected)
     protected += tuple((start, start + size) for start, size in (inline_data or {}).items())
     return discover_relative_record_callback_seeds(
-        image, trusted_facts, context.decoded, protected_ranges=protected,
-        protected_record_ranges=tuple((origin + start, origin + end)
-                                      for start, end in context.z80_ranges),
+        image,
+        trusted_facts,
+        context.decoded,
+        protected_ranges=protected,
+        protected_record_ranges=tuple((origin + start, origin + end) for start, end in context.z80_ranges),
         decode_request=decode_request,
     )
 
@@ -331,42 +353,53 @@ def _discover_relative_callbacks(image, trusted_facts, facts, artifacts, context
 def _discover_cleared_states(image, trusted_facts, facts, artifacts, context=None, *, inline_data=None):
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     origin = image.header.rom_start
-    protected = context.protected + tuple((start - origin, start - origin + size)
-                                          for start, size in (inline_data or {}).items())
+    protected = context.protected + tuple(
+        (start - origin, start - origin + size) for start, size in (inline_data or {}).items()
+    )
     return discover_cleared_pool_state_seeds(
-        image, trusted_facts, context.decoded, protected_ranges=protected,
+        image,
+        trusted_facts,
+        context.decoded,
+        protected_ranges=protected,
         render_instruction=_asm_instruction,
     )
 
 
-def _discover_absolute_callbacks(image, trusted_facts, facts, artifacts, context=None, *,
-                                 decode_request=None, inline_data=None):
+def _discover_absolute_callbacks(
+    image, trusted_facts, facts, artifacts, context=None, *, decode_request=None, inline_data=None
+):
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     origin = image.header.rom_start
     protected = tuple((origin + start, origin + end) for start, end in context.protected)
     protected += tuple((start, start + size) for start, size in (inline_data or {}).items())
     return discover_absolute_ram_callback_seeds(
-        image, trusted_facts, context.decoded, protected_ranges=protected,
+        image,
+        trusted_facts,
+        context.decoded,
+        protected_ranges=protected,
         decode_request=decode_request,
     )
 
 
-def _discover_finite_callbacks(image, trusted_facts, facts, artifacts, context=None, *,
-                               decode_request=None, inline_data=None):
+def _discover_finite_callbacks(
+    image, trusted_facts, facts, artifacts, context=None, *, decode_request=None, inline_data=None
+):
     context = context or _PassProbeContext(image, trusted_facts, facts, artifacts)
     origin = image.header.rom_start
     protected = tuple((origin + start, origin + end) for start, end in context.protected)
     protected += tuple((start, start + size) for start, size in (inline_data or {}).items())
     return discover_finite_record_callback_seeds(
-        image, context.decoded, execution_facts=trusted_facts, protected_ranges=protected,
+        image,
+        context.decoded,
+        execution_facts=trusted_facts,
+        protected_ranges=protected,
         forbidden_reads=tuple((origin + start, origin + end) for start, end in context.z80_ranges),
-        render_instruction=_asm_instruction, decode_request=decode_request,
+        render_instruction=_asm_instruction,
+        decode_request=decode_request,
     )
 
 
-def analyze_megadrive(
-    rom: Path, output: Path, ghidra_home: Path
-) -> dict[str, object]:
+def analyze_megadrive(rom: Path, output: Path, ghidra_home: Path) -> dict[str, object]:
     image = load_megadrive(rom)
     operand_prover = InlineOperandProver(image)
     toolchain_status(ghidra_home)
@@ -396,9 +429,7 @@ def analyze_megadrive(
         seed_kinds.setdefault(seed.address, set()).add(seed.kind)
         seed_confidence.setdefault(seed.address, set()).add(seed.confidence)
         if seed.source_address is not None:
-            seed_sources.setdefault(seed.address, set()).add(
-                seed.source_address
-            )
+            seed_sources.setdefault(seed.address, set()).add(seed.source_address)
     seed_plan.write_text(
         "".join(f"{address:06X}\n" for address in sorted(planned_seeds)),
         encoding="ascii",
@@ -451,47 +482,83 @@ def analyze_megadrive(
         )
         # A backend-decoded island is still an orphan until it has a root.
         # Discover packed gaps in the trusted CFG as well as undecoded gaps.
-        orphan_candidates = tuple({
-            candidate.address: candidate
-            for candidate in (
-                *orphan_candidates,
-                *discover_packed_orphan_candidates(image, trusted_facts),
-            )
-        }.values())
-        orphan_candidates = tuple({candidate.address: candidate for candidate in (
-            *orphan_candidates,
-            *_discover_packed_code(image, trusted_facts, facts, artifacts, probe_context),
-        )}.values())
+        orphan_candidates = tuple(
+            {
+                candidate.address: candidate
+                for candidate in (
+                    *orphan_candidates,
+                    *discover_packed_orphan_candidates(image, trusted_facts),
+                )
+            }.values()
+        )
+        orphan_candidates = tuple(
+            {
+                candidate.address: candidate
+                for candidate in (
+                    *orphan_candidates,
+                    *_discover_packed_code(image, trusted_facts, facts, artifacts, probe_context),
+                )
+            }.values()
+        )
         validated_unused, unused_rejections = _discover_unused_code(
-            image, trusted_facts, facts, artifacts, probe_context)
+            image, trusted_facts, facts, artifacts, probe_context
+        )
         for candidate in validated_unused:
             unused_candidates.setdefault(candidate.address, candidate)
         handler_validator = _dispatch_handler_validator(
-            image, trusted_facts, facts, artifacts, probe_context,
-            decode_request=probe_requests.request)
-        dispatch_seeds = list(discover_dispatch_table_seeds(
-            image, trusted_facts, handler_validator=handler_validator, entrypoints=trusted.roots))
+            image, trusted_facts, facts, artifacts, probe_context, decode_request=probe_requests.request
+        )
+        dispatch_seeds = list(
+            discover_dispatch_table_seeds(
+                image, trusted_facts, handler_validator=handler_validator, entrypoints=trusted.roots
+            )
+        )
         # Reaching definitions and interpreter models require an executed
         # consumer; backend islands cannot bootstrap these two recognizers.
-        dispatch_seeds.extend(discover_reaching_word_dispatch_seeds(
-            image, trusted_facts, entrypoints=trusted.roots,
-            handler_validator=handler_validator))
-        dispatch_seeds.extend(_discover_cursor_callbacks(
-            image, trusted_facts, facts, artifacts, probe_context))
-        dispatch_seeds.extend(_discover_relative_callbacks(
-            image, trusted_facts, facts, artifacts, probe_context,
-            decode_request=probe_requests.request, inline_data=inline_data))
-        dispatch_seeds.extend(_discover_cleared_states(
-            image, trusted_facts, facts, artifacts, probe_context, inline_data=inline_data))
-        dispatch_seeds.extend(_discover_absolute_callbacks(
-            image, trusted_facts, facts, artifacts, probe_context,
-            decode_request=probe_requests.request, inline_data=inline_data))
-        dispatch_seeds.extend(_discover_finite_callbacks(
-            image, trusted_facts, facts, artifacts, probe_context,
-            decode_request=probe_requests.request, inline_data=inline_data))
+        dispatch_seeds.extend(
+            discover_reaching_word_dispatch_seeds(
+                image, trusted_facts, entrypoints=trusted.roots, handler_validator=handler_validator
+            )
+        )
+        dispatch_seeds.extend(_discover_cursor_callbacks(image, trusted_facts, facts, artifacts, probe_context))
+        dispatch_seeds.extend(
+            _discover_relative_callbacks(
+                image,
+                trusted_facts,
+                facts,
+                artifacts,
+                probe_context,
+                decode_request=probe_requests.request,
+                inline_data=inline_data,
+            )
+        )
+        dispatch_seeds.extend(
+            _discover_cleared_states(image, trusted_facts, facts, artifacts, probe_context, inline_data=inline_data)
+        )
+        dispatch_seeds.extend(
+            _discover_absolute_callbacks(
+                image,
+                trusted_facts,
+                facts,
+                artifacts,
+                probe_context,
+                decode_request=probe_requests.request,
+                inline_data=inline_data,
+            )
+        )
+        dispatch_seeds.extend(
+            _discover_finite_callbacks(
+                image,
+                trusted_facts,
+                facts,
+                artifacts,
+                probe_context,
+                decode_request=probe_requests.request,
+                inline_data=inline_data,
+            )
+        )
         dispatch_seeds.extend(discover_ram_record_dispatch_seeds(image, trusted_facts))
-        dispatch_seeds.extend(discover_word_ram_callback_seeds(
-            image, facts, execution_facts=trusted_facts))
+        dispatch_seeds.extend(discover_word_ram_callback_seeds(image, facts, execution_facts=trusted_facts))
         return_seeds = discover_returning_call_seeds(image, facts, trusted_facts, planned_roots=planned_seeds)
         dispatch_seeds.extend(return_seeds)
         dispatch_seeds.extend(discover_register_callback_seeds(image, facts, execution_facts=trusted_facts))
@@ -500,38 +567,39 @@ def analyze_megadrive(
         for call in inline_calls:
             is_trap = call.call_address not in subroutine_sites
             prefix = "inline_trap" if is_trap else "inline_subroutine"
-            for address, kind in ((call.continuation, prefix + "_continuation"),
-                                  (call.target, prefix + "_target")):
+            for address, kind in ((call.continuation, prefix + "_continuation"), (call.target, prefix + "_target")):
                 if address is None:
                     continue
                 callback_evidence = (
                     "; inline pointer is stored in a bounded RAM array whose slots "
                     "are called by a matching counted loop"
-                    if kind == "inline_trap_target" and call.data_size == 6 else ""
+                    if kind == "inline_trap_target" and call.data_size == 6
+                    else ""
                 )
-                dispatch_seeds.append(DecoderSeed(
-                    address, kind, "proven",
-                    f"{'TRAP' if is_trap else 'call'} at {call.call_address:06X}; handler {call.handler:06X} "
-                    f"consumes {call.data_size} inline bytes and advances the saved return PC"
-                    + callback_evidence,
-                    call.call_address,
-                ))
+                dispatch_seeds.append(
+                    DecoderSeed(
+                        address,
+                        kind,
+                        "proven",
+                        f"{'TRAP' if is_trap else 'call'} at {call.call_address:06X}; handler {call.handler:06X} "
+                        f"consumes {call.data_size} inline bytes and advances the saved return PC" + callback_evidence,
+                        call.call_address,
+                    )
+                )
         dispatch_seeds.extend(discover_descriptor_ram_code_seeds(image, trusted_facts))
         dispatch_seeds.extend(discover_link_continuation_seeds(image, trusted_facts))
         # A structurally proven dispatcher can itself be an unreachable code
         # island. Bootstrap only strong tables from backend facts, then make
         # the dispatcher a planned root on the next decoder pass.
         raw_dispatch = discover_dispatch_table_seeds(
-            image, facts, handler_validator=handler_validator, entrypoints=trusted.roots)
+            image, facts, handler_validator=handler_validator, entrypoints=trusted.roots
+        )
         # Unused object code can pass a callback to a decoded allocator. Its
         # ABI is structural proof, unlike an abstract edge from unknown state;
         # the field executor must already belong to the trusted CFG.
-        dispatch_seeds.extend(discover_callback_abi_seeds(
-            image, facts, execution_facts=trusted_facts))
-        dispatch_seeds.extend(discover_constructor_record_seeds(
-            image, facts, execution_facts=trusted_facts))
-        dispatch_seeds.extend(_discover_tail_callbacks(
-            image, trusted_facts, facts, artifacts, probe_context))
+        dispatch_seeds.extend(discover_callback_abi_seeds(image, facts, execution_facts=trusted_facts))
+        dispatch_seeds.extend(discover_constructor_record_seeds(image, facts, execution_facts=trusted_facts))
+        dispatch_seeds.extend(_discover_tail_callbacks(image, trusted_facts, facts, artifacts, probe_context))
         decoded_starts = {fact.cpu_address for fact in facts.values()}
         trusted_starts = {fact.cpu_address for fact in trusted_facts.values()}
         by_dispatch: dict[int, list[DecoderSeed]] = {}
@@ -546,32 +614,29 @@ def analyze_megadrive(
                 continue
             dispatch_seeds.extend(table_seeds)
             if site not in trusted_starts:
-                dispatch_seeds.append(DecoderSeed(
-                    address=site,
-                    kind="indexed_dispatch_site",
-                    confidence="high",
-                    evidence=table_seeds[0].evidence,
-                    source_address=site,
-                ))
+                dispatch_seeds.append(
+                    DecoderSeed(
+                        address=site,
+                        kind="indexed_dispatch_site",
+                        confidence="high",
+                        evidence=table_seeds[0].evidence,
+                        source_address=site,
+                    )
+                )
         # A callback writer may sit in a backend-decoded island before its
         # caller has been reached. The terminal immediately before its ROM
         # target and the executed object slot prove a useful entrypoint. A
         # second proof links an allocator and executor through their RAM list;
         # that path must use rooted facts to avoid self-confirming an island.
         raw_callback_candidates = tuple(
-            candidate for candidate in discover_object_field_handler_candidates(
-                image, facts, execution_facts=trusted_facts)
+            candidate
+            for candidate in discover_object_field_handler_candidates(image, facts, execution_facts=trusted_facts)
             if candidate.confidence == "proven"
         )
         raw_callback_targets = {
-            candidate.address for candidate in raw_callback_candidates
-            if candidate.address not in planned_seeds
+            candidate.address for candidate in raw_callback_candidates if candidate.address not in planned_seeds
         }
-        dispatch_targets = {
-            seed.address
-            for seed in dispatch_seeds
-            if seed.address not in planned_seeds
-        }
+        dispatch_targets = {seed.address for seed in dispatch_seeds if seed.address not in planned_seeds}
         # A target the backend already decoded may still sit in an untrusted
         # island. Plan every proven target the planned roots do not reach,
         # so it persists as a decoder seed and a trusted root.
@@ -596,19 +661,19 @@ def analyze_megadrive(
             and candidate.address not in trusted_starts
             and candidate.address not in planned_seeds
         }
-        unused_targets = {
-            candidate.address for candidate in validated_unused
-            if candidate.address not in planned_seeds
-        }
+        unused_targets = {candidate.address for candidate in validated_unused if candidate.address not in planned_seeds}
         # Proven inline operands are data even where a gap heuristic sees
         # an instruction-shaped word after the call.
-        operand_bytes = {
-            address for start, size in inline_data.items()
-            for address in range(start, start + size)
-        }
+        operand_bytes = {address for start, size in inline_data.items() for address in range(start, start + size)}
         discovered = sorted(
-            (indirect_targets | handler_targets | orphan_targets
-             | dispatch_targets | unused_targets | raw_callback_targets)
+            (
+                indirect_targets
+                | handler_targets
+                | orphan_targets
+                | dispatch_targets
+                | unused_targets
+                | raw_callback_targets
+            )
             - operand_bytes
         )
         for candidate in raw_callback_candidates:
@@ -625,69 +690,56 @@ def analyze_megadrive(
                 seed_sources.setdefault(candidate.address, set()).add(candidate.preceding_address)
         for seed in dispatch_seeds:
             if seed.address in discovered:
-                seed_evidence.setdefault(seed.address, set()).add(
-                    seed.evidence
-                )
+                seed_evidence.setdefault(seed.address, set()).add(seed.evidence)
                 seed_kinds.setdefault(seed.address, set()).add(seed.kind)
-                seed_confidence.setdefault(seed.address, set()).add(
-                    seed.confidence
-                )
-                seed_sources.setdefault(seed.address, set()).add(
-                    seed.source_address
-                )
+                seed_confidence.setdefault(seed.address, set()).add(seed.confidence)
+                seed_sources.setdefault(seed.address, set()).add(seed.source_address)
         for edge in abstract_result.indirect_edges:
             if edge.target_address in discovered:
-                seed_evidence.setdefault(edge.target_address, set()).add(
-                    edge.evidence
-                )
-                seed_kinds.setdefault(edge.target_address, set()).add(
-                    "abstract_indirect_target"
-                )
-                seed_confidence.setdefault(edge.target_address, set()).add(
-                    edge.confidence
-                )
-                seed_sources.setdefault(edge.target_address, set()).add(
-                    edge.source_address
-                )
+                seed_evidence.setdefault(edge.target_address, set()).add(edge.evidence)
+                seed_kinds.setdefault(edge.target_address, set()).add("abstract_indirect_target")
+                seed_confidence.setdefault(edge.target_address, set()).add(edge.confidence)
+                seed_sources.setdefault(edge.target_address, set()).add(edge.source_address)
         for candidate in abstract_candidates:
             if candidate.address in discovered:
-                seed_evidence.setdefault(candidate.address, set()).add(
-                    candidate.evidence
-                )
-                seed_kinds.setdefault(candidate.address, set()).add(
-                    "ram_handler"
-                )
-                seed_confidence.setdefault(candidate.address, set()).add(
-                    candidate.confidence
-                )
-                seed_sources.setdefault(candidate.address, set()).add(
-                    candidate.source_address
-                )
+                seed_evidence.setdefault(candidate.address, set()).add(candidate.evidence)
+                seed_kinds.setdefault(candidate.address, set()).add("ram_handler")
+                seed_confidence.setdefault(candidate.address, set()).add(candidate.confidence)
+                seed_sources.setdefault(candidate.address, set()).add(candidate.source_address)
         for candidate in orphan_candidates:
             if candidate.address in discovered:
-                seed_evidence.setdefault(candidate.address, set()).add(
-                    candidate.evidence
-                )
-                seed_kinds.setdefault(candidate.address, set()).add(
-                    "packed_orphan"
-                )
-                seed_confidence.setdefault(candidate.address, set()).add(
-                    candidate.confidence
-                )
-                seed_sources.setdefault(candidate.address, set()).add(
-                    candidate.preceding_address
-                )
+                seed_evidence.setdefault(candidate.address, set()).add(candidate.evidence)
+                seed_kinds.setdefault(candidate.address, set()).add("packed_orphan")
+                seed_confidence.setdefault(candidate.address, set()).add(candidate.confidence)
+                seed_sources.setdefault(candidate.address, set()).add(candidate.preceding_address)
         new_repairs = _discover_fallthrough_repairs(
-            fallthrough_repairs, image, trusted_facts, facts, artifacts, inline_data,
-            (planned_seeds | set(discovered)) - operand_bytes, probe_requests.request, probe_context)
+            fallthrough_repairs,
+            image,
+            trusted_facts,
+            facts,
+            artifacts,
+            inline_data,
+            (planned_seeds | set(discovered)) - operand_bytes,
+            probe_requests.request,
+            probe_context,
+        )
         repair_plan.write_text(fallthrough_repairs.plan_text(), encoding="ascii", newline="\n")
-        (program_root / "fallthrough-repairs.json").write_text(json.dumps({
-            "schema": "retrolarium.m68k.fallthrough-repairs", "schema_version": 1,
-            "input_sha256": image.sha256,
-            "candidate_repair_complete": not fallthrough_repairs.deferred,
-            "repairs": [asdict(repair) for _, repair in sorted(fallthrough_repairs.repairs.items())],
-            "deferred_addresses": sorted(fallthrough_repairs.deferred),
-        }, indent=2) + "\n", encoding="utf-8", newline="\n")
+        (program_root / "fallthrough-repairs.json").write_text(
+            json.dumps(
+                {
+                    "schema": "retrolarium.m68k.fallthrough-repairs",
+                    "schema_version": 1,
+                    "input_sha256": image.sha256,
+                    "candidate_repair_complete": not fallthrough_repairs.deferred,
+                    "repairs": [asdict(repair) for _, repair in sorted(fallthrough_repairs.repairs.items())],
+                    "deferred_addresses": sorted(fallthrough_repairs.deferred),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
         new_probe_requests = sorted(set(probe_requests.requests) - previous_probe_requests)
         probe_addresses = set(probe_context._decoded or ()) - set(facts)
         new_probe_fact_count = len(probe_addresses - seen_probe_facts)
@@ -696,45 +748,63 @@ def analyze_megadrive(
         # New pseudo facts were already checked by this pass's strict validators.
         pass_converged = not (discovered or new_inline_data or new_return_calls or new_probe_requests or new_repairs)
         probe_plan.write_text(probe_requests.plan_text(), encoding="ascii", newline="\n")
-        (program_root / "decode-probe-requests.json").write_text(json.dumps({
-            "schema": "retrolarium.m68k.decode-probe-requests", "schema_version": 1,
-            "input_sha256": image.sha256, "candidate_probing_complete": not probe_requests.deferred,
-            "requests": [asdict(request) for _, request in sorted(probe_requests.requests.items())],
-            "deferred_addresses": sorted(probe_requests.deferred),
-        }, indent=2) + "\n", encoding="utf-8", newline="\n")
-        abstract_passes.append({
-            "pass": pass_index + 1,
-            "decoded_instruction_count": len(facts),
-            "reached_instruction_count": len(
-                abstract_result.reached_addresses
-            ),
-            "new_seed_addresses": discovered,
-            "new_inline_data_addresses": sorted(new_inline_data),
-            "new_normal_return_calls": sorted(new_return_calls),
-            "new_probe_request_addresses": new_probe_requests,
-            "probe_request_count": len(probe_requests.requests),
-            "deferred_probe_request_count": len(probe_requests.deferred),
-            "new_probe_fact_count": new_probe_fact_count,
-            "new_fallthrough_repair_addresses": [repair.address for repair in new_repairs],
-            "fallthrough_repair_count": len(fallthrough_repairs.repairs),
-            "deferred_fallthrough_repair_count": len(fallthrough_repairs.deferred),
-            "new_seed_evidence": [
+        (program_root / "decode-probe-requests.json").write_text(
+            json.dumps(
                 {
-                    "address": address,
-                    "evidence": sorted(seed_evidence[address]),
-                }
-                for address in discovered
-            ],
-        })
+                    "schema": "retrolarium.m68k.decode-probe-requests",
+                    "schema_version": 1,
+                    "input_sha256": image.sha256,
+                    "candidate_probing_complete": not probe_requests.deferred,
+                    "requests": [asdict(request) for _, request in sorted(probe_requests.requests.items())],
+                    "deferred_addresses": sorted(probe_requests.deferred),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        abstract_passes.append(
+            {
+                "pass": pass_index + 1,
+                "decoded_instruction_count": len(facts),
+                "reached_instruction_count": len(abstract_result.reached_addresses),
+                "new_seed_addresses": discovered,
+                "new_inline_data_addresses": sorted(new_inline_data),
+                "new_normal_return_calls": sorted(new_return_calls),
+                "new_probe_request_addresses": new_probe_requests,
+                "probe_request_count": len(probe_requests.requests),
+                "deferred_probe_request_count": len(probe_requests.deferred),
+                "new_probe_fact_count": new_probe_fact_count,
+                "new_fallthrough_repair_addresses": [repair.address for repair in new_repairs],
+                "fallthrough_repair_count": len(fallthrough_repairs.repairs),
+                "deferred_fallthrough_repair_count": len(fallthrough_repairs.deferred),
+                "new_seed_evidence": [
+                    {
+                        "address": address,
+                        "evidence": sorted(seed_evidence[address]),
+                    }
+                    for address in discovered
+                ],
+            }
+        )
         # Keep progress even when the safety limit or a later backend run fails.
         (program_root / "decoder-passes.json").write_text(
-            json.dumps({
-                "schema": "retrolarium.m68k.decoder-passes", "schema_version": 1,
-                "input_sha256": image.sha256, "converged": pass_converged,
-                "candidate_probing_complete": not probe_requests.deferred,
-                "candidate_repair_complete": not fallthrough_repairs.deferred,
-                "passes": abstract_passes,
-            }, indent=2) + "\n", encoding="utf-8", newline="\n",
+            json.dumps(
+                {
+                    "schema": "retrolarium.m68k.decoder-passes",
+                    "schema_version": 1,
+                    "input_sha256": image.sha256,
+                    "converged": pass_converged,
+                    "candidate_probing_complete": not probe_requests.deferred,
+                    "candidate_repair_complete": not fallthrough_repairs.deferred,
+                    "passes": abstract_passes,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
         if pass_converged:
             converged = True
@@ -749,13 +819,11 @@ def analyze_megadrive(
         )
         return_plan.write_text(
             "".join(f"{site:06X} {following:06X}\n" for site, following in sorted(returning_calls.items())),
-            encoding="ascii", newline="\n",
+            encoding="ascii",
+            newline="\n",
         )
     if not converged:
-        raise AnalysisError(
-            "M68K abstract analysis did not converge after "
-            f"{MAX_ABSTRACT_PASSES} decoder passes"
-        )
+        raise AnalysisError(f"M68K abstract analysis did not converge after {MAX_ABSTRACT_PASSES} decoder passes")
     unfiltered_facts = facts
     # Raw structural callbacks were planned in the loop, so at convergence
     # they are already seeds. They are reported, not added as extra roots.
@@ -770,9 +838,7 @@ def analyze_megadrive(
     abstract_result = trusted.interpretation
     trusted_roots = trusted.roots
     discarded_backend_addresses = sorted(
-        fact.cpu_address
-        for offset, fact in unfiltered_facts.items()
-        if offset not in facts
+        fact.cpu_address for offset, fact in unfiltered_facts.items() if offset not in facts
     )
     abstract_candidates = (
         *discover_ram_handler_candidates(image, facts),
@@ -781,24 +847,38 @@ def analyze_megadrive(
     orphan_candidates = discover_packed_orphan_candidates(image, facts)
     abstract_path = program_root / "abstract-analysis.json"
     unused_path = program_root / "unused-code.json"
-    unused_path.write_text(json.dumps({
-        "schema": "retrolarium.m68k.unused-code", "schema_version": 1,
-        "input_sha256": image.sha256,
-        "runtime_status": "unknown",
-        "search_scope": "gaps up to 2048 bytes after trusted terminal instructions",
-        "accepted_candidates": [
-            {**candidate.as_dict(), "emitted_as_instructions": all(
-                address in facts and _asm_instruction(facts[address]) is not None
-                for address in candidate.instruction_addresses
-            ), "known_callers_after_analysis": sorted(
-                fact.cpu_address for fact in facts.values()
-                if not candidate.address <= fact.cpu_address < candidate.end
-                and any(candidate.address <= target < candidate.end for target in fact.flows)
-            )}
-            for candidate in sorted(unused_candidates.values(), key=lambda item: item.address)
-        ],
-        "rejected_gaps": list(unused_rejections),
-    }, indent=2) + "\n", encoding="utf-8", newline="\n")
+    unused_path.write_text(
+        json.dumps(
+            {
+                "schema": "retrolarium.m68k.unused-code",
+                "schema_version": 1,
+                "input_sha256": image.sha256,
+                "runtime_status": "unknown",
+                "search_scope": "gaps up to 2048 bytes after trusted terminal instructions",
+                "accepted_candidates": [
+                    {
+                        **candidate.as_dict(),
+                        "emitted_as_instructions": all(
+                            address in facts and _asm_instruction(facts[address]) is not None
+                            for address in candidate.instruction_addresses
+                        ),
+                        "known_callers_after_analysis": sorted(
+                            fact.cpu_address
+                            for fact in facts.values()
+                            if not candidate.address <= fact.cpu_address < candidate.end
+                            and any(candidate.address <= target < candidate.end for target in fact.flows)
+                        ),
+                    }
+                    for candidate in sorted(unused_candidates.values(), key=lambda item: item.address)
+                ],
+                "rejected_gaps": list(unused_rejections),
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     abstract_path.write_text(
         json.dumps(
             {
@@ -810,19 +890,13 @@ def analyze_megadrive(
                 "decoder_seed_addresses": sorted(planned_seeds),
                 "structural_callback_roots": sorted(structural_callback_roots),
                 "trusted_root_addresses": sorted(trusted_roots),
-                "discarded_backend_instruction_addresses": (
-                    discarded_backend_addresses
-                ),
+                "discarded_backend_instruction_addresses": (discarded_backend_addresses),
                 "decoder_seed_evidence": [
                     {
                         "address": address,
                         "kinds": sorted(seed_kinds.get(address, set())),
-                        "confidence": sorted(
-                            seed_confidence.get(address, set())
-                        ),
-                        "source_addresses": sorted(
-                            seed_sources.get(address, set())
-                        ),
+                        "confidence": sorted(seed_confidence.get(address, set())),
+                        "source_addresses": sorted(seed_sources.get(address, set())),
                         "evidence": sorted(seed_evidence.get(address, set())),
                     }
                     for address in sorted(planned_seeds)
@@ -851,16 +925,10 @@ def analyze_megadrive(
                     for candidate in orphan_candidates
                 ],
                 "control_flow": {
-                    "reached_instruction_count": len(
-                        abstract_result.reached_addresses
-                    ),
+                    "reached_instruction_count": len(abstract_result.reached_addresses),
                     "state_updates": abstract_result.state_updates,
-                    "widened_addresses": list(
-                        abstract_result.widened_addresses
-                    ),
-                    "unresolved_indirect_addresses": list(
-                        abstract_result.unresolved_indirect_addresses
-                    ),
+                    "widened_addresses": list(abstract_result.widened_addresses),
+                    "unresolved_indirect_addresses": list(abstract_result.unresolved_indirect_addresses),
                     "indirect_edges": [
                         {
                             "source_address": edge.source_address,
@@ -868,32 +936,23 @@ def analyze_megadrive(
                             "mnemonic": edge.mnemonic,
                             "evidence": edge.evidence,
                             "confidence": edge.confidence,
-                            "target_already_disassembled": (
-                                edge.target_address in facts
-                            ),
+                            "target_already_disassembled": (edge.target_address in facts),
                         }
                         for edge in abstract_result.indirect_edges
                     ],
                     "conditional_branches": {
-                        "true": sum(
-                            decision.outcome.value == "true"
-                            for decision in abstract_result.branch_decisions
-                        ),
+                        "true": sum(decision.outcome.value == "true" for decision in abstract_result.branch_decisions),
                         "false": sum(
-                            decision.outcome.value == "false"
-                            for decision in abstract_result.branch_decisions
+                            decision.outcome.value == "false" for decision in abstract_result.branch_decisions
                         ),
                         "unknown": sum(
-                            decision.outcome.value == "unknown"
-                            for decision in abstract_result.branch_decisions
+                            decision.outcome.value == "unknown" for decision in abstract_result.branch_decisions
                         ),
                         "decisions": [
                             {
                                 "source_address": decision.source_address,
                                 "target_address": decision.target_address,
-                                "fallthrough_address": (
-                                    decision.fallthrough_address
-                                ),
+                                "fallthrough_address": (decision.fallthrough_address),
                                 "condition": decision.condition,
                                 "outcome": decision.outcome.value,
                             }
@@ -904,7 +963,8 @@ def analyze_megadrive(
             },
             indent=2,
             sort_keys=True,
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -943,9 +1003,7 @@ def analyze_megadrive(
     programs[0]["abstract_orphan_candidates"] = len(orphan_candidates)
     programs[0]["abstract_decoder_seed_count"] = len(planned_seeds)
     if seed_plan.is_file():
-        programs[0]["abstract_decoder_seeds"] = (
-            seed_plan.relative_to(output).as_posix()
-        )
+        programs[0]["abstract_decoder_seeds"] = seed_plan.relative_to(output).as_posix()
         programs[0]["abstract_decoder_seeds_sha256"] = _sha256(seed_plan)
     edges = []
     z80_symbol_programs = []
@@ -964,14 +1022,10 @@ def analyze_megadrive(
             scripts,
             base_address=base_address,
         )
-        z80_facts = load_z80_ghidra_facts(
-            z80_artifacts.facts, payload, base_address=base_address
-        )
+        z80_facts = load_z80_ghidra_facts(z80_artifacts.facts, payload, base_address=base_address)
         dispatch_by_start = {}
         for _ in range(4):
-            discovered = discover_z80_dispatch_tables(
-                payload, z80_facts, base_address=base_address
-            )
+            discovered = discover_z80_dispatch_tables(payload, z80_facts, base_address=base_address)
             fresh = []
             for table in discovered:
                 previous = dispatch_by_start.get(table.logical_start)
@@ -980,47 +1034,29 @@ def analyze_megadrive(
                 elif previous != table:
                     # New decoding may only tighten a table or reveal more
                     # sites sharing it; any other change is a contradiction.
-                    if (table.lookup_address != previous.lookup_address
-                            or previous.targets[:len(table.targets)]
-                            != table.targets):
-                        raise AnalysisError(
-                            "Z80 dispatch table changed at "
-                            f"0x{table.logical_start:04X}"
-                        )
+                    if (
+                        table.lookup_address != previous.lookup_address
+                        or previous.targets[: len(table.targets)] != table.targets
+                    ):
+                        raise AnalysisError(f"Z80 dispatch table changed at 0x{table.logical_start:04X}")
                     fresh.append(table)
             if not fresh:
                 break
-            dispatch_by_start.update(
-                (table.logical_start, table) for table in fresh
-            )
-            dispatch_tables = tuple(
-                dispatch_by_start[address] for address in sorted(dispatch_by_start)
-            )
+            dispatch_by_start.update((table.logical_start, table) for table in fresh)
+            dispatch_tables = tuple(dispatch_by_start[address] for address in sorted(dispatch_by_start))
             z80_seed_plan = z80_root / "dispatch-seeds.txt"
             plan_lines = [
-                f"T {table.logical_start - base_address:04X} "
-                f"{table.logical_end - base_address:04X}"
+                f"T {table.logical_start - base_address:04X} {table.logical_end - base_address:04X}"
                 for table in dispatch_tables
             ]
-            seeds = {
-                target
-                for table in dispatch_tables
-                for target in table.targets
-            }
-            im1_handler = z80_im1_handler_seed(
-                z80_facts, base_address, logical.size
-            )
+            seeds = {target for table in dispatch_tables for target in table.targets}
+            im1_handler = z80_im1_handler_seed(z80_facts, base_address, logical.size)
             if im1_handler is not None and not any(
-                table.logical_start <= im1_handler < table.logical_end
-                for table in dispatch_tables
+                table.logical_start <= im1_handler < table.logical_end for table in dispatch_tables
             ):
                 seeds.add(im1_handler)
-            plan_lines.extend(
-                f"S {target - base_address:04X}" for target in sorted(seeds)
-            )
-            z80_seed_plan.write_text(
-                "\n".join(plan_lines) + "\n", encoding="ascii", newline="\n"
-            )
+            plan_lines.extend(f"S {target - base_address:04X}" for target in sorted(seeds))
+            z80_seed_plan.write_text("\n".join(plan_lines) + "\n", encoding="ascii", newline="\n")
             z80_artifacts = run_z80_analysis(
                 z80_input,
                 z80_root,
@@ -1029,44 +1065,41 @@ def analyze_megadrive(
                 base_address=base_address,
                 seed_plan=z80_seed_plan,
             )
-            z80_facts = load_z80_ghidra_facts(
-                z80_artifacts.facts, payload, base_address=base_address
-            )
+            z80_facts = load_z80_ghidra_facts(z80_artifacts.facts, payload, base_address=base_address)
             for table in dispatch_tables:
                 if any(
-                    fact.cpu_address < table.logical_end
-                    and fact.cpu_address + fact.length > table.logical_start
+                    fact.cpu_address < table.logical_end and fact.cpu_address + fact.length > table.logical_start
                     for fact in z80_facts.values()
                 ):
                     raise AnalysisError(
-                        f"Z80 decoder ignored proven word table "
-                        f"0x{table.logical_start:04X}..0x{table.logical_end:04X}"
+                        f"Z80 decoder ignored proven word table 0x{table.logical_start:04X}..0x{table.logical_end:04X}"
                     )
         else:
             raise AnalysisError("Z80 dispatch analysis did not converge")
-        dispatch_tables = tuple(
-            dispatch_by_start[address] for address in sorted(dispatch_by_start)
-        )
+        dispatch_tables = tuple(dispatch_by_start[address] for address in sorted(dispatch_by_start))
         dispatch_path = z80_root / "dispatch-tables.json"
         dispatch_path.write_text(
-            json.dumps({
-                "schema": "retrolarium.z80.dispatch-tables",
-                "schema_version": 1,
-                "input_sha256": _sha256(z80_input),
-                "tables": [
-                    {
-                        "logical_start": table.logical_start,
-                        "logical_end": table.logical_end,
-                        "dispatch_address": table.dispatch_address,
-                        "dispatch_addresses": list(
-                            table.dispatch_addresses or (table.dispatch_address,)
-                        ),
-                        "lookup_address": table.lookup_address,
-                        "targets": list(table.targets),
-                    }
-                    for table in dispatch_tables
-                ],
-            }, indent=2, sort_keys=True) + "\n",
+            json.dumps(
+                {
+                    "schema": "retrolarium.z80.dispatch-tables",
+                    "schema_version": 1,
+                    "input_sha256": _sha256(z80_input),
+                    "tables": [
+                        {
+                            "logical_start": table.logical_start,
+                            "logical_end": table.logical_end,
+                            "dispatch_address": table.dispatch_address,
+                            "dispatch_addresses": list(table.dispatch_addresses or (table.dispatch_address,)),
+                            "lookup_address": table.lookup_address,
+                            "targets": list(table.targets),
+                        }
+                        for table in dispatch_tables
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
             encoding="utf-8",
             newline="\n",
         )
@@ -1090,23 +1123,23 @@ def analyze_megadrive(
             byte_order="little",
             analysis_input=z80_input,
         )
-        program["derived_from"] = [
-            copy.edge_id for copy in logical.fragments
-        ]
+        program["derived_from"] = [copy.edge_id for copy in logical.fragments]
         program["dispatch_tables"] = dispatch_path.relative_to(output).as_posix()
         program["dispatch_tables_sha256"] = _sha256(dispatch_path)
         programs.append(program)
         z80_symbol_programs.append((cpu_id, base_address, z80_facts))
         for fragment_index, copy in enumerate(logical.fragments):
             fragment_path = z80_root / f"fragment{fragment_index:02d}.bin"
-            fragment_path.write_bytes(logical.payload(image)[
-                copy.target_start - base_address:
-                copy.target_end - base_address + 1
-            ])
-            edges.append(_edge_record(
-                copy, fragment_path.relative_to(output).as_posix(),
-                target_cpu_id=cpu_id,
-            ))
+            fragment_path.write_bytes(
+                logical.payload(image)[copy.target_start - base_address : copy.target_end - base_address + 1]
+            )
+            edges.append(
+                _edge_record(
+                    copy,
+                    fragment_path.relative_to(output).as_posix(),
+                    target_cpu_id=cpu_id,
+                )
+            )
 
     evidence = {
         "schema": "retrolarium.cross-cpu-evidence",
@@ -1121,9 +1154,7 @@ def analyze_megadrive(
         encoding="utf-8",
         newline="\n",
     )
-    symbols = generate_symbols(
-        image, facts, pointer_candidates, tuple(z80_symbol_programs)
-    )
+    symbols = generate_symbols(image, facts, pointer_candidates, tuple(z80_symbol_programs))
     symbols_path = output / "symbols.json"
     write_symbol_report(symbols_path, image, symbols)
     manifest: dict[str, object] = {
@@ -1140,10 +1171,7 @@ def analyze_megadrive(
             "path": "pointers.json",
             "sha256": _sha256(pointers_path),
             "candidate_count": len(pointer_candidates),
-            "accepted_count": sum(
-                candidate.status == "accepted"
-                for candidate in pointer_candidates
-            ),
+            "accepted_count": sum(candidate.status == "accepted" for candidate in pointer_candidates),
         },
         "symbols": {
             "path": "symbols.json",
@@ -1165,9 +1193,7 @@ def analyze_megadrive(
     return manifest
 
 
-def analyze_m68k(
-    rom: Path, output: Path, ghidra_home: Path
-) -> dict[str, object]:
+def analyze_m68k(rom: Path, output: Path, ghidra_home: Path) -> dict[str, object]:
     """Compatibility name for the complete multi-program analysis pipeline."""
     return analyze_megadrive(rom, output, ghidra_home)
 
@@ -1184,13 +1210,11 @@ def _container_script(z80_builds: Sequence[Mapping[str, str]]) -> str:
             f"asl -xx -n -q -A -L -U -i . -o {item['object']} {item['source']}",
             f"p2bin {item['object']} {item['output']} -p=FF",
         ]
-    steps += ["asl -xx -n -q -A -L -U -i . -o build/main.p src/main.s",
-              "p2bin build/main.p rebuilt.bin -p=FF"]
+    steps += ["asl -xx -n -q -A -L -U -i . -o build/main.p src/main.s", "p2bin build/main.p rebuilt.bin -p=FF"]
     return " && ".join(steps)
 
 
-def _build_emitted_project(project: Path, container: str,
-                           z80_builds: Sequence[Mapping[str, str]] = ()) -> Path:
+def _build_emitted_project(project: Path, container: str, z80_builds: Sequence[Mapping[str, str]] = ()) -> Path:
     project = project.resolve()
     command = [
         "docker",
@@ -1207,9 +1231,7 @@ def _build_emitted_project(project: Path, container: str,
     ]
     result = subprocess.run(command, text=True)
     if result.returncode:
-        raise MegaDriveEmitError(
-            f"ASL container build failed with exit code {result.returncode}"
-        )
+        raise MegaDriveEmitError(f"ASL container build failed with exit code {result.returncode}")
     rebuilt = project / "rebuilt.bin"
     if not rebuilt.is_file():
         raise MegaDriveEmitError(f"expected rebuilt ROM was not produced: {rebuilt}")
@@ -1237,10 +1259,7 @@ def _emitted_assets(result: EmitResult) -> dict[str, object]:
     return {
         "schema": "retrolarium.assets",
         "schema_version": 1,
-        "items": [
-            {**item, "path": f"generated/{item['path']}"}
-            for item in result.assets
-        ],
+        "items": [{**item, "path": f"generated/{item['path']}"} for item in result.assets],
     }
 
 
@@ -1272,23 +1291,19 @@ def _trusted_emit_facts(
     """
     roots = abstract_analysis.get("trusted_root_addresses")
     if roots is None:
-        retained = {
-            offset: fact for offset, fact in raw_facts.items()
-            if fact.cpu_address in analysed_addresses
-        }
+        retained = {offset: fact for offset, fact in raw_facts.items() if fact.cpu_address in analysed_addresses}
     else:
-        retained = retain_trusted_instruction_facts(
-            image, raw_facts, additional_entrypoints=set(roots)
-        )
+        retained = retain_trusted_instruction_facts(image, raw_facts, additional_entrypoints=set(roots))
     if {fact.cpu_address for fact in retained.values()} != analysed_addresses:
-        raise MegaDriveEmitError(
-            "cached trusted roots do not reproduce the analysed instructions"
-        )
+        raise MegaDriveEmitError("cached trusted roots do not reproduce the analysed instructions")
     return retained
 
 
 def emit_analyzed_megadrive(
-    rom: Path, output: Path, *, build_container: str | None = None,
+    rom: Path,
+    output: Path,
+    *,
+    build_container: str | None = None,
 ) -> dict[str, object]:
     """Regenerate sources from immutable ROM facts without running the decoder."""
     rom = rom.resolve()
@@ -1296,16 +1311,18 @@ def emit_analyzed_megadrive(
     image = load_megadrive(rom)
     analysis_root = output / "analysis"
     analysis = json.loads((analysis_root / "analysis.json").read_text(encoding="utf-8"))
-    if (analysis.get("schema") != "retrolarium.megadrive.analysis"
-            or analysis.get("input", {}).get("sha256") != image.sha256
-            or analysis["input"].get("size") != len(image.data)):
+    if (
+        analysis.get("schema") != "retrolarium.megadrive.analysis"
+        or analysis.get("input", {}).get("sha256") != image.sha256
+        or analysis["input"].get("size") != len(image.data)
+    ):
         raise MegaDriveEmitError("cached analysis belongs to a different ROM")
+
     # The facts and seed plan determine what is emitted. Check their provenance
     # before reusing a cache; imported facts also validate every byte against ROM.
     def check(path_key: str, relative: object, digest: object) -> None:
         artifact = (analysis_root / str(relative)).resolve()
-        if (not artifact.is_relative_to(analysis_root)
-                or not artifact.is_file() or _sha256(artifact) != digest):
+        if not artifact.is_relative_to(analysis_root) or not artifact.is_file() or _sha256(artifact) != digest:
             raise MegaDriveEmitError(f"cached analysis artifact changed: {path_key}")
 
     for record in [analysis, *analysis["programs"]]:
@@ -1316,21 +1333,10 @@ def emit_analyzed_megadrive(
                 check(key.removesuffix("_sha256"), record[key.removesuffix("_sha256")], value)
             elif isinstance(value, dict) and isinstance(value.get("path"), str) and "sha256" in value:
                 check(key, value["path"], value["sha256"])
-    m68k_facts = load_megadrive_ghidra_facts(
-        analysis_root / "m68k" / "instructions.tsv", image
-    )
-    abstract_analysis = json.loads(
-        (analysis_root / "m68k" / "abstract-analysis.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    m68k_program = next(
-        program for program in analysis["programs"]
-        if program.get("cpu_id") == "m68k"
-    )
-    analysed_instructions = json.loads(
-        (analysis_root / m68k_program["instructions"]).read_text(encoding="utf-8")
-    )
+    m68k_facts = load_megadrive_ghidra_facts(analysis_root / "m68k" / "instructions.tsv", image)
+    abstract_analysis = json.loads((analysis_root / "m68k" / "abstract-analysis.json").read_text(encoding="utf-8"))
+    m68k_program = next(program for program in analysis["programs"] if program.get("cpu_id") == "m68k")
+    analysed_instructions = json.loads((analysis_root / m68k_program["instructions"]).read_text(encoding="utf-8"))
     m68k_facts = _trusted_emit_facts(
         image,
         m68k_facts,
@@ -1354,13 +1360,11 @@ def emit_analyzed_megadrive(
         for copy in logical.fragments:
             fragment_facts = fragment_z80_facts(logical, facts, copy)
             fragment_tables = tuple(
-                table for table in tables
-                if copy.target_start <= table.logical_start
-                and table.logical_end <= copy.target_end + 1
+                table
+                for table in tables
+                if copy.target_start <= table.logical_start and table.logical_end <= copy.target_end + 1
             )
-            z80_by_edge[copy.edge_id] = (
-                f"z80.{index:02d}", fragment_facts, fragment_tables
-            )
+            z80_by_edge[copy.edge_id] = (f"z80.{index:02d}", fragment_facts, fragment_tables)
     for index, copy in enumerate(copies):
         cpu_id, facts, tables = z80_by_edge[copy.edge_id]
         z80_programs.append((cpu_id, copy.target_start, facts))
@@ -1372,7 +1376,12 @@ def emit_analyzed_megadrive(
     write_symbol_report(analysis_root / "emitted-symbols.json", image, symbols)
     generated = output / "generated"
     emitted = emit_project(
-        generated, image, m68k_facts, pointers, symbols, copies,
+        generated,
+        image,
+        m68k_facts,
+        pointers,
+        symbols,
+        copies,
         tuple(z80_programs),
         tuple(z80_dispatch_tables),
     )
@@ -1447,8 +1456,7 @@ def emit_analyzed_megadrive(
                 # The kit's own toolchain assembles the Z80 programs first; a
                 # container's argv does all of it, as the kit runs it.
                 "z80_prebuild": [] if build_container else list(emitted.z80_builds),
-                **({"argv": ["sh", "-lc", _container_script(emitted.z80_builds)]}
-                   if build_container else {}),
+                **({"argv": ["sh", "-lc", _container_script(emitted.z80_builds)]} if build_container else {}),
                 "output": "generated/rebuilt.bin",
             },
             "verify": {

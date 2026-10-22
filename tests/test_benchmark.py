@@ -68,29 +68,48 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(1.0, result["targets"]["accuracy"])
 
     def write_megadrive(
-        self, root: Path, candidates: list[dict[str, object]],
+        self,
+        root: Path,
+        candidates: list[dict[str, object]],
         expected: list[dict[str, object]],
     ) -> tuple[Path, Path]:
         report_path = root / "report.json"
         oracle_path = root / "oracle.json"
-        report_path.write_text(json.dumps({
-            "schema_version": 1, "input_sha256": "abc", "candidates": candidates,
-        }), encoding="utf-8")
-        oracle_path.write_text(json.dumps({
-            "schema_version": 1, "fixture_id": "synthetic", "input_sha256": "abc",
-            "coverage": "complete_for_evaluated_schemas",
-            "evaluated_schemas": ["megadrive.u32be.absolute"],
-            "pointer_tables": expected,
-        }), encoding="utf-8")
+        report_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "input_sha256": "abc",
+                    "candidates": candidates,
+                }
+            ),
+            encoding="utf-8",
+        )
+        oracle_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "fixture_id": "synthetic",
+                    "input_sha256": "abc",
+                    "coverage": "complete_for_evaluated_schemas",
+                    "evaluated_schemas": ["megadrive.u32be.absolute"],
+                    "pointer_tables": expected,
+                }
+            ),
+            encoding="utf-8",
+        )
         return report_path, oracle_path
 
     @staticmethod
-    def table(identifier: str, start: int, end: int, score: float = 1.0,
-              status: str = "accepted") -> dict[str, object]:
+    def table(identifier: str, start: int, end: int, score: float = 1.0, status: str = "accepted") -> dict[str, object]:
         return {
-            "id": identifier, "schema_id": "megadrive.u32be.absolute",
-            "physical_start": start, "physical_end": end, "status": status,
-            "score": score, "entry_size": 4,
+            "id": identifier,
+            "schema_id": "megadrive.u32be.absolute",
+            "physical_start": start,
+            "physical_end": end,
+            "status": status,
+            "score": score,
+            "entry_size": 4,
             "entries": [{"target": 0x1000 + offset} for offset in range(start, end, 4)],
         }
 
@@ -103,13 +122,20 @@ class BenchmarkTests(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            report, oracle = self.write_megadrive(
-                root, candidates, [self.table("expected", 0x400, 0x410)]
-            )
+            report, oracle = self.write_megadrive(root, candidates, [self.table("expected", 0x400, 0x410)])
             project = root / "retrolarium-project.json"
-            project.write_text(json.dumps({"source": {"assets": [
-                {"kind": "z80_program", "rom_file_offset": 0x800, "size": 0x100},
-            ]}}), encoding="utf-8")
+            project.write_text(
+                json.dumps(
+                    {
+                        "source": {
+                            "assets": [
+                                {"kind": "z80_program", "rom_file_offset": 0x800, "size": 0x100},
+                            ]
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
             result = score_pointer_report(report, oracle, project)
 
         self.assertEqual(4, result["tables"]["accepted"])
@@ -130,16 +156,20 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(0, result["tables"]["true_positive"])
         self.assertEqual(1, result["tables"]["partial"])
         self.assertEqual(
-            [{
-                "oracle_id": "expected", "candidate_id": "short", "overlap_bytes": 12,
-                "oracle_range": [0x400, 0x410], "candidate_range": [0x400, 0x40C],
-                "shared_targets": 3,
-            }],
+            [
+                {
+                    "oracle_id": "expected",
+                    "candidate_id": "short",
+                    "overlap_bytes": 12,
+                    "oracle_range": [0x400, 0x410],
+                    "candidate_range": [0x400, 0x40C],
+                    "shared_targets": 3,
+                }
+            ],
             result["partial_matches"],
         )
         self.assertEqual(
-            {"expected": 16, "selected": 16, "overlapping": 12,
-             "precision": 0.75, "recall": 0.75},
+            {"expected": 16, "selected": 16, "overlapping": 12, "precision": 0.75, "recall": 0.75},
             result["bytes"],
         )
 

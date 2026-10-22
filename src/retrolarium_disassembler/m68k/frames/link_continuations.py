@@ -7,6 +7,7 @@ instruction after that branch, it is the architectural continuation of a
 call and therefore code. Without the callee's JMP through the same register
 an adjacent address is commonly a data argument and is not accepted.
 """
+
 from __future__ import annotations
 
 from retrolarium_disassembler.facts import InstructionFact
@@ -40,10 +41,14 @@ def discover_link_continuation_seeds(
         register = link.operands.upper().rsplit("|", 1)[-1]
         if _register_use(by_address, branch.flows[0] & 0xFFFFFF, register) != "code":
             continue
-        seeds.append(DecoderSeed(
-            continuation, "link_continuation", "proven",
-            f"LEA d16(PC) at {link.cpu_address:06X} names the instruction after the "
-            f"branch at {branch.cpu_address:06X}; the callee jumps through {register}",
-            link.cpu_address,
-        ))
+        seeds.append(
+            DecoderSeed(
+                continuation,
+                "link_continuation",
+                "proven",
+                f"LEA d16(PC) at {link.cpu_address:06X} names the instruction after the "
+                f"branch at {branch.cpu_address:06X}; the callee jumps through {register}",
+                link.cpu_address,
+            )
+        )
     return tuple(seeds)

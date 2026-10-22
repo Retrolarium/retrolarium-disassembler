@@ -19,6 +19,7 @@ PD image is scanned as well (homebrew is where cc65 code is expected). Only the 
 
 OUTPUT_DIR receives scan.csv and summary.md.
 """
+
 import argparse
 import collections
 import csv
@@ -36,14 +37,21 @@ PD_TAG = re.compile(r"\((?:PD)[^)]*\)", re.I)
 # Official 6502 opcodes by addressing mode; operand lengths follow from the mode.
 MODES = {}
 for _mode, _codes in (
-        ("imp", "00 08 18 28 38 40 48 58 60 68 78 88 8A 98 9A A8 AA B8 BA C8 CA D8 E8 EA F8 0A 2A 4A 6A"),
-        ("imm", "09 29 49 69 A0 A2 A9 C0 C9 E0 E9"),
-        ("zp", "05 06 24 25 26 45 46 65 66 84 85 86 A4 A5 A6 C4 C5 C6 E4 E5 E6"
-               " 15 16 35 36 55 56 75 76 94 95 B4 B5 D5 D6 F5 F6 96 B6"
-               " 01 21 41 61 81 A1 C1 E1 11 31 51 71 91 B1 D1 F1"),
-        ("rel", "10 30 50 70 90 B0 D0 F0"),
-        ("abs", "0D 0E 20 2C 2D 2E 4C 4D 4E 6D 6E 8C 8D 8E AC AD AE CC CD CE EC ED EE"
-                " 1D 1E 3D 3E 5D 5E 7D 7E 9D BC BD DD DE FD FE 19 39 59 79 99 B9 D9 F9 BE 6C")):
+    ("imp", "00 08 18 28 38 40 48 58 60 68 78 88 8A 98 9A A8 AA B8 BA C8 CA D8 E8 EA F8 0A 2A 4A 6A"),
+    ("imm", "09 29 49 69 A0 A2 A9 C0 C9 E0 E9"),
+    (
+        "zp",
+        "05 06 24 25 26 45 46 65 66 84 85 86 A4 A5 A6 C4 C5 C6 E4 E5 E6"
+        " 15 16 35 36 55 56 75 76 94 95 B4 B5 D5 D6 F5 F6 96 B6"
+        " 01 21 41 61 81 A1 C1 E1 11 31 51 71 91 B1 D1 F1",
+    ),
+    ("rel", "10 30 50 70 90 B0 D0 F0"),
+    (
+        "abs",
+        "0D 0E 20 2C 2D 2E 4C 4D 4E 6D 6E 8C 8D 8E AC AD AE CC CD CE EC ED EE"
+        " 1D 1E 3D 3E 5D 5E 7D 7E 9D BC BD DD DE FD FE 19 39 59 79 99 B9 D9 F9 BE 6C",
+    ),
+):
     for _code in _codes.split():
         MODES[int(_code, 16)] = _mode
 LENGTH = {"imp": 1, "imm": 2, "zp": 2, "rel": 2, "abs": 3}
@@ -75,11 +83,11 @@ def skeleton(code, start, end):
         if mode is None or pc + LENGTH[mode] > len(code):
             break
         size = LENGTH[mode]
-        pattern += re.escape(code[pc:pc + 1])
+        pattern += re.escape(code[pc : pc + 1])
         if mode in ("zp", "abs"):
             pattern += b"." * (size - 1)
         else:
-            pattern += re.escape(code[pc + 1:pc + size])
+            pattern += re.escape(code[pc + 1 : pc + size])
         pc += size
         count += 1
     return pattern, count, pc - start
@@ -93,16 +101,25 @@ def cc65_skeletons(cc65_dir):
     with tempfile.TemporaryDirectory() as work:
         work = Path(work)
         (work / "probe.c").write_text(PROBE)
-        subprocess.run([str(cl65), "-t", "nes", "-O", "-m", "probe.map", "-o", "probe.nes", "probe.c"],
-                       cwd=work, check=True, capture_output=True)
+        subprocess.run(
+            [str(cl65), "-t", "nes", "-O", "-m", "probe.map", "-o", "probe.nes", "probe.c"],
+            cwd=work,
+            check=True,
+            capture_output=True,
+        )
         image = (work / "probe.nes").read_bytes()
         text = (work / "probe.map").read_text()
-    prg = image[16:16 + image[4] * 16384]
+    prg = image[16 : 16 + image[4] * 16384]
     base = 0x10000 - len(prg)
     block = text.split("Exports list by name:")[1].split("Exports list by value:")[0]
-    exports = {name: int(value, 16) for name, value, kind in re.findall(r"(\S+)\s+([0-9A-F]{6})\s+(\w+)", block)
-               if kind == "RLA" and base <= int(value, 16) < 0xFFFA and not name.startswith("__")
-               and name not in ("_main", "NESfont")}
+    exports = {
+        name: int(value, 16)
+        for name, value, kind in re.findall(r"(\S+)\s+([0-9A-F]{6})\s+(\w+)", block)
+        if kind == "RLA"
+        and base <= int(value, 16) < 0xFFFA
+        and not name.startswith("__")
+        and name not in ("_main", "NESfont")
+    }
     bounds = sorted(set(exports.values()))
     result = {}
     for name, address in exports.items():
@@ -118,8 +135,9 @@ def cc65_skeletons(cc65_dir):
 
 def homebrew(entries):
     """Every clean public-domain image of an archive (they are separate programs)."""
-    return [e for e in entries if e.lower().endswith(".nes") and PD_TAG.search(e)
-            and not BAD_TAGS.search(PD_TAG.sub("", e))]
+    return [
+        e for e in entries if e.lower().endswith(".nes") and PD_TAG.search(e) and not BAD_TAGS.search(PD_TAG.sub("", e))
+    ]
 
 
 def choose(entries):
@@ -136,7 +154,7 @@ def prg_rom(image):
         return None
     start = 16 + (512 if image[6] & 4 else 0)
     size = image[4] * 16384 or len(image) - start
-    return image[start:start + size]
+    return image[start : start + size]
 
 
 def scan(prg, skeletons):
@@ -189,11 +207,18 @@ def write_outputs(rows, output):
     lines = ["# NES compiler scan", "", f"{len(rows)} games scanned.", ""]
     lines += [f"- {key}: {len(groups[key])}" for key in VERDICTS]
     for key in VERDICTS[:-1]:
-        lines += ["", f"## {key}", "", "| game | ROM | PRG KB | cc65 routines | stack ops/KB | LDY+JSR | names |",
-                  "|---|---|---:|---:|---:|---:|---|"]
+        lines += [
+            "",
+            f"## {key}",
+            "",
+            "| game | ROM | PRG KB | cc65 routines | stack ops/KB | LDY+JSR | names |",
+            "|---|---|---:|---:|---:|---:|---|",
+        ]
         for row in sorted(groups[key], key=lambda r: -int(r["cc65_routines"])):
-            lines.append(f"| {row['game']} | {row['rom']} | {row['prg_kb']} | {row['cc65_routines']} | "
-                         f"{row['stack_ops_per_kb']} | {row['ldy_jsr']} | {row['cc65_names']} |")
+            lines.append(
+                f"| {row['game']} | {row['rom']} | {row['prg_kb']} | {row['cc65_routines']} | "
+                f"{row['stack_ops_per_kb']} | {row['ldy_jsr']} | {row['cc65_names']} |"
+            )
     (output / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -225,7 +250,7 @@ def main():
     if args.only:
         archives = [a for a in archives if args.only.lower() in a.name.lower()]
     if args.limit:
-        archives = archives[:args.limit]
+        archives = archives[: args.limit]
     rows = []
     for number, archive in enumerate(archives, 1):
         entries = list_archive(archive)

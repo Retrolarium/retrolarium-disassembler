@@ -8,6 +8,7 @@ the 68000 passes and the Z80 dispatch. The 68000 passes take their
 instruction helpers from m68k/instructions.py; from megadrive/ they still use
 only the ASM68K instruction text and the dispatch-table detectors, by name.
 """
+
 from __future__ import annotations
 
 import ast
@@ -51,15 +52,18 @@ def imports() -> list[tuple[tuple[str, ...], tuple[str, ...], int]]:
 
 class LayerTests(unittest.TestCase):
     def test_only_the_preset_imports_the_kit(self) -> None:
-        importers = sorted({"/".join(module) for module, target, _line in imports()
-                            if target[0] == "retrolarium_kit"})
+        importers = sorted({"/".join(module) for module, target, _line in imports() if target[0] == "retrolarium_kit"})
         self.assertEqual(["preset"], importers)
 
     def test_shared_modules_know_no_platform(self) -> None:
-        offenders = [f"{'.'.join(module)}:{line} imports {'.'.join(target)}"
-                     for module, target, line in imports()
-                     if module[0] in SHARED and target[0] == "retrolarium_disassembler" and len(target) > 1
-                     and target[1] in PLATFORMS | {"cli", "preset"}]
+        offenders = [
+            f"{'.'.join(module)}:{line} imports {'.'.join(target)}"
+            for module, target, line in imports()
+            if module[0] in SHARED
+            and target[0] == "retrolarium_disassembler"
+            and len(target) > 1
+            and target[1] in PLATFORMS | {"cli", "preset"}
+        ]
         self.assertEqual([], offenders)
 
     def test_platforms_keep_to_themselves(self) -> None:
@@ -69,7 +73,8 @@ class LayerTests(unittest.TestCase):
                 continue
             other = target[1]
             if other in {"cli", "preset"} or (
-                    other in PLATFORMS and other != module[0] and (module[0], other) not in ALLOWED):
+                other in PLATFORMS and other != module[0] and (module[0], other) not in ALLOWED
+            ):
                 offenders.append(f"{'.'.join(module)}:{line} imports {'.'.join(target)}")
         self.assertEqual([], offenders)
 
@@ -78,14 +83,22 @@ class LayerTests(unittest.TestCase):
         for path in sorted((PACKAGE / "m68k").rglob("*.py")):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
                 if isinstance(node, ast.Import):
-                    offenders += [f"{path.name}:{node.lineno} imports {alias.name}" for alias in node.names
-                                  if alias.name.startswith("retrolarium_disassembler.megadrive")]
-                if not (isinstance(node, ast.ImportFrom) and node.module
-                        and node.module.startswith("retrolarium_disassembler.megadrive")):
+                    offenders += [
+                        f"{path.name}:{node.lineno} imports {alias.name}"
+                        for alias in node.names
+                        if alias.name.startswith("retrolarium_disassembler.megadrive")
+                    ]
+                if not (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module
+                    and node.module.startswith("retrolarium_disassembler.megadrive")
+                ):
                     continue
-                offenders += [f"{path.name}:{node.lineno} imports {node.module}.{alias.name}"
-                              for alias in node.names
-                              if (node.module, alias.name) not in M68K_FROM_MEGADRIVE]
+                offenders += [
+                    f"{path.name}:{node.lineno} imports {node.module}.{alias.name}"
+                    for alias in node.names
+                    if (node.module, alias.name) not in M68K_FROM_MEGADRIVE
+                ]
         self.assertEqual([], offenders)
 
     def test_the_package_imports_without_the_kit(self) -> None:
@@ -109,8 +122,7 @@ class LayerTests(unittest.TestCase):
             "print('ok')\n"
         )
         environment = {"PYTHONPATH": str(PACKAGE.parent), "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
-        result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
-                                env=environment)
+        result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, env=environment)
         self.assertEqual("ok", result.stdout.strip(), result.stderr)
 
 

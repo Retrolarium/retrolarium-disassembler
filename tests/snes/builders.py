@@ -41,8 +41,6 @@ def probe_image(mapping: str):
         data[header + offset : header + offset + 2] = value.to_bytes(2, "little")
     data[header + 0x1C : header + 0x20] = bytes(4)
     checksum = (cartridge_checksum(data) + 0x1FE) & 0xFFFF
-    data[header + 0x1C : header + 0x1E] = (checksum ^ 0xFFFF).to_bytes(
-        2, "little"
-    )
+    data[header + 0x1C : header + 0x1E] = (checksum ^ 0xFFFF).to_bytes(2, "little")
     data[header + 0x1E : header + 0x20] = checksum.to_bytes(2, "little")
     return parse_snes(bytes(data))

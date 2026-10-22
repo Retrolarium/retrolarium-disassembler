@@ -8,7 +8,7 @@ version = "0.5.0"
 description = "Exact-rebuild disassembler for NES, Mega Drive and SNES images"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "GPL-3.0-or-later"}
+license = { text = "GPL-3.0-or-later" }
 classifiers = [
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
 ]

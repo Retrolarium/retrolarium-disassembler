@@ -23,13 +23,62 @@ from retrolarium_disassembler.nes.pointers import (
 
 
 OFFICIAL_6502 = {
-    "ADC", "AND", "ASL", "BCC", "BCS", "BEQ", "BIT", "BMI", "BNE",
-    "BPL", "BRK", "BVC", "BVS", "CLC", "CLD", "CLI", "CLV", "CMP",
-    "CPX", "CPY", "DEC", "DEX", "DEY", "EOR", "INC", "INX", "INY",
-    "JMP", "JSR", "LDA", "LDX", "LDY", "LSR", "NOP", "ORA", "PHA",
-    "PHP", "PLA", "PLP", "ROL", "ROR", "RTI", "RTS", "SBC", "SEC",
-    "SED", "SEI", "STA", "STX", "STY", "TAX", "TAY", "TSX", "TXA",
-    "TXS", "TYA",
+    "ADC",
+    "AND",
+    "ASL",
+    "BCC",
+    "BCS",
+    "BEQ",
+    "BIT",
+    "BMI",
+    "BNE",
+    "BPL",
+    "BRK",
+    "BVC",
+    "BVS",
+    "CLC",
+    "CLD",
+    "CLI",
+    "CLV",
+    "CMP",
+    "CPX",
+    "CPY",
+    "DEC",
+    "DEX",
+    "DEY",
+    "EOR",
+    "INC",
+    "INX",
+    "INY",
+    "JMP",
+    "JSR",
+    "LDA",
+    "LDX",
+    "LDY",
+    "LSR",
+    "NOP",
+    "ORA",
+    "PHA",
+    "PHP",
+    "PLA",
+    "PLP",
+    "ROL",
+    "ROR",
+    "RTI",
+    "RTS",
+    "SBC",
+    "SEC",
+    "SED",
+    "SEI",
+    "STA",
+    "STX",
+    "STY",
+    "TAX",
+    "TAY",
+    "TSX",
+    "TXA",
+    "TXS",
+    "TYA",
 }
 BRANCHES = {"BCC", "BCS", "BEQ", "BMI", "BNE", "BPL", "BVC", "BVS"}
 DIRECT_CONTROL = BRANCHES | {"JMP", "JSR"}
@@ -113,9 +162,7 @@ def label_plan(
         interiors.update(range(fact.physical_offset + 1, fact.physical_offset + fact.length))
     for candidate in accepted_pointer_tables(pointer_candidates):
         if candidate.schema_id == "nes.u16le":
-            pointer_interiors.update(
-                entry.physical_offset + 1 for entry in candidate.entries
-            )
+            pointer_interiors.update(entry.physical_offset + 1 for entry in candidate.entries)
     # The interrupt-vector emitter consumes the final six bytes as one
     # architecture-defined block and cannot attach a symbol inside it.  In
     # particular, erased/padding banks commonly contain $FFFF vectors; do not
@@ -129,15 +176,11 @@ def label_plan(
         offset = cpu_to_prg_offset(image, address)
         if offset in interiors:
             diagnostics.append(
-                f"bank {bank:02d} control target ${address:04X} falls inside "
-                "an instruction; kept numeric"
+                f"bank {bank:02d} control target ${address:04X} falls inside an instruction; kept numeric"
             )
             return
         if offset in pointer_interiors:
-            diagnostics.append(
-                f"bank {bank:02d} target ${address:04X} falls inside an "
-                "encoded pointer; kept numeric"
-            )
+            diagnostics.append(f"bank {bank:02d} target ${address:04X} falls inside an encoded pointer; kept numeric")
             return
         if priority > priorities.get(address, -1):
             labels[address] = technical_name(kind, address, bank)
@@ -194,24 +237,18 @@ def numeric_operand(fact: InstructionFact) -> str:
 def relative_branch_operand(fact: InstructionFact) -> str:
     """Express a branch target relative to the relocatable instruction address."""
     if fact.length != 2 or len(fact.raw) != 2:
-        raise EmitError(
-            f"branch ${fact.cpu_address:04X} does not have a two-byte encoding"
-        )
+        raise EmitError(f"branch ${fact.cpu_address:04X} does not have a two-byte encoding")
     displacement = fact.raw[1] if fact.raw[1] < 0x80 else fact.raw[1] - 0x100
     target_delta = 2 + displacement
     operator = "+" if target_delta >= 0 else "-"
     return f"* {operator} {abs(target_delta)}"
 
 
-def format_instruction(
-    fact: InstructionFact, image: InesImage, labels: dict[int, str]
-) -> str | None:
+def format_instruction(fact: InstructionFact, image: InesImage, labels: dict[int, str]) -> str | None:
     if fact.mnemonic not in OFFICIAL_6502:
         return None
     operand = numeric_operand(fact)
-    direct = fact.mnemonic in DIRECT_CONTROL and not (
-        fact.mnemonic == "JMP" and operand.startswith("(")
-    )
+    direct = fact.mnemonic in DIRECT_CONTROL and not (fact.mnemonic == "JMP" and operand.startswith("("))
     internal_flows = [target for target in fact.flows if internal_address(image, target)]
     if direct and len(internal_flows) == 1 and internal_flows[0] in labels:
         operand = labels[internal_flows[0]]
@@ -247,33 +284,26 @@ def prg_source(
     segment: str = "PRG",
 ) -> tuple[str, EmitResult]:
     labels, diagnostics = label_plan(image, facts, pointer_candidates, bank=bank)
-    pointer_tables = {
-        candidate.physical_start: candidate
-        for candidate in accepted_pointer_tables(pointer_candidates)
-    }
+    pointer_tables = {candidate.physical_start: candidate for candidate in accepted_pointer_tables(pointer_candidates)}
     canonical_start = canonical_prg_start(image)
     attachable = {
         cpu_to_prg_offset(image, address): name
         for address, name in labels.items()
         if canonical_start <= address <= 0xFFFF
     }
-    aliases = {
-        address: name
-        for address, name in labels.items()
-        if not canonical_start <= address <= 0xFFFF
-    }
+    aliases = {address: name for address, name in labels.items() if not canonical_start <= address <= 0xFFFF}
     lines = [
-        '; Generated by Retrolarium Kit from neutral instruction facts.',
-        '; Unknown or unsupported ranges remain byte-exact raw data.',
-        '',
+        "; Generated by Retrolarium Kit from neutral instruction facts.",
+        "; Unknown or unsupported ranges remain byte-exact raw data.",
+        "",
         '.setcpu "6502"',
-        '',
+        "",
     ]
     for address, name in sorted(aliases.items()):
         lines.append(f"{name} = ${address:04X}")
     if aliases:
         lines.append("")
-    lines.extend([f'.segment "{segment}"', ''])
+    lines.extend([f'.segment "{segment}"', ""])
 
     offset = 0
     instruction_count = 0
@@ -289,17 +319,11 @@ def prg_source(
             lines.append(label + ":")
         if offset == vector_offset:
             nmi, reset, irq = struct.unpack_from("<HHH", image.prg, vector_offset)
-            for index, (name, target) in enumerate(
-                (("Nmi", nmi), ("Reset", reset), ("Irq", irq))
-            ):
+            for index, (name, target) in enumerate((("Nmi", nmi), ("Reset", reset), ("Irq", irq))):
                 if index:
                     lines.append("")
                 operand = labels.get(target, f"${target:04X}")
-                vector_name = (
-                    f"{name}Vector"
-                    if segment == "PRG"
-                    else f"{name}Vector_B{bank:02d}"
-                )
+                vector_name = f"{name}Vector" if segment == "PRG" else f"{name}Vector_B{bank:02d}"
                 lines.append(f"{vector_name}:")
                 lines.append(f"    .addr {operand}")
             offset += 6
@@ -327,10 +351,7 @@ def prg_source(
                     lines.append(f"    .byte .lobyte({operand})")
                 for entry in pointer_table.entries:
                     if entry.high_physical_offset is None:
-                        raise EmitError(
-                            f"split pointer table {pointer_table.candidate_id} "
-                            "has an incomplete entry"
-                        )
+                        raise EmitError(f"split pointer table {pointer_table.candidate_id} has an incomplete entry")
                     entry_label = attachable.get(entry.high_physical_offset)
                     if entry_label:
                         lines.append("")
@@ -398,37 +419,26 @@ def prg_source(
 def linker_config(image: InesImage) -> str:
     targets = prg_analysis_targets(image)
     memory = [
-        '    HEADER: start = $0000, size = $0010, file = %O, fill = yes;',
+        "    HEADER: start = $0000, size = $0010, file = %O, fill = yes;",
     ]
-    segments = ['    HEADER: load = HEADER, type = ro;']
+    segments = ["    HEADER: load = HEADER, type = ro;"]
     if image.trainer:
-        memory.append('    TRAINER: start = $0000, size = $0200, file = %O, fill = yes;')
-        segments.append('    TRAINER: load = TRAINER, type = ro;')
+        memory.append("    TRAINER: start = $0000, size = $0200, file = %O, fill = yes;")
+        segments.append("    TRAINER: load = TRAINER, type = ro;")
     if len(targets) == 1:
         prg_start = canonical_prg_start(image)
-        memory.append(
-            f"    PRG: start = ${prg_start:04X}, "
-            f"size = ${len(image.prg):04X}, file = %O, fill = yes;"
-        )
-        segments.append('    PRG: load = PRG, type = ro;')
+        memory.append(f"    PRG: start = ${prg_start:04X}, size = ${len(image.prg):04X}, file = %O, fill = yes;")
+        segments.append("    PRG: load = PRG, type = ro;")
     else:
         for target in targets:
             name = f"PRG{target.bank:02d}"
             size = target.physical_end - target.physical_start + 1
-            memory.append(
-                f"    {name}: start = ${target.cpu_start:04X}, "
-                f"size = ${size:04X}, file = %O, fill = yes;"
-            )
+            memory.append(f"    {name}: start = ${target.cpu_start:04X}, size = ${size:04X}, file = %O, fill = yes;")
             segments.append(f"    {name}: load = {name}, type = ro;")
     if image.chr:
-        memory.append(
-            f"    CHR: start = $0000, size = ${len(image.chr):04X}, file = %O, fill = yes;"
-        )
-        segments.append('    CHR: load = CHR, type = ro;')
-    return (
-        "MEMORY {\n" + "\n".join(memory) + "\n}\n\nSEGMENTS {\n" +
-        "\n".join(segments) + "\n}\n"
-    )
+        memory.append(f"    CHR: start = $0000, size = ${len(image.chr):04X}, file = %O, fill = yes;")
+        segments.append("    CHR: load = CHR, type = ro;")
+    return "MEMORY {\n" + "\n".join(memory) + "\n}\n\nSEGMENTS {\n" + "\n".join(segments) + "\n}\n"
 
 
 def emit_project(
@@ -492,9 +502,7 @@ def emit_project(
                 symbols=tuple(
                     replace(
                         symbol,
-                        physical_offset=(
-                            symbol.physical_offset + target.physical_start
-                        ),
+                        physical_offset=(symbol.physical_offset + target.physical_start),
                         source_unit=f"src/{source_name}",
                     )
                     for symbol in bank_result.symbols
@@ -508,26 +516,20 @@ def emit_project(
         raw_bytes=sum(item.raw_bytes for item in results),
         labels=sum(item.labels for item in results),
         symbols=tuple(symbol for item in results for symbol in item.symbols),
-        diagnostics=tuple(
-            diagnostic
-            for item in results
-            for diagnostic in item.diagnostics
-        ),
+        diagnostics=tuple(diagnostic for item in results for diagnostic in item.diagnostics),
     )
-    if result.instruction_bytes + result.pointer_bytes + result.raw_bytes != len(
-        image.prg
-    ):
+    if result.instruction_bytes + result.pointer_bytes + result.raw_bytes != len(image.prg):
         raise EmitError("combined PRG coverage is not complete")
     main_lines = [
         '.segment "HEADER"',
         '    .incbin "assets/header.bin"',
     ]
     if image.trainer:
-        main_lines.extend(['', '.segment "TRAINER"', '    .incbin "assets/trainer.bin"'])
+        main_lines.extend(["", '.segment "TRAINER"', '    .incbin "assets/trainer.bin"'])
     for source_name in source_names:
-        main_lines.extend(['', f'.include "src/{source_name}"'])
+        main_lines.extend(["", f'.include "src/{source_name}"'])
     if image.chr:
-        main_lines.extend(['', '.segment "CHR"', '    .incbin "assets/chr.bin"'])
+        main_lines.extend(["", '.segment "CHR"', '    .incbin "assets/chr.bin"'])
     (output / "main.asm").write_text("\n".join(main_lines) + "\n", encoding="utf-8", newline="\n")
     (output / "linker.cfg").write_text(linker_config(image), encoding="utf-8", newline="\n")
     dependencies = [*(f"src/{name}" for name in source_names), "assets/header.bin"]

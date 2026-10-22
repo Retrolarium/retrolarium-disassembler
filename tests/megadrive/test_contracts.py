@@ -132,14 +132,16 @@ def write_megadrive_project(root: Path) -> Path:
         "assets": {
             "schema": "retrolarium.assets",
             "schema_version": 1,
-            "items": [{
-                "id": "megadrive.cartridge.header",
-                "kind": "container_header",
-                "path": "generated/assets/header.bin",
-                "rom_file_offset": 0x100,
-                "size": 0x100,
-                "sha256": digest(rom[0x100:0x200]),
-            }],
+            "items": [
+                {
+                    "id": "megadrive.cartridge.header",
+                    "kind": "container_header",
+                    "path": "generated/assets/header.bin",
+                    "rom_file_offset": 0x100,
+                    "size": 0x100,
+                    "sha256": digest(rom[0x100:0x200]),
+                }
+            ],
         },
         "source": {
             "dialect": "asm68k-exact-first",
@@ -199,13 +201,9 @@ class MegaDriveContractTests(unittest.TestCase):
             expected = (generated / "rebuilt.bin").read_bytes()
             lines = ["    org     $000000"]
             for offset in range(0, len(expected), 16):
-                values = ", ".join(
-                    f"${value:02X}" for value in expected[offset:offset + 16]
-                )
+                values = ", ".join(f"${value:02X}" for value in expected[offset : offset + 16])
                 lines.append(f"    dc.b    {values}")
-            (generated / "main.68k").write_text(
-                "\n".join(lines) + "\n", encoding="ascii", newline="\n"
-            )
+            (generated / "main.68k").write_text("\n".join(lines) + "\n", encoding="ascii", newline="\n")
             manifest = json.loads(path.read_text(encoding="utf-8"))
             manifest["operations"]["build"].update(
                 {
@@ -300,44 +298,60 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
         (analysis / "m68k").mkdir(parents=True)
         (analysis / "z80" / "program00").mkdir(parents=True)
         for name in (
-            "analysis.json", "pointers.json", "symbols.json",
+            "analysis.json",
+            "pointers.json",
+            "symbols.json",
             "cross-cpu-evidence.json",
         ):
             (analysis / name).write_text("{}", encoding="utf-8")
         (analysis / "m68k" / "abstract-analysis.json").write_text(
-            json.dumps({
-                "control_flow": {"indirect_edges": []},
-                "decoder_seed_addresses": [],
-            }),
+            json.dumps(
+                {
+                    "control_flow": {"indirect_edges": []},
+                    "decoder_seed_addresses": [],
+                }
+            ),
             encoding="utf-8",
         )
         (analysis / "m68k" / "instructions.json").write_text(
-            json.dumps({"instructions": []}), encoding="utf-8",
+            json.dumps({"instructions": []}),
+            encoding="utf-8",
         )
         (analysis / "z80" / "program00" / "dispatch-tables.json").write_text(
-            json.dumps({
-                "schema": "retrolarium.z80.dispatch-tables",
-                "schema_version": 1,
-                "tables": [{
-                    "logical_start": 2,
-                    "logical_end": 6,
-                    "dispatch_address": 0,
-                    "dispatch_addresses": [0],
-                    "lookup_address": 2,
-                    "targets": [0, 1],
-                }],
-            }),
+            json.dumps(
+                {
+                    "schema": "retrolarium.z80.dispatch-tables",
+                    "schema_version": 1,
+                    "tables": [
+                        {
+                            "logical_start": 2,
+                            "logical_end": 6,
+                            "dispatch_address": 0,
+                            "dispatch_addresses": [0],
+                            "lookup_address": 2,
+                            "targets": [0, 1],
+                        }
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         data = bytes(0x800)
-        (analysis / "analysis.json").write_text(json.dumps({
-            "schema": "retrolarium.megadrive.analysis",
-            "input": {"sha256": digest(data), "size": len(data)},
-            "programs": [{
-                "cpu_id": "m68k",
-                "instructions": "m68k/instructions.json",
-            }],
-        }), encoding="utf-8")
+        (analysis / "analysis.json").write_text(
+            json.dumps(
+                {
+                    "schema": "retrolarium.megadrive.analysis",
+                    "input": {"sha256": digest(data), "size": len(data)},
+                    "programs": [
+                        {
+                            "cpu_id": "m68k",
+                            "instructions": "m68k/instructions.json",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         image = SimpleNamespace(
             data=data,
             sha256=digest(data),
@@ -346,8 +360,12 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
             checksum_status="valid",
         )
         copy = SimpleNamespace(
-            edge_id="copy.00", source_start=0x400, source_end=0x405,
-            target_start=0, target_end=5, size=6,
+            edge_id="copy.00",
+            source_start=0x400,
+            source_end=0x405,
+            target_start=0,
+            target_end=5,
+            size=6,
             payload_sha256=digest(bytes(6)),
         )
         emitted = SimpleNamespace(
@@ -362,45 +380,46 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
             padding_bytes=0,
         )
         rebuilt = root / "out" / "generated" / "rebuilt.bin"
-        with patch.object(pipeline, "load_megadrive", return_value=image), \
-                patch.object(pipeline, "analyze_megadrive",
-                             return_value={"programs": []}), \
-                patch.object(pipeline, "load_megadrive_ghidra_facts",
-                             return_value={}), \
-                patch.object(pipeline, "retain_trusted_instruction_facts",
-                             return_value={}), \
-                patch.object(pipeline, "detect_pointer_candidates",
-                             return_value=()), \
-                patch.object(pipeline, "detect_z80_copies",
-                             return_value=(copy,)), \
-                patch.object(pipeline, "load_z80_ghidra_facts",
-                             return_value={}), \
-                patch.object(pipeline, "generate_symbols", return_value=()), \
-                patch.object(pipeline, "image_manifest", return_value={}), \
-                patch.object(pipeline, "emit_project",
-                             return_value=emitted) as emit, \
-                patch.object(pipeline, "validate_megadrive_disassembly_manifest"), \
-                patch.object(pipeline, "_build_emitted_project",
-                             return_value=rebuilt) as build, \
-                patch("retrolarium_disassembler.verify.verify_exact",
-                      return_value={"status": "exact"}):
+        with (
+            patch.object(pipeline, "load_megadrive", return_value=image),
+            patch.object(pipeline, "analyze_megadrive", return_value={"programs": []}),
+            patch.object(pipeline, "load_megadrive_ghidra_facts", return_value={}),
+            patch.object(pipeline, "retain_trusted_instruction_facts", return_value={}),
+            patch.object(pipeline, "detect_pointer_candidates", return_value=()),
+            patch.object(pipeline, "detect_z80_copies", return_value=(copy,)),
+            patch.object(pipeline, "load_z80_ghidra_facts", return_value={}),
+            patch.object(pipeline, "generate_symbols", return_value=()),
+            patch.object(pipeline, "image_manifest", return_value={}),
+            patch.object(pipeline, "emit_project", return_value=emitted) as emit,
+            patch.object(pipeline, "validate_megadrive_disassembly_manifest"),
+            patch.object(pipeline, "_build_emitted_project", return_value=rebuilt) as build,
+            patch("retrolarium_disassembler.verify.verify_exact", return_value={"status": "exact"}),
+        ):
             manifest = pipeline.disassemble_megadrive(
-                root / "rom.bin", root / "out", root / "ghidra",
+                root / "rom.bin",
+                root / "out",
+                root / "ghidra",
                 build_container=build_container,
             )
-        expected_tables = ((Z80DispatchTable(
-            logical_start=2, logical_end=6, dispatch_address=0,
-            lookup_address=2, targets=(0, 1), dispatch_addresses=(0,),
-        ),),)
+        expected_tables = (
+            (
+                Z80DispatchTable(
+                    logical_start=2,
+                    logical_end=6,
+                    dispatch_address=0,
+                    lookup_address=2,
+                    targets=(0, 1),
+                    dispatch_addresses=(0,),
+                ),
+            ),
+        )
         return manifest, emit, build, expected_tables
 
     def test_metadata_describes_asl_and_is_unverified_without_build(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            manifest, emit, build, tables = self._disassemble(
-                Path(directory), build_container=None
-            )
+            manifest, emit, build, tables = self._disassemble(Path(directory), build_container=None)
         build.assert_not_called()
         self.assertEqual(tables, emit.call_args.args[7])
         source = manifest["source"]
@@ -418,9 +437,7 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
 
     def test_instruction_encoding_is_verified_after_exact_rebuild(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            manifest, _, build, _ = self._disassemble(
-                Path(directory), build_container="asl:latest"
-            )
+            manifest, _, build, _ = self._disassemble(Path(directory), build_container="asl:latest")
         build.assert_called_once()
         self.assertEqual("exact", manifest["verification"]["status"])
         self.assertEqual(

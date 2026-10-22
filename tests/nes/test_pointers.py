@@ -28,8 +28,8 @@ class PointerDetectionTests(unittest.TestCase):
         rom[16:23] = bytes.fromhex("AD 00 C1 AD 20 C1 60")
         table = bytes.fromhex("00 C2 10 C2 20 C2 30 C2")
         rejected = bytes.fromhex("00 C3 00 C2 00 C4 00 C1")
-        rom[16 + 0x100:16 + 0x108] = table
-        rom[16 + 0x120:16 + 0x128] = rejected
+        rom[16 + 0x100 : 16 + 0x108] = table
+        rom[16 + 0x120 : 16 + 0x128] = rejected
         self.image = parse_ines(bytes(rom))
 
     def facts(self, root: Path):
@@ -51,9 +51,7 @@ class PointerDetectionTests(unittest.TestCase):
 
         accepted = accepted_u16le(candidates)
         self.assertEqual([0xC100], [candidate.cpu_start for candidate in accepted])
-        self.assertIn(
-            "table_start_referenced_by_instruction", accepted[0].evidence
-        )
+        self.assertIn("table_start_referenced_by_instruction", accepted[0].evidence)
         rejected = next(
             candidate
             for candidate in candidates
@@ -86,7 +84,7 @@ class PointerDetectionTests(unittest.TestCase):
     def test_adjacent_referenced_low_high_arrays_are_promoted(self) -> None:
         rom = bytearray(nrom16_image())
         rom[16:23] = bytes.fromhex("BD 40 C1 BD 44 C1 60")
-        rom[16 + 0x140:16 + 0x148] = bytes.fromhex("00 10 20 30 C2 C2 C2 C2")
+        rom[16 + 0x140 : 16 + 0x148] = bytes.fromhex("00 10 20 30 C2 C2 C2 C2")
         image = parse_ines(bytes(rom))
         with tempfile.TemporaryDirectory() as directory:
             facts_path = Path(directory) / "facts.tsv"
@@ -103,9 +101,7 @@ class PointerDetectionTests(unittest.TestCase):
             source, result = prg_source(image, facts, candidates)
 
         split = [
-            candidate
-            for candidate in accepted_pointer_tables(candidates)
-            if candidate.schema_id == "nes.split_lo_hi"
+            candidate for candidate in accepted_pointer_tables(candidates) if candidate.schema_id == "nes.split_lo_hi"
         ]
         self.assertEqual(1, len(split))
         self.assertEqual(0xC140, split[0].cpu_start)
@@ -118,9 +114,7 @@ class PointerDetectionTests(unittest.TestCase):
     def test_mirrored_nrom_reference_is_compared_by_physical_offset(self) -> None:
         rom = bytearray(nrom16_image())
         rom[16:20] = bytes.fromhex("AD 00 81 60")
-        rom[16 + 0x100:16 + 0x108] = bytes.fromhex(
-            "00 C2 10 C2 20 C2 30 C2"
-        )
+        rom[16 + 0x100 : 16 + 0x108] = bytes.fromhex("00 C2 10 C2 20 C2 30 C2")
         image = parse_ines(bytes(rom))
         with tempfile.TemporaryDirectory() as directory:
             facts_path = Path(directory) / "facts.tsv"
@@ -141,15 +135,9 @@ class PointerDetectionTests(unittest.TestCase):
     def test_anchored_record_and_interleaved_lanes_recover_nonmonotonic_tables(self) -> None:
         rom = bytearray(nrom16_image())
         rom[16:20] = bytes.fromhex("AD 00 C1 60")
-        rom[16 + 0x100:16 + 0x108] = bytes.fromhex(
-            "00 C2 00 C3 00 C4 00 C5"
-        )
-        rom[16 + 0x200:16 + 0x208] = bytes.fromhex(
-            "70 08 C2 10 C2 10 C2 00"
-        )
-        rom[16 + 0x300:16 + 0x30C] = bytes.fromhex(
-            "10 C3 10 C4 20 C3 20 C4 30 C3 30 C4"
-        )
+        rom[16 + 0x100 : 16 + 0x108] = bytes.fromhex("00 C2 00 C3 00 C4 00 C5")
+        rom[16 + 0x200 : 16 + 0x208] = bytes.fromhex("70 08 C2 10 C2 10 C2 00")
+        rom[16 + 0x300 : 16 + 0x30C] = bytes.fromhex("10 C3 10 C4 20 C3 20 C4 30 C3 30 C4")
         image = parse_ines(bytes(rom))
         with tempfile.TemporaryDirectory() as directory:
             facts_path = Path(directory) / "facts.tsv"
@@ -164,22 +152,15 @@ class PointerDetectionTests(unittest.TestCase):
             candidates = detect_pointer_candidates(image, facts)
             source, _ = prg_source(image, facts, candidates)
 
-        accepted = {
-            candidate.cpu_start: candidate
-            for candidate in accepted_pointer_tables(candidates)
-        }
+        accepted = {candidate.cpu_start: candidate for candidate in accepted_pointer_tables(candidates)}
         self.assertIn(0xC201, accepted)
         self.assertIn(0xC300, accepted)
-        self.assertTrue(
-            any(item.startswith("anchored_record_start=") for item in accepted[0xC201].evidence)
-        )
+        self.assertTrue(any(item.startswith("anchored_record_start=") for item in accepted[0xC201].evidence))
         self.assertIn(
             "two_interleaved_strictly_increasing_lanes",
             accepted[0xC300].evidence,
         )
-        weaker_overlap = next(
-            candidate for candidate in candidates if candidate.cpu_start == 0xC302
-        )
+        weaker_overlap = next(candidate for candidate in candidates if candidate.cpu_start == 0xC302)
         self.assertEqual("rejected", weaker_overlap.status)
         self.assertIn("overlaps_stronger_candidate", weaker_overlap.contradictions)
         self.assertIn("PtrTable_B00_C201:", source)
@@ -195,12 +176,12 @@ class PointerDetectionTests(unittest.TestCase):
     def _dispatch_image(self, code: str, tables: dict[int, str]):
         rom = bytearray(nrom16_image())
         code_bytes = bytes.fromhex(code)
-        rom[16:16 + len(code_bytes)] = code_bytes
+        rom[16 : 16 + len(code_bytes)] = code_bytes
         for address in (0xC010, 0xC020, 0xC030, 0xC040):
             rom[16 + address - 0xC000] = 0x60
         for offset, payload in tables.items():
             data = bytes.fromhex(payload)
-            rom[16 + offset:16 + offset + len(data)] = data
+            rom[16 + offset : 16 + offset + len(data)] = data
         return parse_ines(bytes(rom))
 
     def _load(self, image, rows: str):
@@ -260,11 +241,7 @@ class PointerDetectionTests(unittest.TestCase):
         )
         candidates = detect_pointer_candidates(image, facts)
 
-        table = next(
-            candidate
-            for candidate in candidates
-            if candidate.schema_id == "nes.split_lo_hi.rts_minus_one"
-        )
+        table = next(candidate for candidate in candidates if candidate.schema_id == "nes.split_lo_hi.rts_minus_one")
         self.assertEqual("accepted", table.status)
         self.assertEqual((0xC140, 0xC144), (table.cpu_start, table.entries[0].high_cpu_address))
         self.assertIn("dispatch_reference=rts", table.evidence)
@@ -292,11 +269,7 @@ class PointerDetectionTests(unittest.TestCase):
         )
         candidates = detect_pointer_candidates(image, facts)
 
-        table = next(
-            candidate
-            for candidate in candidates
-            if candidate.schema_id == "nes.u16le.rts_minus_one"
-        )
+        table = next(candidate for candidate in candidates if candidate.schema_id == "nes.u16le.rts_minus_one")
         self.assertEqual("accepted", table.status)
         self.assertEqual("PtrTableRts_B00_C100", table.candidate_id)
         self.assertEqual(

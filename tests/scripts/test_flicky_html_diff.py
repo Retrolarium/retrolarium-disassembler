@@ -92,22 +92,37 @@ class FlickyHtmlDiffTests(unittest.TestCase):
             ref_listing.write_text(
                 line(1, 0x21000, "6000 0002", "bra.w ManualTarget")
                 + line(2, 0x21000, "[4]", "endif")
-                + line(3, 0x22000, "4E75", "rts"), encoding="utf-8",
+                + line(3, 0x22000, "4E75", "rts"),
+                encoding="utf-8",
             )
             gen_listing.write_text(
                 line(1, 0x21000, "6000 0002", "bra.w loc_M68K_021004")
-                + line(2, 0x22000, "", 'binclude "data/opaque.bin"'), encoding="utf-8",
+                + line(2, 0x22000, "", 'binclude "data/opaque.bin"'),
+                encoding="utf-8",
             )
             (generated.parent / "retrolarium-project.json").write_text(
-                json.dumps({"assets": {"items": [{
-                    "emit": "binclude", "rom_file_offset": 0x22000,
-                    "size": 0x10, "path": "generated/data/opaque.bin",
-                }]}}), encoding="utf-8",
+                json.dumps(
+                    {
+                        "assets": {
+                            "items": [
+                                {
+                                    "emit": "binclude",
+                                    "rom_file_offset": 0x22000,
+                                    "size": 0x10,
+                                    "path": "generated/data/opaque.bin",
+                                }
+                            ]
+                        }
+                    }
+                ),
+                encoding="utf-8",
             )
             output = root / "diff.html"
             kwargs = dict(
-                rom=rom_path, reference_listing=ref_listing,
-                generated_listing=gen_listing, title="Alien Soldier EU",
+                rom=rom_path,
+                reference_listing=ref_listing,
+                generated_listing=gen_listing,
+                title="Alien Soldier EU",
             )
             counts = write_html(reference, generated, output, **kwargs)
             self.assertEqual(1, counts["same-instruction"])
@@ -134,18 +149,31 @@ class FlickyHtmlDiffTests(unittest.TestCase):
             (generated / "rebuilt.bin").write_bytes(rom)
             ref = root / "ref.lst"
             gen = root / "gen.lst"
-            ref.write_text(line(1, 0, "4E75", "rts")
-                           + line(2, 2, "0039", "dc.w $39")
-                           + line(3, 4, "4E71", "dc.w $4E71")
-                           + line(4, 6, "6402", "bhs.s Target"), encoding="utf-8")
-            gen.write_text(line(1, 0, "4E75", "dc.b $4E,$75")
-                           + line(2, 2, "0039", "dc.b $00,$39")
-                           + line(3, 4, "4E71", "nop")
-                           + line(4, 6, "6402", "bcc.s OtherLabel"), encoding="utf-8")
+            ref.write_text(
+                line(1, 0, "4E75", "rts")
+                + line(2, 2, "0039", "dc.w $39")
+                + line(3, 4, "4E71", "dc.w $4E71")
+                + line(4, 6, "6402", "bhs.s Target"),
+                encoding="utf-8",
+            )
+            gen.write_text(
+                line(1, 0, "4E75", "dc.b $4E,$75")
+                + line(2, 2, "0039", "dc.b $00,$39")
+                + line(3, 4, "4E71", "nop")
+                + line(4, 6, "6402", "bcc.s OtherLabel"),
+                encoding="utf-8",
+            )
             output = root / "diff.html"
-            counts = write_html(root, generated, output, rom=rom_path,
-                                reference_listing=ref, generated_listing=gen,
-                                differences_only=True, opcodes_only=True)
+            counts = write_html(
+                root,
+                generated,
+                output,
+                rom=rom_path,
+                reference_listing=ref,
+                generated_listing=gen,
+                differences_only=True,
+                opcodes_only=True,
+            )
             self.assertEqual({"raw-fallback": 1, "generated-only": 1}, dict(counts))
             html = output.read_text(encoding="utf-8")
             self.assertIn('id="a000000"', html)

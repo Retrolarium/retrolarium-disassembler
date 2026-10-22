@@ -1,9 +1,10 @@
 // Seed code in a standalone M68K overlay using addresses derived from its binary header.
-//@category Retrolarium
+// @category Retrolarium
 
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.mem.MemoryBlock;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;

@@ -18,10 +18,7 @@ from retrolarium_disassembler.m68k.instructions import pc_indexed_target
 MAX_SMALL_SET = 32
 MAX_BACKEND_COMPUTED_FLOW_TARGETS = 32
 MAX_TRUSTED_ROOT_PASSES = 64
-REGISTER_NAMES = tuple(
-    [f"d{index}" for index in range(8)]
-    + [f"a{index}" for index in range(8)]
-)
+REGISTER_NAMES = tuple([f"d{index}" for index in range(8)] + [f"a{index}" for index in range(8)])
 FLAG_NAMES = tuple("XNZVC")
 
 
@@ -57,9 +54,7 @@ class AbstractValue:
         return cls(ValueKind.UNKNOWN, bits=bits)
 
     @classmethod
-    def constant(
-        cls, value: int, bits: int = 32, *, address_space: str = "scalar"
-    ) -> AbstractValue:
+    def constant(cls, value: int, bits: int = 32, *, address_space: str = "scalar") -> AbstractValue:
         return cls(
             ValueKind.CONSTANT,
             bits=bits,
@@ -79,9 +74,7 @@ class AbstractValue:
         if not normalized:
             return cls.unknown(bits)
         if len(normalized) == 1:
-            return cls.constant(
-                normalized[0], bits, address_space=address_space
-            )
+            return cls.constant(normalized[0], bits, address_space=address_space)
         if len(normalized) <= MAX_SMALL_SET:
             return cls(
                 ValueKind.SMALL_SET,
@@ -89,9 +82,7 @@ class AbstractValue:
                 values=normalized,
                 address_space=address_space,
             )
-        steps = [
-            right - left for left, right in zip(normalized, normalized[1:])
-        ]
+        steps = [right - left for left, right in zip(normalized, normalized[1:])]
         step = gcd(*steps) if steps else 1
         return cls.interval(
             normalized[0],
@@ -145,10 +136,7 @@ class AbstractValue:
         if self.kind == ValueKind.RANGE:
             return self.step
         if len(self.values) > 1:
-            return gcd(*(
-                right - left
-                for left, right in zip(self.values, self.values[1:])
-            ))
+            return gcd(*(right - left for left, right in zip(self.values, self.values[1:])))
         return 0
 
     def join(self, other: AbstractValue) -> AbstractValue:
@@ -158,17 +146,11 @@ class AbstractValue:
             return AbstractValue.unknown(max(self.bits, other.bits))
         if self.kind == ValueKind.UNKNOWN or other.kind == ValueKind.UNKNOWN:
             return AbstractValue.unknown(self.bits)
-        space = (
-            self.address_space
-            if self.address_space == other.address_space
-            else "scalar"
-        )
+        space = self.address_space if self.address_space == other.address_space else "scalar"
         left = self.concrete_values()
         right = other.concrete_values()
         if left is not None and right is not None:
-            return AbstractValue.small_set(
-                set(left) | set(right), self.bits, address_space=space
-            )
+            return AbstractValue.small_set(set(left) | set(right), self.bits, address_space=space)
         left_bounds = self.bounds()
         right_bounds = other.bounds()
         if left_bounds is None or right_bounds is None:
@@ -177,9 +159,7 @@ class AbstractValue:
         upper = max(left_bounds[1], right_bounds[1])
         differences = [self.step, other.step, abs(left_bounds[0] - right_bounds[0])]
         step = gcd(*(value for value in differences if value)) or 1
-        return AbstractValue.interval(
-            lower, upper, step, self.bits, address_space=space
-        )
+        return AbstractValue.interval(lower, upper, step, self.bits, address_space=space)
 
     def widen(self, other: AbstractValue) -> AbstractValue:
         joined = self.join(other)
@@ -215,18 +195,14 @@ class AbstractValue:
         values = other.concrete_values()
         if values is None:
             return AbstractValue.unknown(max(self.bits, other.bits))
-        negated = AbstractValue.small_set(
-            {-value for value in values}, max(self.bits, other.bits)
-        )
+        negated = AbstractValue.small_set({-value for value in values}, max(self.bits, other.bits))
         return self.add(negated)
 
     def bitwise_and(self, mask: int) -> AbstractValue:
         mask &= self.mask
         values = self.concrete_values()
         if values is not None:
-            return AbstractValue.small_set(
-                {value & mask for value in values}, self.bits
-            )
+            return AbstractValue.small_set({value & mask for value in values}, self.bits)
         # Every possible result of x & mask is a submask of mask. Keeping the
         # exact submasks for small masks is especially useful for 68000 branch
         # selectors such as ANDI.W #$C,D0 -> {0, 4, 8, 12}.
@@ -274,13 +250,9 @@ class AbstractState:
     def with_memory(self, address: int, value: AbstractValue) -> AbstractState:
         memory = dict(self.memory)
         memory[address & 0xFFFFFF] = value
-        return AbstractState(
-            self.registers, self.flags, tuple(sorted(memory.items()))
-        )
+        return AbstractState(self.registers, self.flags, tuple(sorted(memory.items())))
 
-    def without_memory(
-        self, address: int | None = None, size: int = 4
-    ) -> AbstractState:
+    def without_memory(self, address: int | None = None, size: int = 4) -> AbstractState:
         """Forget memory facts that a write may have overwritten.
 
         Tracked entries are longwords, so an entry overlaps a write when
@@ -290,21 +262,12 @@ class AbstractState:
             memory: tuple[tuple[int, AbstractValue], ...] = ()
         else:
             start = address & 0xFFFFFF
-            memory = tuple(
-                (key, value) for key, value in self.memory
-                if not (key < start + size and start < key + 4)
-            )
+            memory = tuple((key, value) for key, value in self.memory if not (key < start + size and start < key + 4))
         return AbstractState(self.registers, self.flags, memory)
 
     def join(self, other: AbstractState) -> AbstractState:
-        registers = tuple(
-            left.join(right)
-            for left, right in zip(self.registers, other.registers)
-        )
-        flags = tuple(
-            left if left == right else TruthValue.UNKNOWN
-            for left, right in zip(self.flags, other.flags)
-        )
+        registers = tuple(left.join(right) for left, right in zip(self.registers, other.registers))
+        flags = tuple(left if left == right else TruthValue.UNKNOWN for left, right in zip(self.flags, other.flags))
         left_memory = dict(self.memory)
         right_memory = dict(other.memory)
         memory = tuple(
@@ -315,10 +278,7 @@ class AbstractState:
 
     def widen(self, other: AbstractState) -> AbstractState:
         joined = self.join(other)
-        registers = tuple(
-            left.widen(right)
-            for left, right in zip(self.registers, joined.registers)
-        )
+        registers = tuple(left.widen(right) for left, right in zip(self.registers, joined.registers))
         return AbstractState(registers, joined.flags, joined.memory)
 
 
@@ -375,15 +335,9 @@ _IMMEDIATE_TO_ABSOLUTE = re.compile(
 )
 _RAM_SLOT_BASE = re.compile(r"\((-?0x[0-9a-f]+|-?\d+)\)\.w\|A([0-7])$", re.I)
 _RAM_SLOT_STEP = re.compile(r"\((-?0x[0-9a-f]+|-?\d+),A([0-7])\)\|A\2$", re.I)
-_IMMEDIATE_TO_FIELD = re.compile(
-    r"#(-?0x[0-9a-f]+|-?\d+)\|\((-?0x[0-9a-f]+|-?\d+),(A[0-7])\)$", re.I
-)
-_IMMEDIATE_TO_OBJECT_BASE = re.compile(
-    r"#(-?0x[0-9a-f]+|-?\d+)\|\(A([01])\)$", re.I
-)
-_FIELD_TO_ADDRESS = re.compile(
-    r"\((-?0x[0-9a-f]+|-?\d+),(A[0-7])\)\|(A[0-7])$", re.I
-)
+_IMMEDIATE_TO_FIELD = re.compile(r"#(-?0x[0-9a-f]+|-?\d+)\|\((-?0x[0-9a-f]+|-?\d+),(A[0-7])\)$", re.I)
+_IMMEDIATE_TO_OBJECT_BASE = re.compile(r"#(-?0x[0-9a-f]+|-?\d+)\|\(A([01])\)$", re.I)
+_FIELD_TO_ADDRESS = re.compile(r"\((-?0x[0-9a-f]+|-?\d+),(A[0-7])\)\|(A[0-7])$", re.I)
 
 
 def _executed_ram_callback_slots(facts: dict[int, InstructionFact]) -> set[int]:
@@ -401,35 +355,45 @@ def _executed_ram_callback_slots(facts: dict[int, InstructionFact]) -> set[int]:
         if branch is None or branch.mnemonic.upper() not in {"BEQ.B", "BEQ.W"}:
             continue
         load = by_address.get(branch.cpu_address + branch.length)
-        if (load is None or load.mnemonic.upper() != "MOVEA.L"
-                or not re.fullmatch(rf"{value_register}\|A[0-7]", load.operands, re.I)):
+        if (
+            load is None
+            or load.mnemonic.upper() != "MOVEA.L"
+            or not re.fullmatch(rf"{value_register}\|A[0-7]", load.operands, re.I)
+        ):
             continue
         destination = load.operands.rsplit("|", 1)[1].upper()
         call = by_address.get(load.cpu_address + load.length)
-        if (call is None or call.mnemonic.upper() not in {"JSR", "JMP"}
-                or call.operands.upper() != f"({destination})"):
+        if call is None or call.mnemonic.upper() not in {"JSR", "JMP"} or call.operands.upper() != f"({destination})":
             continue
         step = by_address.get(call.cpu_address + call.length)
         stride = _RAM_SLOT_STEP.fullmatch(step.operands) if step is not None else None
-        if (step is None or step.mnemonic.upper() != "LEA" or stride is None
-                or stride.group(2) != address_register):
+        if step is None or step.mnemonic.upper() != "LEA" or stride is None or stride.group(2) != address_register:
             continue
         skip = branch.flows[0] if branch.flows else None
         if skip != step.cpu_address:
             continue
         loop = by_address.get(step.cpu_address + step.length)
-        if (loop is None or loop.mnemonic.upper() != "DBF"
-                or "|" not in loop.operands
-                or int(loop.operands.rsplit("|", 1)[1], 0) != read.cpu_address):
+        if (
+            loop is None
+            or loop.mnemonic.upper() != "DBF"
+            or "|" not in loop.operands
+            or int(loop.operands.rsplit("|", 1)[1], 0) != read.cpu_address
+        ):
             continue
         loop_register = loop.operands.split("|", 1)[0].upper()
-        setup = [fact for fact in facts.values()
-                 if read.cpu_address - 0x40 <= fact.cpu_address < read.cpu_address]
-        starts = [fact for fact in setup if fact.mnemonic.upper() == "LEA"
-                  and (base := _RAM_SLOT_BASE.fullmatch(fact.operands)) is not None
-                  and base.group(2) == address_register]
-        counts = [fact for fact in setup if fact.mnemonic.upper() == "MOVEQ"
-                  and fact.operands.upper().endswith(f"|{loop_register[0:2]}")]
+        setup = [fact for fact in facts.values() if read.cpu_address - 0x40 <= fact.cpu_address < read.cpu_address]
+        starts = [
+            fact
+            for fact in setup
+            if fact.mnemonic.upper() == "LEA"
+            and (base := _RAM_SLOT_BASE.fullmatch(fact.operands)) is not None
+            and base.group(2) == address_register
+        ]
+        counts = [
+            fact
+            for fact in setup
+            if fact.mnemonic.upper() == "MOVEQ" and fact.operands.upper().endswith(f"|{loop_register[0:2]}")
+        ]
         if not starts or not counts:
             continue
         start = max(starts, key=lambda fact: fact.cpu_address)
@@ -456,8 +420,11 @@ def _slot_call_reads(
     by_address = {fact.cpu_address: fact for fact in facts.values()}
 
     def call_through(fact: InstructionFact | None, register: str) -> InstructionFact | None:
-        if (fact is None or fact.mnemonic.upper() not in {"JSR", "JMP"}
-                or fact.operands.upper() != f"({register.upper()})"):
+        if (
+            fact is None
+            or fact.mnemonic.upper() not in {"JSR", "JMP"}
+            or fact.operands.upper() != f"({register.upper()})"
+        ):
             return None
         return fact
 
@@ -480,22 +447,16 @@ def _slot_call_reads(
             load = by_address.get(following.cpu_address + following.length)
             if load is None or load.mnemonic.upper() != "MOVEA.L":
                 continue
-            moved = re.fullmatch(
-                rf"{destination.strip()}\|(A[0-6])", load.operands, re.I
-            )
+            moved = re.fullmatch(rf"{destination.strip()}\|(A[0-6])", load.operands, re.I)
             if moved is not None:
-                call = call_through(
-                    by_address.get(load.cpu_address + load.length), moved.group(1)
-                )
+                call = call_through(by_address.get(load.cpu_address + load.length), moved.group(1))
         if call is not None:
             slot = int(absolute.group(1), 0) & 0xFFFFFF
             reads.setdefault(slot, {})[read.cpu_address] = call.cpu_address
     return reads
 
 
-def _direct_ram_callback_slots(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
-) -> dict[int, tuple[int, ...]]:
+def _direct_ram_callback_slots(image: MegaDriveImage, facts: dict[int, InstructionFact]) -> dict[int, tuple[int, ...]]:
     """Prove absolute work-RAM longwords used only as callback pointers.
 
     A slot qualifies when known code loads it and immediately calls the
@@ -509,10 +470,7 @@ def _direct_ram_callback_slots(
     the remaining limit of this proof. Returns slot -> call addresses.
     """
     ram_start, ram_end = image.header.ram_start, image.header.ram_end
-    reads = {
-        slot: sites for slot, sites in _slot_call_reads(facts).items()
-        if ram_start <= slot <= ram_end - 3
-    }
+    reads = {slot: sites for slot, sites in _slot_call_reads(facts).items() if ram_start <= slot <= ram_end - 3}
     if not reads:
         return {}
     rejected: set[int] = set()
@@ -546,16 +504,16 @@ def _direct_ram_callback_slots(
                     target = int(immediate.group(1), 0) & 0xFFFFFF
                     if target == 0 or ram_start <= target <= ram_end:
                         continue
-                    if (target < 0x200 or target + 2 > len(image.data) or target & 1
-                            or not _plausible_orphan_start(
-                                int.from_bytes(image.data[target:target + 2], "big"))):
+                    if (
+                        target < 0x200
+                        or target + 2 > len(image.data)
+                        or target & 1
+                        or not _plausible_orphan_start(int.from_bytes(image.data[target : target + 2], "big"))
+                    ):
                         rejected.add(slot)
                 else:
                     rejected.add(slot)
-    return {
-        slot: tuple(sorted(set(sites.values())))
-        for slot, sites in reads.items() if slot not in rejected
-    }
+    return {slot: tuple(sorted(set(sites.values()))) for slot, sites in reads.items() if slot not in rejected}
 
 
 def _plausible_orphan_start(first_word: int) -> bool:
@@ -623,8 +581,10 @@ def discover_ram_handler_candidates(
                 source_address=candidate.source_address,
                 storage_address=storage,
                 confidence="proven",
-                evidence=(f"RAM slot {storage:06X} is only used as a callback "
-                          "called at " + ", ".join(f"{call:06X}" for call in calls)),
+                evidence=(
+                    f"RAM slot {storage:06X} is only used as a callback "
+                    "called at " + ", ".join(f"{call:06X}" for call in calls)
+                ),
             )
     for storage, assignments in by_storage.items():
         targets = {candidate.address for candidate in assignments}
@@ -636,7 +596,7 @@ def discover_ram_handler_candidates(
         for candidate in assignments:
             if candidate.address in decoded_starts:
                 continue
-            first_word = int.from_bytes(image.data[candidate.address:candidate.address + 2], "big")
+            first_word = int.from_bytes(image.data[candidate.address : candidate.address + 2], "big")
             if not _plausible_orphan_start(first_word):
                 continue
             candidates[candidate.address] = EntryPointCandidate(
@@ -644,8 +604,9 @@ def discover_ram_handler_candidates(
                 source_address=candidate.source_address,
                 storage_address=storage,
                 confidence="proven",
-                evidence=(f"RAM slot {storage:06X} is called by a counted loop "
-                          f"and has {len(targets)} ROM handler assignments"),
+                evidence=(
+                    f"RAM slot {storage:06X} is called by a counted loop and has {len(targets)} ROM handler assignments"
+                ),
             )
     return tuple(candidates[address] for address in sorted(candidates))
 
@@ -752,9 +713,15 @@ def _linked_list_stack_executors(image, facts):
             operands = fact.operands.split("|")
             field = _list_field(operands[0])
             following = facts.get(address + fact.length)
-            if (fact.mnemonic.upper() == "MOVE.L" and operands[-1].upper() == "-(SP)"
-                    and field and field[0] >= 4 and field[0] % 2 == 0
-                    and following and following.raw == b"\x4e\x75"):
+            if (
+                fact.mnemonic.upper() == "MOVE.L"
+                and operands[-1].upper() == "-(SP)"
+                and field
+                and field[0] >= 4
+                and field[0] % 2 == 0
+                and following
+                and following.raw == b"\x4e\x75"
+            ):
                 pointer = values.get(field[1])
                 if pointer and pointer[0] == "node":
                     executors[(pointer[1], field[0])] = address
@@ -796,8 +763,17 @@ def _linked_list_allocator_roots(image, facts, entry, returned_register):
             continue
         source_field, destination_field = _list_field(source), _list_field(destination)
         base = mnemonic.split(".", 1)[0]
-        writes_memory = ("(" in destination and base not in {
-            "CMP", "CMPA", "CMPI", "TST", "BTST", "LEA", "PEA", "JMP", "JSR"})
+        writes_memory = "(" in destination and base not in {
+            "CMP",
+            "CMPA",
+            "CMPI",
+            "TST",
+            "BTST",
+            "LEA",
+            "PEA",
+            "JMP",
+            "JSR",
+        }
         roots = {value[1] for value in values.values() if value[0] in {"head", "node"}}
         absolute_destination = _LIST_ABSOLUTE.fullmatch(destination)
         if writes_memory and absolute_destination:
@@ -808,10 +784,17 @@ def _linked_list_allocator_roots(image, facts, entry, returned_register):
         if writes_memory and destination_field and -3 <= destination_field[0] < 4:
             predecessor = values.get(destination_field[1])
             allocation = values.get(_register_name(source))
-            if predecessor and predecessor[0] in {"head", "node"} and not (
-                    mnemonic == "MOVE.L" and destination_field[0] == 0
-                    and allocation and allocation[0] == "allocation"
-                    and copied.get(allocation) == predecessor[1]):
+            if (
+                predecessor
+                and predecessor[0] in {"head", "node"}
+                and not (
+                    mnemonic == "MOVE.L"
+                    and destination_field[0] == 0
+                    and allocation
+                    and allocation[0] == "allocation"
+                    and copied.get(allocation) == predecessor[1]
+                )
+            ):
                 return ()  # Only the validated insertion may replace a next link.
         # After insertion the bounded epilogue may only restore registers and
         # return. An arbitrary later store could unlink the newly added node.
@@ -829,9 +812,13 @@ def _linked_list_allocator_roots(image, facts, entry, returned_register):
                 copied.pop(destination_pointer, None)
                 if predecessor and predecessor[0] in {"head", "node"}:
                     copied[destination_pointer] = predecessor[1]
-            elif (source_pointer and source_pointer[0] == "allocation" and destination_pointer
-                  and destination_pointer[0] in {"head", "node"}
-                  and copied.get(source_pointer) == destination_pointer[1]):
+            elif (
+                source_pointer
+                and source_pointer[0] == "allocation"
+                and destination_pointer
+                and destination_pointer[0] in {"head", "node"}
+                and copied.get(source_pointer) == destination_pointer[1]
+            ):
                 inserted[source_pointer] = destination_pointer[1]
             elif inserted and destination_pointer and destination_pointer[0] in {"head", "node", "allocation"}:
                 return ()  # Do not prove an insertion subsequently overwritten.
@@ -854,8 +841,16 @@ def _linked_list_allocator_roots(image, facts, entry, returned_register):
         successors = _list_successors(fact)
         if not successors:
             return ()
-        pending.extend((target, tuple(sorted(after.items())), tuple(sorted(copied.items())),
-                        tuple(sorted(inserted.items())), stack) for target in successors)
+        pending.extend(
+            (
+                target,
+                tuple(sorted(after.items())),
+                tuple(sorted(copied.items())),
+                tuple(sorted(inserted.items())),
+                stack,
+            )
+            for target in successors
+        )
     return tuple(returns) if not pending and len(returns) == 1 else ()
 
 
@@ -870,8 +865,11 @@ def _linked_list_callback_assignments(image, facts):
         call = ends.get(store.cpu_address)
         if store.mnemonic.upper() != "MOVE.L" or match is None or call is None:
             continue
-        if (call.mnemonic.upper().split(".", 1)[0] not in {"JSR", "BSR"}
-                or call.flow_type.upper() == "COMPUTED_CALL" or len(call.flows) != 1):
+        if (
+            call.mnemonic.upper().split(".", 1)[0] not in {"JSR", "BSR"}
+            or call.flow_type.upper() == "COMPUTED_CALL"
+            or len(call.flows) != 1
+        ):
             continue
         register = match[3].lower()
         key = (call.flows[0], register)
@@ -885,7 +883,10 @@ def _linked_list_callback_assignments(image, facts):
 
 
 def discover_object_field_handler_candidates(
-    image: MegaDriveImage, facts: dict[int, InstructionFact], *, execution_facts=None,
+    image: MegaDriveImage,
+    facts: dict[int, InstructionFact],
+    *,
+    execution_facts=None,
 ) -> tuple[EntryPointCandidate, ...]:
     """Find callbacks stored in a struct field and invoked through that field.
 
@@ -895,12 +896,15 @@ def discover_object_field_handler_candidates(
     """
     from retrolarium_disassembler.m68k.dispatch.record import executed_stack_fields
     from retrolarium_disassembler.m68k.instructions import absolute_referenced_addresses, instruction_sets
+
     stack_fields = executed_stack_fields(facts)
     _, interiors, _ = instruction_sets(facts)
     data_addresses = absolute_referenced_addresses(execution_facts or {})
-    linked = _linked_list_callback_assignments(image, {
-        fact.cpu_address: fact for fact in execution_facts.values()
-    }) if execution_facts is not None else {}
+    linked = (
+        _linked_list_callback_assignments(image, {fact.cpu_address: fact for fact in execution_facts.values()})
+        if execution_facts is not None
+        else {}
+    )
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     ends = {fact.cpu_address + fact.length: fact for fact in facts.values()}
     executed_object_slots = _executed_ram_callback_slots(facts)
@@ -912,8 +916,11 @@ def discover_object_field_handler_candidates(
         if match is None:
             continue
         call = by_address.get(load.cpu_address + load.length)
-        if (call is None or call.mnemonic.upper() not in {"JSR", "JMP"}
-                or call.operands.upper() != f"({match.group(3).upper()})"):
+        if (
+            call is None
+            or call.mnemonic.upper() not in {"JSR", "JMP"}
+            or call.operands.upper() != f"({match.group(3).upper()})"
+        ):
             continue
         readers[(int(match.group(1), 0), match.group(2).upper())] = call.cpu_address
     candidates = {}
@@ -938,19 +945,22 @@ def discover_object_field_handler_candidates(
             continue
         preceding = ends.get(target)
         list_proof = linked.get(store.cpu_address)
-        if list_proof is not None and (target - image.header.rom_start in interiors
-                                       or target in data_addresses):
+        if list_proof is not None and (target - image.header.rom_start in interiors or target in data_addresses):
             continue
-        if list_proof is None and (preceding is None or preceding.flow_type.upper() not in {
-                "TERMINATOR", "UNCONDITIONAL_JUMP", "CALL_TERMINATOR"}):
+        if list_proof is None and (
+            preceding is None
+            or preceding.flow_type.upper() not in {"TERMINATOR", "UNCONDITIONAL_JUMP", "CALL_TERMINATOR"}
+        ):
             continue
-        first_word = int.from_bytes(image.data[target:target + 2], "big")
+        first_word = int.from_bytes(image.data[target : target + 2], "big")
         if first_word in {0, 0xFFFF}:
             continue
         if list_proof is not None:
             root, executor, allocator = list_proof
-            proof = (f"rooted allocator {allocator:06X} inserts returned {field[1]} "
-                     f"into RAM list {root:06X}; same list field executed at {executor:06X}")
+            proof = (
+                f"rooted allocator {allocator:06X} inserts returned {field[1]} "
+                f"into RAM list {root:06X}; same list field executed at {executor:06X}"
+            )
         else:
             proof += f"; begins after terminal at {preceding.cpu_address:06X}"
         candidates[target] = EntryPointCandidate(
@@ -963,8 +973,7 @@ def discover_object_field_handler_candidates(
     return tuple(candidates[address] for address in sorted(candidates))
 
 
-_ADDRESS_IMMEDIATE = re.compile(
-    r"#(0x[0-9a-f]+)\|(A[0-7])$|\((0x[0-9a-f]+)\)\.l(?:\|(A[0-7]))?$", re.I)
+_ADDRESS_IMMEDIATE = re.compile(r"#(0x[0-9a-f]+)\|(A[0-7])$|\((0x[0-9a-f]+)\)\.l(?:\|(A[0-7]))?$", re.I)
 _ADDRESS_ADJUST = ("ADDA.", "SUBA.", "ADDQ.", "SUBQ.")
 
 
@@ -976,8 +985,7 @@ def _register_use(by_address, start, register, *, follow_jumps=True, limit=64):
     ADDA.W #10,A3 / JMP (A3)), ``"data"`` when memory is read through it,
     and ``None`` when it is only stored, passed on or left unused.
     """
-    indirect = re.compile(
-        r"-?\((?:-?0X[0-9A-F]+,)?" + register + r"(?:,[DA][0-7][WL]?\*0X[1248])?\)\+?")
+    indirect = re.compile(r"-?\((?:-?0X[0-9A-F]+,)?" + register + r"(?:,[DA][0-7][WL]?\*0X[1248])?\)\+?")
     pending, seen = [start], set()
     while pending and len(seen) < limit:
         address = pending.pop()
@@ -1024,9 +1032,11 @@ def immediate_rom_addresses(known: dict[int, InstructionFact], image: MegaDriveI
             continue
         address = int(match[1] or match[3], 16) & 0xFFFFFF
         register = (match[2] or match[4] or "").upper()
-        if register and 0x200 <= address < len(image.data) and _register_use(
-                by_address, fact.cpu_address + fact.length, register,
-                follow_jumps=False) == "data":
+        if (
+            register
+            and 0x200 <= address < len(image.data)
+            and _register_use(by_address, fact.cpu_address + fact.length, register, follow_jumps=False) == "data"
+        ):
             addresses.add(address)
     return addresses
 
@@ -1043,21 +1053,20 @@ def _skip_entry_prefix(data: bytes, start: int, end: int) -> tuple[int, str]:
     skipped only when an explicit frame prologue (LINK An or MOVEM.L to
     -(SP)) follows; constants and text before arbitrary words stay data.
     """
+
     def prologue(address):
         if address + 4 > end:
             return False
-        word = int.from_bytes(data[address:address + 2], "big")
+        word = int.from_bytes(data[address : address + 2], "big")
         return word & 0xFFF8 == 0x4E50 or word == 0x48E7
 
-    if (start % 4 == 2 and data[start:start + 2] == bytes(2)
-            and prologue(start + 2)):
+    if start % 4 == 2 and data[start : start + 2] == bytes(2) and prologue(start + 2):
         return start + 2, "longword alignment padding"
     cursor = start
     while cursor < end and 0x20 <= data[cursor] < 0x7F:
         cursor += 1
     entry = (cursor + 2) & ~1
-    if (cursor - start >= MIN_PREFIX_STRING and cursor < end and data[cursor] == 0
-            and prologue(entry)):
+    if cursor - start >= MIN_PREFIX_STRING and cursor < end and data[cursor] == 0 and prologue(entry):
         return entry, "NUL-terminated string"
     return start, ""
 
@@ -1080,8 +1089,7 @@ def discover_packed_orphan_candidates(
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     addresses = sorted(by_address)
     instruction_interiors = {
-        address for fact in facts.values()
-        for address in range(fact.cpu_address + 1, fact.cpu_address + fact.length)
+        address for fact in facts.values() for address in range(fact.cpu_address + 1, fact.cpu_address + fact.length)
     }
     referenced_data = {
         reference.address & 0xFFFFFF
@@ -1131,8 +1139,10 @@ def discover_packed_orphan_candidates(
             and (first_word >> 3) & 7 != 1
             and (first_word & 0x38 != 0x38 or first_word & 7 <= 1)
         )
-        if (not (_plausible_orphan_start(first_word) or bit_operation_entry or immediate_entry)
-                or len(set(payload)) <= 1):
+        if (
+            not (_plausible_orphan_start(first_word) or bit_operation_entry or immediate_entry)
+            or len(set(payload)) <= 1
+        ):
             continue
         if first_word & 0xF000 == 0x6000:
             displacement = first_word & 0xFF
@@ -1143,27 +1153,22 @@ def discover_packed_orphan_candidates(
             elif displacement & 0x80:
                 displacement -= 0x100
             target = (start + 2 + displacement) & 0xFFFFFF
-            if (target & 1 or not 0x200 <= target < len(image.data)
-                    or target in instruction_interiors):
+            if target & 1 or not 0x200 <= target < len(image.data) or target in instruction_interiors:
                 # Data can resemble BSR.W. A target inside already known code
                 # contradicts this speculative entry and must not split it.
                 continue
-        words = {
-            int.from_bytes(payload[offset:offset + 2], "big")
-            for offset in range(0, len(payload) - 1, 2)
-        }
+        words = {int.from_bytes(payload[offset : offset + 2], "big") for offset in range(0, len(payload) - 1, 2)}
         has_return = bool(words & return_opcodes)
         known_branch = False
         for offset in range(0, len(payload) - 1, 2):
-            opcode = int.from_bytes(payload[offset:offset + 2], "big")
+            opcode = int.from_bytes(payload[offset : offset + 2], "big")
             if opcode in {0x4EB9, 0x4EF9} and offset + 6 <= len(payload):
-                target = int.from_bytes(payload[offset + 2:offset + 6], "big") & 0xFFFFFF
+                target = int.from_bytes(payload[offset + 2 : offset + 6], "big") & 0xFFFFFF
                 if target in by_address:
                     known_branch = True
                     break
             if opcode in {0x4EBA, 0x4EFA} and offset + 4 <= len(payload):
-                target = start + offset + 2 + int.from_bytes(
-                    payload[offset + 2:offset + 4], "big", signed=True)
+                target = start + offset + 2 + int.from_bytes(payload[offset + 2 : offset + 4], "big", signed=True)
                 if target in by_address:
                     known_branch = True
                     break
@@ -1173,9 +1178,7 @@ def discover_packed_orphan_candidates(
             if displacement == 0:
                 if offset + 4 > len(payload):
                     continue
-                displacement = int.from_bytes(
-                    payload[offset + 2:offset + 4], "big", signed=True
-                )
+                displacement = int.from_bytes(payload[offset + 2 : offset + 4], "big", signed=True)
             elif displacement & 0x80:
                 displacement -= 0x100
             if start + offset + 2 + displacement in by_address:
@@ -1200,7 +1203,8 @@ def discover_packed_orphan_candidates(
                     else "packed gap after terminal flow with branch to known code"
                     if known_branch
                     else "short packed gap after terminal flow"
-                ) + (f" after {prefix}" if prefix else ""),
+                )
+                + (f" after {prefix}" if prefix else ""),
             )
         )
     return tuple(candidates)
@@ -1211,9 +1215,7 @@ _IMMEDIATE = re.compile(r"#?(-?0x[0-9a-f]+|-?\d+)$", re.I)
 _ABSOLUTE = re.compile(r"\((-?0x[0-9a-f]+|-?\d+)\)\.[wl]$", re.I)
 _INDIRECT_REGISTER = re.compile(r"\(([Aa][0-7])\)$")
 _AUTO_ADJUST = re.compile(r"-\(([A][0-7]|SP)\)|\(([A][0-7]|SP)\)\+", re.I)
-_REGISTER_LIST_ITEM = re.compile(
-    r"([DA][0-7]|SP)(?:[bwl])?(?:\s*-\s*([DA][0-7]|SP)(?:[bwl])?)?", re.I
-)
+_REGISTER_LIST_ITEM = re.compile(r"([DA][0-7]|SP)(?:[bwl])?(?:\s*-\s*([DA][0-7]|SP)(?:[bwl])?)?", re.I)
 _NON_WRITING_FLOWS = {
     "CONDITIONAL_JUMP",
     "UNCONDITIONAL_JUMP",
@@ -1243,7 +1245,7 @@ def _register_list(operand: str) -> tuple[str, ...]:
         if match.group(2):
             last = REGISTER_NAMES.index(_canonical_register(match.group(2)))
         low, high = sorted((first, last))
-        registers.extend(REGISTER_NAMES[low:high + 1])
+        registers.extend(REGISTER_NAMES[low : high + 1])
     return tuple(dict.fromkeys(registers))
 
 
@@ -1286,9 +1288,7 @@ def _sign_extend(value: AbstractValue) -> AbstractValue:
     )
 
 
-def _write_register(
-    state: AbstractState, name: str, value: AbstractValue, bits: int = 32
-) -> AbstractState:
+def _write_register(state: AbstractState, name: str, value: AbstractValue, bits: int = 32) -> AbstractState:
     """Write a register, preserving the 68000's partial-width semantics.
 
     Address registers always receive a sign-extended 32-bit value. A byte or
@@ -1304,20 +1304,15 @@ def _write_register(
     old = state.register(name)
     old_values = old.concrete_values() if old.bits == 32 else None
     new_values = value.concrete_values()
-    if (
-        old_values is not None
-        and new_values is not None
-        and len(old_values) * len(new_values) <= 64
-    ):
+    if old_values is not None and new_values is not None and len(old_values) * len(new_values) <= 64:
         mask = (1 << bits) - 1
-        return state.with_register(name, AbstractValue.small_set(
-            {
-                (high & ~mask) | low
-                for high in old_values
-                for low in new_values
-            },
-            address_space=value.address_space,
-        ))
+        return state.with_register(
+            name,
+            AbstractValue.small_set(
+                {(high & ~mask) | low for high in old_values for low in new_values},
+                address_space=value.address_space,
+            ),
+        )
     return state.with_register(name, value)
 
 
@@ -1333,10 +1328,13 @@ def _source_value(
         return _narrow(state.register(register), bits)
     immediate = _IMMEDIATE.fullmatch(operand.strip())
     if immediate is not None:
-        return _narrow(AbstractValue.constant(
-            int(immediate.group(1), 0),
-            address_space="rom" if address else "scalar",
-        ), bits)
+        return _narrow(
+            AbstractValue.constant(
+                int(immediate.group(1), 0),
+                address_space="rom" if address else "scalar",
+            ),
+            bits,
+        )
     absolute = _ABSOLUTE.fullmatch(operand.strip())
     if absolute is not None:
         value = int(absolute.group(1), 0) & 0xFFFFFF
@@ -1380,9 +1378,7 @@ def _logic_flags(value: AbstractValue, bits: int) -> dict[str, TruthValue]:
     }
 
 
-def _with_logic_flags(
-    state: AbstractState, value: AbstractValue, bits: int
-) -> AbstractState:
+def _with_logic_flags(state: AbstractState, value: AbstractValue, bits: int) -> AbstractState:
     return state.with_flags(**_logic_flags(value, bits))
 
 
@@ -1395,11 +1391,7 @@ def _arithmetic_flags(
 ) -> dict[str, TruthValue]:
     left_values = left.concrete_values()
     right_values = right.concrete_values()
-    if (
-        left_values is None
-        or right_values is None
-        or len(left_values) * len(right_values) > 128
-    ):
+    if left_values is None or right_values is None or len(left_values) * len(right_values) > 128:
         return {name: TruthValue.UNKNOWN for name in "nzvc"}
     mask = (1 << bits) - 1
     sign = 1 << (bits - 1)
@@ -1420,10 +1412,7 @@ def _arithmetic_flags(
             outcomes["z"].add(result == 0)
             outcomes["v"].add(overflow)
             outcomes["c"].add(carry)
-    return {
-        name: _uniform_truth(values)
-        for name, values in outcomes.items()
-    }
+    return {name: _uniform_truth(values) for name, values in outcomes.items()}
 
 
 def _truth_not(value: TruthValue) -> TruthValue:
@@ -1485,9 +1474,7 @@ def _branch_outcome(fact: InstructionFact, state: AbstractState) -> TruthValue:
     return conditions.get(condition, TruthValue.UNKNOWN)
 
 
-def transfer_instruction(
-    fact: InstructionFact, state: AbstractState
-) -> AbstractState:
+def transfer_instruction(fact: InstructionFact, state: AbstractState) -> AbstractState:
     """Apply register, selected memory, and condition-code effects."""
     mnemonic = fact.mnemonic.upper()
     operands = fact.operands.split("|") if fact.operands else []
@@ -1501,9 +1488,7 @@ def transfer_instruction(
     return state
 
 
-def _invalidate_written_memory(
-    fact: InstructionFact, operands: list[str], state: AbstractState
-) -> AbstractState:
+def _invalidate_written_memory(fact: InstructionFact, operands: list[str], state: AbstractState) -> AbstractState:
     """Drop memory facts that the destination operand may overwrite."""
     mnemonic = fact.mnemonic.upper()
     if (
@@ -1520,9 +1505,7 @@ def _invalidate_written_memory(
     if absolute is None:
         # A register-relative write may alias any tracked address.
         return state.without_memory()
-    return state.without_memory(
-        int(absolute.group(1), 0), _operation_bits(mnemonic) // 8
-    )
+    return state.without_memory(int(absolute.group(1), 0), _operation_bits(mnemonic) // 8)
 
 
 def _transfer_values(
@@ -1541,22 +1524,16 @@ def _transfer_values(
         right = _register_name(operands[1])
         if left is not None and right is not None:
             left_value = state.register(left)
-            return state.with_register(
-                left, state.register(right)
-            ).with_register(right, left_value)
+            return state.with_register(left, state.register(right)).with_register(right, left_value)
     if mnemonic.startswith("DB") and operands:
         counter = _register_name(operands[0])
         if counter is not None:
-            return _write_register(
-                state, counter, AbstractValue.unknown(16), 16
-            )
+            return _write_register(state, counter, AbstractValue.unknown(16), 16)
         return state
     if mnemonic == "LEA" and len(operands) == 2:
         destination = _register_name(operands[1])
         if destination is not None:
-            return state.with_register(
-                destination, _source_value(operands[0], state, address=True)
-            )
+            return state.with_register(destination, _source_value(operands[0], state, address=True))
     if mnemonic == "MOVEQ" and len(operands) == 2:
         destination = _register_name(operands[1])
         immediate = _IMMEDIATE.fullmatch(operands[0].strip())
@@ -1565,9 +1542,7 @@ def _transfer_values(
             if value & 0x80:
                 value -= 0x100
             result = AbstractValue.constant(value)
-            updated = state.with_register(
-                destination, AbstractValue.constant(value)
-            )
+            updated = state.with_register(destination, AbstractValue.constant(value))
             return _with_logic_flags(updated, result, 32)
     if mnemonic.startswith("MOVEA.") and len(operands) == 2:
         destination = _register_name(operands[1])
@@ -1591,9 +1566,7 @@ def _transfer_values(
         if mnemonic == "MOVE.L" and immediate is not None and absolute is not None:
             updated = updated.with_memory(
                 int(absolute.group(1), 0),
-                AbstractValue.constant(
-                    int(immediate.group(1), 0), address_space="rom"
-                ),
+                AbstractValue.constant(int(immediate.group(1), 0), address_space="rom"),
             )
         return _with_logic_flags(updated, value, bits)
     if mnemonic.startswith("CLR.") and len(operands) == 1:
@@ -1605,9 +1578,10 @@ def _transfer_values(
             updated = _write_register(updated, destination, value, bits)
         return _with_logic_flags(updated, value, bits)
     arithmetic = (
-        "ADD" if mnemonic.startswith("ADD") and not mnemonic.startswith("ADDX")
-        else "SUB" if mnemonic.startswith("SUB")
-        and not mnemonic.startswith("SUBX")
+        "ADD"
+        if mnemonic.startswith("ADD") and not mnemonic.startswith("ADDX")
+        else "SUB"
+        if mnemonic.startswith("SUB") and not mnemonic.startswith("SUBX")
         else None
     )
     if arithmetic is not None and len(operands) == 2:
@@ -1619,9 +1593,7 @@ def _transfer_values(
                 # Address arithmetic is always 32-bit with a sign-extended
                 # source and leaves the condition codes alone.
                 left = state.register(destination)
-                right = _sign_extend(
-                    _source_value(operands[0], state, bits=bits)
-                )
+                right = _sign_extend(_source_value(operands[0], state, bits=bits))
                 result = left.subtract(right) if subtract else left.add(right)
                 return _write_register(state, destination, result)
             left = _narrow(state.register(destination), bits)
@@ -1635,9 +1607,7 @@ def _transfer_values(
         immediate = _IMMEDIATE.fullmatch(operands[0].strip())
         if destination is not None and immediate is not None:
             bits = _operation_bits(mnemonic)
-            value = _narrow(state.register(destination), bits).bitwise_and(
-                int(immediate.group(1), 0)
-            )
+            value = _narrow(state.register(destination), bits).bitwise_and(int(immediate.group(1), 0))
             updated = _write_register(state, destination, value, bits)
             return _with_logic_flags(updated, value, bits)
     if mnemonic.startswith("AND.") and len(operands) == 2:
@@ -1658,24 +1628,16 @@ def _transfer_values(
             return _with_logic_flags(updated, value, bits)
     if mnemonic.startswith("TST.") and len(operands) == 1:
         bits = _operation_bits(mnemonic)
-        return _with_logic_flags(
-            state, _source_value(operands[0], state, bits=bits), bits
-        )
+        return _with_logic_flags(state, _source_value(operands[0], state, bits=bits), bits)
     if mnemonic.startswith("CMPA") and len(operands) == 2:
-        right = _sign_extend(_source_value(
-            operands[0], state, bits=_operation_bits(mnemonic)
-        ))
+        right = _sign_extend(_source_value(operands[0], state, bits=_operation_bits(mnemonic)))
         left = _source_value(operands[1], state)
-        return state.with_flags(**_arithmetic_flags(
-            left, right, 32, subtract=True
-        ))
+        return state.with_flags(**_arithmetic_flags(left, right, 32, subtract=True))
     if mnemonic.startswith("CMP") and len(operands) == 2:
         bits = _operation_bits(mnemonic)
         right = _source_value(operands[0], state, bits=bits)
         left = _source_value(operands[1], state, bits=bits)
-        return state.with_flags(**_arithmetic_flags(
-            left, right, bits, subtract=True
-        ))
+        return state.with_flags(**_arithmetic_flags(left, right, bits, subtract=True))
     if mnemonic.startswith("BTST") and len(operands) == 2:
         bit_value = _source_value(operands[0], state).concrete_values(1)
         tested = None
@@ -1695,12 +1657,8 @@ def _transfer_values(
             value = AbstractValue.unknown()
             updated = state.with_register(destination, value)
             if mnemonic.startswith(("OR.", "EOR.", "NOT.", "EXT.", "SWAP")):
-                return _with_logic_flags(
-                    updated, value, _operation_bits(mnemonic)
-                )
-            return updated.with_flags(**{
-                name: TruthValue.UNKNOWN for name in "xnzvc"
-            })
+                return _with_logic_flags(updated, value, _operation_bits(mnemonic))
+            return updated.with_flags(**{name: TruthValue.UNKNOWN for name in "xnzvc"})
     return state
 
 
@@ -1715,9 +1673,7 @@ def _successors(
     unresolved = False
     if flow in {"COMPUTED_CALL", "COMPUTED_JUMP"} and indirect is not None:
         register_name = indirect.group(1).lower()
-        values = _narrow(
-            state.register(register_name), 32
-        ).concrete_values(32)
+        values = _narrow(state.register(register_name), 32).concrete_values(32)
         if values is None:
             unresolved = True
         else:
@@ -1738,9 +1694,7 @@ def _successors(
         else:
             base, register, kind, size = indexed
             register_name = f"{kind}{register}"
-            values = _narrow(
-                state.register(register_name), 16 if size == "w" else 32
-            ).concrete_values(32)
+            values = _narrow(state.register(register_name), 16 if size == "w" else 32).concrete_values(32)
             if values is None:
                 unresolved = True
             else:
@@ -1752,28 +1706,22 @@ def _successors(
                     target = (base + value) & 0xFFFFFF
                     branch_stub = False
                     if target + 4 <= len(image.data):
-                        opcode = int.from_bytes(
-                            image.data[target:target + 2], "big"
-                        )
+                        opcode = int.from_bytes(image.data[target : target + 2], "big")
                         displacement = int.from_bytes(
-                            image.data[target + 2:target + 4],
+                            image.data[target + 2 : target + 4],
                             "big",
                             signed=True,
                         )
                         destination = target + 2 + displacement
                         branch_stub = (
-                            opcode == 0x6000
-                            and 0x200 <= destination < len(image.data)
-                            and destination % 2 == 0
+                            opcode == 0x6000 and 0x200 <= destination < len(image.data) and destination % 2 == 0
                         )
                     edges.append(
                         IndirectEdge(
                             source_address=fact.cpu_address,
                             target_address=target,
                             mnemonic=fact.mnemonic,
-                            evidence=(
-                                f"PC-indexed {register_name} abstract value"
-                            ),
+                            evidence=(f"PC-indexed {register_name} abstract value"),
                             confidence="proven" if branch_stub else "candidate",
                         )
                     )
@@ -1808,9 +1756,7 @@ def interpret_known_cfg(
     """
     by_address = {fact.cpu_address: fact for fact in facts.values()}
     entrypoints = {image.reset_address}
-    entrypoints.update(
-        address for address in additional_entrypoints if address in by_address
-    )
+    entrypoints.update(address for address in additional_entrypoints if address in by_address)
     entrypoints.update(
         target
         for fact in facts.values()
@@ -1818,14 +1764,8 @@ def interpret_known_cfg(
         for target in fact.flows
         if target in by_address
     )
-    entrypoints.update(
-        vector.address
-        for vector in image.vector_table[1:]
-        if vector.address in by_address
-    )
-    queue = deque(
-        (address, AbstractState.initial()) for address in sorted(entrypoints)
-    )
+    entrypoints.update(vector.address for vector in image.vector_table[1:] if vector.address in by_address)
+    queue = deque((address, AbstractState.initial()) for address in sorted(entrypoints))
     states: dict[int, AbstractState] = {}
     updates: dict[int, int] = {}
     widened: set[int] = set()
@@ -1841,11 +1781,7 @@ def interpret_known_cfg(
         current = states.get(address)
         if current is not None:
             count = updates.get(address, 0)
-            merged = (
-                current.widen(incoming)
-                if count >= widening_after
-                else current.join(incoming)
-            )
+            merged = current.widen(incoming) if count >= widening_after else current.join(incoming)
             if merged == current:
                 continue
             if count >= widening_after:
@@ -1855,9 +1791,7 @@ def interpret_known_cfg(
         updates[address] = updates.get(address, 0) + 1
         state_updates += 1
         outgoing = transfer_instruction(fact, incoming)
-        successors, indirect_edges, was_unresolved = _successors(
-            image, fact, outgoing
-        )
+        successors, indirect_edges, was_unresolved = _successors(image, fact, outgoing)
         if fact.flow_type.upper() == "CONDITIONAL_JUMP" and fact.flows:
             decision = BranchDecision(
                 source_address=fact.cpu_address,
@@ -1879,32 +1813,23 @@ def interpret_known_cfg(
         if was_unresolved:
             unresolved.add(address)
         for edge in indirect_edges:
-            if (
-                0x200 <= edge.target_address < len(image.data)
-                and edge.target_address % 2 == 0
-            ):
+            if 0x200 <= edge.target_address < len(image.data) and edge.target_address % 2 == 0:
                 edges[(edge.source_address, edge.target_address)] = edge
         # The callee may change any register or memory before returning, so
         # the return path must not inherit the caller's facts.
-        return_address = (
-            fact.cpu_address + fact.length
-            if fact.flow_type.upper() in _CALL_FLOWS
-            else None
-        )
+        return_address = fact.cpu_address + fact.length if fact.flow_type.upper() in _CALL_FLOWS else None
         for successor in successors:
             if successor in by_address:
-                queue.append((
-                    successor,
-                    AbstractState.initial()
-                    if successor == return_address
-                    else outgoing,
-                ))
+                queue.append(
+                    (
+                        successor,
+                        AbstractState.initial() if successor == return_address else outgoing,
+                    )
+                )
     return InterpretationResult(
         reached_addresses=tuple(sorted(states)),
         indirect_edges=tuple(edges[key] for key in sorted(edges)),
-        branch_decisions=tuple(
-            branch_decisions[address] for address in sorted(branch_decisions)
-        ),
+        branch_decisions=tuple(branch_decisions[address] for address in sorted(branch_decisions)),
         unresolved_indirect_addresses=tuple(sorted(unresolved)),
         state_updates=state_updates,
         widened_addresses=tuple(sorted(widened)),
@@ -1922,14 +1847,14 @@ def bounded_word_dispatch_targets(
     decoded code bounds the real targets.
     """
     from retrolarium_disassembler.megadrive.pointers import _pc_word_dispatch_tables, _word_dispatch_tables
+
     starts = {fact.cpu_address for fact in facts.values()}
     # Only a table that ends where decoded code begins is known complete;
     # a reader stopped by an implausible entry may still be too short.
     return {
         table.call_address: frozenset(entry.target for entry in table.candidate.entries)
         for table in (*_word_dispatch_tables(image, facts), *_pc_word_dispatch_tables(image, facts))
-        if table.call_mnemonic == "JMP"
-        and table.candidate.logical_start + 2 * len(table.candidate.entries) in starts
+        if table.call_mnemonic == "JMP" and table.candidate.logical_start + 2 * len(table.candidate.entries) in starts
     }
 
 
@@ -1950,11 +1875,7 @@ def retain_trusted_instruction_facts(
     if bounded_dispatch is None:
         bounded_dispatch = bounded_word_dispatch_targets(image, facts)
     roots = {image.reset_address, *additional_entrypoints}
-    roots.update(
-        vector.address
-        for vector in image.vector_table[1:]
-        if vector.address in by_address
-    )
+    roots.update(vector.address for vector in image.vector_table[1:] if vector.address in by_address)
     reached: set[int] = set()
     pending = list(roots)
     while pending:
@@ -1971,8 +1892,7 @@ def retain_trusted_instruction_facts(
         # independently proven targets through additional_entrypoints.
         if address in bounded_dispatch:
             pending.extend(target for target in fact.flows if target in bounded_dispatch[address])
-        elif (flow not in {"COMPUTED_JUMP", "COMPUTED_CALL"}
-                or len(fact.flows) <= MAX_BACKEND_COMPUTED_FLOW_TARGETS):
+        elif flow not in {"COMPUTED_JUMP", "COMPUTED_CALL"} or len(fact.flows) <= MAX_BACKEND_COMPUTED_FLOW_TARGETS:
             pending.extend(fact.flows)
         if flow in {
             "FALL_THROUGH",
@@ -1981,10 +1901,7 @@ def retain_trusted_instruction_facts(
             "COMPUTED_CALL",
         }:
             pending.append(fact.cpu_address + fact.length)
-    return {
-        offset: fact for offset, fact in facts.items()
-        if fact.cpu_address in reached
-    }
+    return {offset: fact for offset, fact in facts.items() if fact.cpu_address in reached}
 
 
 @dataclass(frozen=True)
@@ -2020,23 +1937,16 @@ def interpret_trusted_cfg(
     bounded_dispatch = bounded_word_dispatch_targets(image, facts)
     for iteration in range(1, max_iterations + 1):
         trusted = retain_trusted_instruction_facts(
-            image, facts, additional_entrypoints=roots,
+            image,
+            facts,
+            additional_entrypoints=roots,
             bounded_dispatch=bounded_dispatch,
         )
         if entry_reached is None:
             entry_reached = frozenset(fact.cpu_address for fact in trusted.values())
-        result = interpret_known_cfg(
-            image, trusted, additional_entrypoints=entrypoints
-        )
-        proven = {
-            edge.target_address
-            for edge in result.indirect_edges
-            if edge.confidence == "proven"
-        }
+        result = interpret_known_cfg(image, trusted, additional_entrypoints=entrypoints)
+        proven = {edge.target_address for edge in result.indirect_edges if edge.confidence == "proven"}
         if proven <= roots:
             return TrustedCfg(trusted, result, roots, entry_reached, iteration)
         roots = roots | proven
-    raise AnalysisError(
-        "trusted M68K control flow did not reach a fixpoint after "
-        f"{max_iterations} passes"
-    )
+    raise AnalysisError(f"trusted M68K control flow did not reach a fixpoint after {max_iterations} passes")

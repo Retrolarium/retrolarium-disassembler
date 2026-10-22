@@ -95,9 +95,7 @@ def _nearest_write(prior: list[InstructionFact], register: str) -> InstructionFa
 Z80_IM1_VECTOR = 0x38
 
 
-def z80_im1_handler_seed(
-    facts: dict[int, InstructionFact], base_address: int, size: int
-) -> int | None:
+def z80_im1_handler_seed(facts: dict[int, InstructionFact], base_address: int, size: int) -> int | None:
     """Return the IM1 vector when decoded code executes both IM 1 and EI."""
     raws = {fact.raw for fact in facts.values()}
     if b"\xed\x56" not in raws or b"\xfb" not in raws:
@@ -114,25 +112,26 @@ def _subroutine_copy_routines(ordered: list[InstructionFact]) -> set[int]:
         if not (entry.mnemonic.startswith("MOVEM") and entry.operands.endswith("|-(SP)")):
             continue
         window = [fact for fact in ordered if entry.cpu_address < fact.cpu_address < entry.cpu_address + 0x40]
-        bus = next((fact for fact in window if fact.mnemonic == "LEA"
-                    and fact.operands.upper() == "(0XA00000).L|A1"), None)
+        bus = next(
+            (fact for fact in window if fact.mnemonic == "LEA" and fact.operands.upper() == "(0XA00000).L|A1"), None
+        )
         if bus is None:
             continue
-        if not any(fact.mnemonic == "ADDA.W" and fact.operands.upper() == "D1W|A1"
-                   for fact in window):
+        if not any(fact.mnemonic == "ADDA.W" and fact.operands.upper() == "D1W|A1" for fact in window):
             continue
-        source = next((fact for fact in window if fact.mnemonic == "MOVE.B"
-                       and fact.operands.upper() == "(A0)+|D1B"), None)
+        source = next(
+            (fact for fact in window if fact.mnemonic == "MOVE.B" and fact.operands.upper() == "(A0)+|D1B"), None
+        )
         if source is None:
             continue
-        if not any(fact.mnemonic == "MOVE.B" and fact.operands.upper() == "D1B|(A1)"
-                   for fact in window):
+        if not any(fact.mnemonic == "MOVE.B" and fact.operands.upper() == "D1B|(A1)" for fact in window):
             continue
-        if not any(fact.mnemonic == "ADDQ.W" and fact.operands.upper() == "0X1|A1"
-                   for fact in window):
+        if not any(fact.mnemonic == "ADDQ.W" and fact.operands.upper() == "0X1|A1" for fact in window):
             continue
-        if not any(fact.mnemonic == "DBF" and fact.operands.upper().startswith("D0W|")
-                   and source.cpu_address in fact.flows for fact in window):
+        if not any(
+            fact.mnemonic == "DBF" and fact.operands.upper().startswith("D0W|") and source.cpu_address in fact.flows
+            for fact in window
+        ):
             continue
         routines.add(entry.cpu_address)
     return routines
@@ -146,8 +145,7 @@ def _detect_subroutine_copies(
     for index, call in enumerate(ordered):
         if not call.mnemonic.startswith("BSR") or not routines.intersection(call.flows):
             continue
-        prior = [fact for fact in ordered[max(0, index - 8):index]
-                 if call.cpu_address - 0x20 <= fact.cpu_address]
+        prior = [fact for fact in ordered[max(0, index - 8) : index] if call.cpu_address - 0x20 <= fact.cpu_address]
         # The nearest write to each parameter register reaches the call; the
         # order in which the caller sets them up is irrelevant.
         count = _nearest_write(prior, "D0")
@@ -176,30 +174,41 @@ def _detect_subroutine_copies(
             continue
         seen.add(key)
         payload_offset = m68k_to_rom_offset(image, source_start)
-        payload = image.data[payload_offset:payload_offset + size]
-        copies.append(CrossCpuCopy(
-            edge_id=f"megadrive.cross.m68k-z80.{source_start:06X}.{destination_value:04X}",
-            schema_id="megadrive.m68k-z80.subroutine-copy",
-            source_cpu_id="m68k",
-            source_space="m68k",
-            source_start=source_start,
-            source_end=source_end,
-            target_cpu_id="z80",
-            target_space="z80",
-            target_start=destination_value,
-            target_end=destination_value + size - 1,
-            size=size,
-            payload_sha256=hashlib.sha256(payload).hexdigest(),
-            evidence_addresses=(count.cpu_address, destination.cpu_address,
-                                source.cpu_address, call.cpu_address, *call.flows),
-            confidence="proven-static-copy",
-        ))
+        payload = image.data[payload_offset : payload_offset + size]
+        copies.append(
+            CrossCpuCopy(
+                edge_id=f"megadrive.cross.m68k-z80.{source_start:06X}.{destination_value:04X}",
+                schema_id="megadrive.m68k-z80.subroutine-copy",
+                source_cpu_id="m68k",
+                source_space="m68k",
+                source_start=source_start,
+                source_end=source_end,
+                target_cpu_id="z80",
+                target_space="z80",
+                target_start=destination_value,
+                target_end=destination_value + size - 1,
+                size=size,
+                payload_sha256=hashlib.sha256(payload).hexdigest(),
+                evidence_addresses=(
+                    count.cpu_address,
+                    destination.cpu_address,
+                    source.cpu_address,
+                    call.cpu_address,
+                    *call.flows,
+                ),
+                confidence="proven-static-copy",
+            )
+        )
     return copies
 
 
 def _end_minus_source_count(
-    image: MegaDriveImage, ordered: list[InstructionFact], index: int,
-    count_register: str, source_register: str, source_start: int | None,
+    image: MegaDriveImage,
+    ordered: list[InstructionFact],
+    index: int,
+    count_register: str,
+    source_register: str,
+    source_start: int | None,
 ) -> int | None:
     """DBF count computed as end - source - 1 from two LEA'd addresses.
 
@@ -211,18 +220,19 @@ def _end_minus_source_count(
         return None
     subq, sub, move = ordered[index], ordered[index - 1], ordered[index - 2]
     register = count_register.upper()
-    if not (subq.mnemonic.upper() in {"SUBQ.W", "SUBQ.L"}
-            and re.fullmatch(r"(?:#)?(?:0x)?1\|" + register + r"W?", subq.operands, re.I)):
+    if not (
+        subq.mnemonic.upper() in {"SUBQ.W", "SUBQ.L"}
+        and re.fullmatch(r"(?:#)?(?:0x)?1\|" + register + r"W?", subq.operands, re.I)
+    ):
         return None
     sub_match = re.fullmatch(r"(A[0-7])\|" + register, sub.operands, re.I)
-    if (sub.mnemonic.upper() != "SUB.L" or sub_match is None
-            or sub_match.group(1).upper() != source_register.upper()):
+    if sub.mnemonic.upper() != "SUB.L" or sub_match is None or sub_match.group(1).upper() != source_register.upper():
         return None
     move_match = re.fullmatch(r"(A[0-7])\|" + register, move.operands, re.I)
     if move.mnemonic.upper() != "MOVE.L" or move_match is None:
         return None
     end_register = move_match.group(1).upper()
-    for previous in reversed(ordered[max(0, index - 8):index - 2]):
+    for previous in reversed(ordered[max(0, index - 8) : index - 2]):
         if _destination_register(previous) == end_register:
             if previous.mnemonic != "LEA":
                 return None
@@ -233,17 +243,13 @@ def _end_minus_source_count(
     return None
 
 
-def detect_z80_copies(
-    image: MegaDriveImage, facts: dict[int, InstructionFact]
-) -> tuple[CrossCpuCopy, ...]:
+def detect_z80_copies(image: MegaDriveImage, facts: dict[int, InstructionFact]) -> tuple[CrossCpuCopy, ...]:
     """Find statically proven LEA/DBF byte-copy loops into the Z80 RAM window."""
     ordered = sorted(facts.values(), key=lambda fact: fact.cpu_address)
     copies: list[CrossCpuCopy] = []
     seen: set[tuple[int, int, int]] = set()
     for index, copy in enumerate(ordered):
-        match = re.fullmatch(
-            r"\(A([0-7])\)\+\|\(A([0-7])\)\+", copy.operands, re.I
-        )
+        match = re.fullmatch(r"\(A([0-7])\)\+\|\(A([0-7])\)\+", copy.operands, re.I)
         if copy.mnemonic != "MOVE.B" or match is None:
             continue
         source_register = f"A{match.group(1)}"
@@ -252,7 +258,7 @@ def detect_z80_copies(
             continue
 
         loop = None
-        for following in ordered[index + 1:index + 4]:
+        for following in ordered[index + 1 : index + 4]:
             operands = following.operands.split("|")
             if (
                 following.mnemonic == "DBF"
@@ -272,7 +278,7 @@ def detect_z80_copies(
         # The nearest change of each address register must be its LEA: a
         # later MOVEA, an (An)+ or a call in between leaves another address.
         source_open = target_open = True
-        for previous in reversed(ordered[max(0, index - 10):index]):
+        for previous in reversed(ordered[max(0, index - 10) : index]):
             destination = _destination_register(previous)
             if source_open and _changes_address_register(previous, source_register):
                 source_open = False
@@ -302,8 +308,13 @@ def detect_z80_copies(
         count_value = _register_constant(count_fact, count_register)
         if count_value is None:
             count_value = _end_minus_source_count(
-                image, ordered, ordered.index(count_fact), count_register,
-                source_register, _source_address(image, source_fact))
+                image,
+                ordered,
+                ordered.index(count_fact),
+                count_register,
+                source_register,
+                _source_address(image, source_fact),
+            )
         if count_value is None:
             continue
         size = (count_value & 0xFFFF) + 1
@@ -324,13 +335,11 @@ def detect_z80_copies(
             continue
         seen.add(key)
         payload_offset = m68k_to_rom_offset(image, source_start)
-        payload = image.data[payload_offset:payload_offset + size]
+        payload = image.data[payload_offset : payload_offset + size]
         z80_start = target_start - Z80_WINDOW_START
         copies.append(
             CrossCpuCopy(
-                edge_id=(
-                    f"megadrive.cross.m68k-z80.{source_start:06X}.{z80_start:04X}"
-                ),
+                edge_id=(f"megadrive.cross.m68k-z80.{source_start:06X}.{z80_start:04X}"),
                 schema_id="megadrive.m68k-z80.dbf-postincrement-copy",
                 source_cpu_id="m68k",
                 source_space="m68k",
@@ -380,24 +389,20 @@ class Z80LogicalImage:
 
 def copy_payload(image: MegaDriveImage, copy: CrossCpuCopy) -> bytes:
     offset = m68k_to_rom_offset(image, copy.source_start)
-    payload = image.data[offset:offset + copy.size]
+    payload = image.data[offset : offset + copy.size]
     if hashlib.sha256(payload).hexdigest() != copy.payload_sha256:
         raise AnalysisError(f"Z80 copy payload changed: {copy.edge_id}")
     return payload
 
 
-def group_z80_copies(
-    copies: tuple[CrossCpuCopy, ...]
-) -> tuple[Z80LogicalImage, ...]:
+def group_z80_copies(copies: tuple[CrossCpuCopy, ...]) -> tuple[Z80LogicalImage, ...]:
     """Join copies whose Z80 destinations are exactly adjacent.
 
     Only gap-free chains are joined, so no uncovered RAM byte is ever part of
     an analysis input. Any copy whose destination overlaps another copy may
     describe a conflicting upload and stays a standalone program.
     """
-    ordered = sorted(
-        copies, key=lambda copy: (copy.target_start, copy.target_end, copy.source_start)
-    )
+    ordered = sorted(copies, key=lambda copy: (copy.target_start, copy.target_end, copy.source_start))
     overlapping: set[int] = set()
     for index, first in enumerate(ordered):
         for other_index in range(index + 1, len(ordered)):
@@ -420,10 +425,12 @@ def group_z80_copies(
             run = [copy]
     if run:
         images.append(Z80LogicalImage(tuple(run)))
-    return tuple(sorted(
-        images,
-        key=lambda item: (item.fragments[0].source_start, item.fragments[0].target_start),
-    ))
+    return tuple(
+        sorted(
+            images,
+            key=lambda item: (item.fragments[0].source_start, item.fragments[0].target_start),
+        )
+    )
 
 
 def fragment_z80_facts(

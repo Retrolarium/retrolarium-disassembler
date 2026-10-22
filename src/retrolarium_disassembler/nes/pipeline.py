@@ -112,18 +112,14 @@ def asset_manifest(image: InesImage) -> dict[str, object]:
         for projection in mapper_projections(image):
             if projection.region != "chr":
                 continue
-            payload = image.chr[
-                projection.physical_start:projection.physical_end + 1
-            ]
+            payload = image.chr[projection.physical_start : projection.physical_end + 1]
             items.append(
                 {
                     "id": f"nes.chr.bank{projection.bank:02d}",
                     "kind": "chr_bank",
                     "path": "generated/assets/chr.bin",
                     "asset_file_offset": projection.physical_start,
-                    "rom_file_offset": (
-                        chr_region.file_offset + projection.physical_start
-                    ),
+                    "rom_file_offset": (chr_region.file_offset + projection.physical_start),
                     "size": len(payload),
                     "sha256": hashlib.sha256(payload).hexdigest(),
                     "address": {
@@ -142,17 +138,12 @@ def asset_manifest(image: InesImage) -> dict[str, object]:
     }
 
 
-def _write_instruction_facts(
-    path: Path, image: InesImage, facts: dict[int, InstructionFact]
-) -> None:
+def _write_instruction_facts(path: Path, image: InesImage, facts: dict[int, InstructionFact]) -> None:
     instructions = []
     for fact in (facts[offset] for offset in sorted(facts)):
         instructions.append(
             {
-                "id": (
-                    f"nes.prg.bank{fact.bank:02d}."
-                    f"{fact.cpu_address:04X}"
-                ),
+                "id": (f"nes.prg.bank{fact.bank:02d}.{fact.cpu_address:04X}"),
                 "physical_offset": fact.physical_offset,
                 "bank": fact.bank,
                 "cpu_address": fact.cpu_address,
@@ -160,10 +151,7 @@ def _write_instruction_facts(
                 "bytes": fact.raw.hex(" ").upper(),
                 "mnemonic": fact.mnemonic,
                 "operands": fact.operands,
-                "flows": [
-                    {"bank": fact.bank, "cpu_address": target}
-                    for target in fact.flows
-                ],
+                "flows": [{"bank": fact.bank, "cpu_address": target} for target in fact.flows],
                 "flow_type": fact.flow_type,
                 "backend_space": fact.backend_space,
                 "backend_block": fact.backend_block,
@@ -273,9 +261,7 @@ def _analyze_prg_banks(
             first = min(overlap)
             raise PipelineError(f"PRG analyses overlap at physical offset {first:#x}")
         combined_facts.update(bank_facts)
-        banks.append(
-            _bank_record(image, target, output, analysis_input, artifacts, bank_facts)
-        )
+        banks.append(_bank_record(image, target, output, analysis_input, artifacts, bank_facts))
     if not combined_facts:
         raise PipelineError("Ghidra found no instructions in any PRG bank")
     facts_path = output / "instructions.json"
@@ -304,10 +290,7 @@ def dispatch_entry_seeds(
             if target.physical_start + local in facts:
                 continue
             seeds.setdefault(candidate.bank, set()).add(entry.target)
-    return {
-        bank: tuple(sorted(addresses)[:MAX_ENTRY_SEEDS_PER_BANK])
-        for bank, addresses in sorted(seeds.items())
-    }
+    return {bank: tuple(sorted(addresses)[:MAX_ENTRY_SEEDS_PER_BANK]) for bank, addresses in sorted(seeds.items())}
 
 
 def _reanalyze_with_entry_seeds(
@@ -344,21 +327,13 @@ def _reanalyze_with_entry_seeds(
             seed_plan,
         )
         bank_facts = load_ghidra_facts(artifacts.facts, image, bank=bank)
-        for offset in [
-            offset
-            for offset in combined
-            if target.physical_start <= offset <= target.physical_end
-        ]:
+        for offset in [offset for offset in combined if target.physical_start <= offset <= target.physical_end]:
             del combined[offset]
         combined.update(bank_facts)
         decoded = sum(
-            target.physical_start + cpu_to_prg_offset(target.image, address)
-            in bank_facts
-            for address in addresses
+            target.physical_start + cpu_to_prg_offset(target.image, address) in bank_facts for address in addresses
         )
-        record = _bank_record(
-            image, target, output, analysis_input, artifacts, bank_facts
-        )
+        record = _bank_record(image, target, output, analysis_input, artifacts, bank_facts)
         record["entry_seed_pass"] = {
             "pass": pass_number,
             "plan": seed_plan.relative_to(output).as_posix(),
@@ -386,19 +361,13 @@ def _analyze_with_dispatch_passes(
     attempted: set[tuple[int, int]] = set()
     for pass_number in range(2, 2 + MAX_ENTRY_SEED_PASSES):
         seeds = {
-            bank: tuple(
-                address for address in addresses if (bank, address) not in attempted
-            )
-            for bank, addresses in dispatch_entry_seeds(
-                image, facts, candidates
-            ).items()
+            bank: tuple(address for address in addresses if (bank, address) not in attempted)
+            for bank, addresses in dispatch_entry_seeds(image, facts, candidates).items()
         }
         seeds = {bank: addresses for bank, addresses in seeds.items() if addresses}
         if not seeds:
             break
-        attempted.update(
-            (bank, address) for bank, addresses in seeds.items() for address in addresses
-        )
+        attempted.update((bank, address) for bank, addresses in seeds.items() for address in addresses)
         facts, banks, facts_path = _reanalyze_with_entry_seeds(
             image, output, ghidra_home, facts, banks, seeds, pass_number
         )
@@ -415,9 +384,7 @@ def analyze_mapper_banks(
     rom = rom.resolve()
     output = output.resolve()
     image = load_ines(rom)
-    combined_facts, banks, facts_path = _analyze_prg_banks(
-        image, output, ghidra_home
-    )
+    combined_facts, banks, facts_path = _analyze_prg_banks(image, output, ghidra_home)
     manifest = {
         "schema": "retrolarium.nes.analysis",
         "schema_version": 1,
@@ -451,19 +418,14 @@ def disassemble_nes(
     image = load_ines(rom)
     analysis_dir = output / "analysis"
     generated_dir = output / "generated"
-    facts, banks, facts_path, pointer_candidates = _analyze_with_dispatch_passes(
-        image, analysis_dir, ghidra_home
-    )
+    facts, banks, facts_path, pointer_candidates = _analyze_with_dispatch_passes(image, analysis_dir, ghidra_home)
     write_pointer_report(analysis_dir / "pointers.json", image, pointer_candidates)
     emission = emit_project(generated_dir, image, facts, pointer_candidates)
     targets = prg_analysis_targets(image)
     source_units = (
         ["generated/src/prg.asm"]
         if len(targets) == 1
-        else [
-            f"generated/src/prg-bank{target.bank:02d}.asm"
-            for target in targets
-        ]
+        else [f"generated/src/prg-bank{target.bank:02d}.asm" for target in targets]
     )
     symbols_path = generated_dir / "symbols.json"
     manifest: dict[str, object] = {
@@ -498,15 +460,11 @@ def disassemble_nes(
         "pointers": {
             "schema": "retrolarium.nes.pointers",
             "schema_version": 1,
-            "candidate_count": sum(
-                candidate.schema_id != "nes.interrupt_vectors"
-                for candidate in pointer_candidates
-            ),
+            "candidate_count": sum(candidate.schema_id != "nes.interrupt_vectors" for candidate in pointer_candidates),
             "accepted_count": len(accepted_pointer_tables(pointer_candidates)),
             "accepted_by_schema": {
                 schema_id: sum(
-                    candidate.schema_id == schema_id
-                    for candidate in accepted_pointer_tables(pointer_candidates)
+                    candidate.schema_id == schema_id for candidate in accepted_pointer_tables(pointer_candidates)
                 )
                 for schema_id in ("nes.u16le", "nes.split_lo_hi")
             },

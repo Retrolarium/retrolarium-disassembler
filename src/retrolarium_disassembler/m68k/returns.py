@@ -5,9 +5,16 @@ constant-memory/no-return inference can therefore suppress real returns. A
 balanced path to RTS proves a possible normal return, without interpreting
 volatile RAM as a constant or overriding truly nonreturning routines.
 """
+
 from collections import deque
 
-from retrolarium_disassembler.m68k.abstract import _register_list, AbstractState, TruthValue, transfer_instruction, _branch_outcome
+from retrolarium_disassembler.m68k.abstract import (
+    _register_list,
+    AbstractState,
+    TruthValue,
+    transfer_instruction,
+    _branch_outcome,
+)
 from retrolarium_disassembler.m68k.seeds import DecoderSeed
 from retrolarium_disassembler.m68k.frames.call_frame import _STACK
 
@@ -19,8 +26,9 @@ def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_root
     # Its immediate caller may then be unrooted too. Repair only a caller
     # whose architectural continuation is already an independently planned
     # root; no unrooted call is allowed to invent a new entrypoint.
-    call_sites.update((address, fact) for address, fact in facts.items()
-                      if fact.cpu_address + fact.length in planned_roots)
+    call_sites.update(
+        (address, fact) for address, fact in facts.items() if fact.cpu_address + fact.length in planned_roots
+    )
     returning = set()
 
     def may_return(start, recursion=()):
@@ -51,8 +59,12 @@ def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_root
                 # arithmetic do not establish this normal-return witness.
                 if mnemonic in {"MOVEM.L", "MOVEM.W"} and len(operands) == 2:
                     size = 4 if mnemonic.endswith(".L") else 2
-                    if (operands[1] == "-(SP)" and "a7" in _register_list(operands[0])
-                            or operands[0] == "(SP)+" and "a7" in _register_list(operands[1])):
+                    if (
+                        operands[1] == "-(SP)"
+                        and "a7" in _register_list(operands[0])
+                        or operands[0] == "(SP)+"
+                        and "a7" in _register_list(operands[1])
+                    ):
                         continue
                     if operands[1] == "-(SP)":
                         stack += size * len(_register_list(operands[0]))
@@ -105,7 +117,13 @@ def discover_returning_call_seeds(image, facts, call_sites=None, *, planned_root
             continue
         witnesses = [target & 0xFFFFFF for target in fact.flows if may_return(target & 0xFFFFFF)]
         if witnesses:
-            seeds[continuation] = DecoderSeed(continuation, "normal_return_continuation", "proven",
-                "balanced path to RTS from callee " + ",".join(f"{target:06X}" for target in witnesses)
-                + "; backend suppressed architectural call fall-through", fact.cpu_address)
+            seeds[continuation] = DecoderSeed(
+                continuation,
+                "normal_return_continuation",
+                "proven",
+                "balanced path to RTS from callee "
+                + ",".join(f"{target:06X}" for target in witnesses)
+                + "; backend suppressed architectural call fall-through",
+                fact.cpu_address,
+            )
     return tuple(seeds[address] for address in sorted(seeds))

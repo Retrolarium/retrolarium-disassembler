@@ -20,25 +20,41 @@ INCLUDE = re.compile(r'^\s*include\s+"([^"]+)"', re.IGNORECASE)
 LABEL = re.compile(r"^\s*([A-Za-z_.$][\w.$]*)\s*:\s*(.*)$")
 MNEMONIC = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:\.[bwlcs]?)?$", re.IGNORECASE)
 DIRECTIVES = {
-    "binclude", "dc", "ds", "equ", "include", "org", "cpu", "page",
-    "supmode", "padding", "end", "align", "cnop", "org0", "set",
-    "if", "else", "endif", "rept", "endr", "macro", "endm", "even",
-    "db", "dw", "dd", "defs",
+    "binclude",
+    "dc",
+    "ds",
+    "equ",
+    "include",
+    "org",
+    "cpu",
+    "page",
+    "supmode",
+    "padding",
+    "end",
+    "align",
+    "cnop",
+    "org0",
+    "set",
+    "if",
+    "else",
+    "endif",
+    "rept",
+    "endr",
+    "macro",
+    "endm",
+    "even",
+    "db",
+    "dw",
+    "dd",
+    "defs",
 }
 LISTING_LINE = re.compile(r"^(?:\(\d+\))?\s*\d+/\s*([0-9A-Fa-f]+)\s+: (.*)$")
 
 
-def instruction_quality(
-    matches: int, reference_count: int, generated_count: int
-) -> dict[str, float]:
+def instruction_quality(matches: int, reference_count: int, generated_count: int) -> dict[str, float]:
     recall = 100 * matches / reference_count if reference_count else 100.0
-    precision = 100 * matches / generated_count if generated_count else (
-        100.0 if not reference_count else 0.0
-    )
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if precision + recall else 0.0
-    )
+    precision = 100 * matches / generated_count if generated_count else (100.0 if not reference_count else 0.0)
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     return {
         "instruction_recall_percentage": round(recall, 2),
         "instruction_precision_percentage": round(precision, 2),
@@ -59,11 +75,21 @@ def prepare_z80_reference_listing(reference: Path, output: Path) -> None:
         return
     object_file = listing.with_suffix(".p")
     command = [
-        str(assembler), "-i", str(reference), "-L", "-olist", str(listing),
-        "-o", str(object_file), os.path.relpath(source, assembler.parent),
+        str(assembler),
+        "-i",
+        str(reference),
+        "-L",
+        "-olist",
+        str(listing),
+        "-o",
+        str(object_file),
+        os.path.relpath(source, assembler.parent),
     ]
     result = subprocess.run(
-        command, cwd=assembler.parent, capture_output=True, text=True,
+        command,
+        cwd=assembler.parent,
+        capture_output=True,
+        text=True,
         errors="replace",
     )
     if result.returncode or not listing.is_file():
@@ -98,12 +124,14 @@ def flatten(reference: Path) -> tuple[str, list[dict[str, object]]]:
                 output.append(f"; END {child.relative_to(src).as_posix()}")
             else:
                 output.append(line)
-        origins.append({
-            "path": path.relative_to(src).as_posix(),
-            "start_line": start,
-            "end_line": len(output),
-            "sha256": sha256(path),
-        })
+        origins.append(
+            {
+                "path": path.relative_to(src).as_posix(),
+                "start_line": start,
+                "end_line": len(output),
+                "sha256": sha256(path),
+            }
+        )
         active.remove(path)
 
     visit(entry)
@@ -186,8 +214,7 @@ def read_listing(
         if operation in {"binclude", "incbin", "binfile"}:
             boundaries.add(address)
         if not words or not all(
-            len(word) in {2, 4} and all(char in "0123456789abcdefABCDEF" for char in word)
-            for word in words
+            len(word) in {2, 4} and all(char in "0123456789abcdefABCDEF" for char in word) for word in words
         ):
             continue
         boundaries.add(address)
@@ -196,7 +223,7 @@ def read_listing(
         if not MNEMONIC.fullmatch(operation) or operation.split(".", 1)[0] in DIRECTIVES:
             continue
         payload = bytes.fromhex("".join(words))
-        if rom is not None and rom[address:address + len(payload)] != payload:
+        if rom is not None and rom[address : address + len(payload)] != payload:
             raise ValueError(f"reference listing disagrees with ROM at {address:#x}")
         previous = found.get(address)
         if previous is not None and previous != payload:
@@ -221,7 +248,7 @@ def read_listing(
             if length != listed_bytes:
                 open_ended.add(address)
             continue
-        full = rom[address:address + length]
+        full = rom[address : address + length]
         if len(full) != length:
             open_ended.add(address)
             continue
@@ -229,18 +256,12 @@ def read_listing(
     return found, frozenset(open_ended)
 
 
-def listing_instructions(
-    path: Path, rom: bytes, *, source_column: int = 21, hex_width: int = 4
-) -> dict[int, bytes]:
+def listing_instructions(path: Path, rom: bytes, *, source_column: int = 21, hex_width: int = 4) -> dict[int, bytes]:
     """Read byte-proven listed instruction bytes without length recovery."""
-    return read_listing(
-        path, rom, source_column=source_column, hex_width=hex_width, listed_bytes=None
-    )[0]
+    return read_listing(path, rom, source_column=source_column, hex_width=hex_width, listed_bytes=None)[0]
 
 
-def same_instruction(
-    expected: bytes, actual: bytes, *, expected_open: bool = False, actual_open: bool = False
-) -> bool:
+def same_instruction(expected: bytes, actual: bytes, *, expected_open: bool = False, actual_open: bool = False) -> bool:
     """Compare instructions, allowing only an open-ended side to be a prefix.
 
     A truncated listing prefix never matches an instruction of a different
@@ -264,20 +285,13 @@ def instruction_comparison(reference: Path, generated: Path) -> dict[str, object
     rom = rom_path.read_bytes()
     known, known_open = read_listing(listing, rom)
     facts = json.loads(facts_path.read_text(encoding="utf-8"))["instructions"]
-    analyzed = {
-        item["physical_offset"]: bytes.fromhex(item["bytes"])
-        for item in facts
-    }
+    analyzed = {item["physical_offset"]: bytes.fromhex(item["bytes"]) for item in facts}
 
     def analyzed_matches(address: int) -> bool:
-        return same_instruction(
-            known[address], analyzed[address], expected_open=address in known_open
-        )
+        return same_instruction(known[address], analyzed[address], expected_open=address in known_open)
 
-    matches = sorted(address for address in known.keys() & analyzed.keys()
-                     if analyzed_matches(address))
-    disagreements = sorted(address for address in known.keys() & analyzed.keys()
-                           if not analyzed_matches(address))
+    matches = sorted(address for address in known.keys() & analyzed.keys() if analyzed_matches(address))
+    disagreements = sorted(address for address in known.keys() & analyzed.keys() if not analyzed_matches(address))
     missed = sorted(known.keys() - analyzed.keys())
     extra = sorted(analyzed.keys() - known.keys())
     quality = instruction_quality(len(matches), len(known), len(analyzed))
@@ -300,8 +314,10 @@ def instruction_comparison(reference: Path, generated: Path) -> dict[str, object
     if source_listing.is_file() and rebuilt.is_file():
         emitted, emitted_open = read_listing(source_listing, rebuilt.read_bytes())
         source_matches = sum(
-            address in known and same_instruction(
-                known[address], emitted[address],
+            address in known
+            and same_instruction(
+                known[address],
+                emitted[address],
                 expected_open=address in known_open,
                 actual_open=address in emitted_open,
             )
@@ -358,11 +374,11 @@ def compare_z80_program(
     offset in the program, as the generated source assembles at ``org 0``.
     """
     owned = {
-        address: raw for address, raw in known.items()
-        if base <= address and payload[address - base:address - base + len(raw)] == raw
+        address: raw
+        for address, raw in known.items()
+        if base <= address and payload[address - base : address - base + len(raw)] == raw
     }
-    matches = {address for address in owned.keys() & analyzed.keys()
-               if analyzed[address] == owned[address]}
+    matches = {address for address in owned.keys() & analyzed.keys() if analyzed[address] == owned[address]}
     result: dict[str, object] = {
         "base_address": base,
         "size": len(payload),
@@ -372,17 +388,12 @@ def compare_z80_program(
         **instruction_quality(len(matches), len(owned), len(analyzed)),
         "missed_reference_instructions": len(owned.keys() - analyzed.keys()),
         "other_generated_instructions": len(analyzed.keys() - owned.keys()),
-        "different_opcode_prefixes_at_same_address": len(
-            (owned.keys() & analyzed.keys()) - matches
-        ),
+        "different_opcode_prefixes_at_same_address": len((owned.keys() & analyzed.keys()) - matches),
         "_matches": matches,
         "_owned": set(owned),
     }
     if emitted is not None:
-        source_matches = {
-            base + offset for offset, raw in emitted.items()
-            if owned.get(base + offset) == raw
-        }
+        source_matches = {base + offset for offset, raw in emitted.items() if owned.get(base + offset) == raw}
         result["source_emission"] = {
             "emitted_mnemonic_instructions": len(emitted),
             "matching_reference_instructions": len(source_matches),
@@ -399,9 +410,7 @@ def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -
     if not listing.is_file() or not fact_paths:
         return None
     # Program bytes, not one reference part, verify the listing below.
-    known, _ = read_listing(
-        listing, None, source_column=36, hex_width=2, listed_bytes=None
-    )
+    known, _ = read_listing(listing, None, source_column=36, hex_width=2, listed_bytes=None)
     programs = []
     analyzed_total = 0
     emitted_total = 0
@@ -423,9 +432,7 @@ def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -
         source_listing = generated / "build" / f"z80-{name}.lst"
         emitted = None
         if source_listing.is_file():
-            emitted, _ = read_listing(
-                source_listing, payload, source_column=24, hex_width=2, listed_bytes=None
-            )
+            emitted, _ = read_listing(source_listing, payload, source_column=24, hex_width=2, listed_bytes=None)
         result = compare_z80_program(known, base, payload, analyzed, emitted)
         matched |= result.pop("_matches")
         owned |= result.pop("_owned")
@@ -449,9 +456,7 @@ def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -
         "unattributed_reference_instructions": len(known.keys() - owned),
         "generated_instructions": analyzed_total,
         "matching_instruction_starts": len(matched),
-        "matching_instruction_percentage": round(
-            100 * len(matched) / len(known), 2
-        ) if known else 100.0,
+        "matching_instruction_percentage": round(100 * len(matched) / len(known), 2) if known else 100.0,
         **instruction_quality(len(matched), len(known), analyzed_total),
         "missed_reference_instructions": len(missed),
         "other_generated_instructions": len(extra),
@@ -463,9 +468,7 @@ def z80_instruction_comparison(reference: Path, generated: Path, output: Path) -
         report["source_emission"] = {
             "emitted_mnemonic_instructions": emitted_total,
             "matching_reference_instructions": len(source_matched),
-            "matching_reference_percentage": round(
-                100 * len(source_matched) / len(known), 2
-            ) if known else 100.0,
+            "matching_reference_percentage": round(100 * len(source_matched) / len(known), 2) if known else 100.0,
             **instruction_quality(len(source_matched), len(known), emitted_total),
         }
     return report
@@ -532,18 +535,15 @@ def main() -> None:
     (output / "reference").mkdir(exist_ok=True)
     (output / "generated").mkdir(exist_ok=True)
     prepare_z80_reference_listing(reference, output)
-    (output / "reference" / "main.s").write_text(
-        flattened, encoding="utf-8", newline="\n"
-    )
-    (output / "generated" / "main.s").write_text(
-        generated_flattened, encoding="utf-8", newline="\n"
-    )
+    (output / "reference" / "main.s").write_text(flattened, encoding="utf-8", newline="\n")
+    (output / "generated" / "main.s").write_text(generated_flattened, encoding="utf-8", newline="\n")
     (output / "reference-source-map.json").write_text(
         json.dumps(origins, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
     (output / "generated-source-map.json").write_text(
         json.dumps(generated_origins, indent=2) + "\n",
-        encoding="utf-8", newline="\n",
+        encoding="utf-8",
+        newline="\n",
     )
     report = {
         "schema": "retrolarium.source-benchmark",
@@ -583,7 +583,8 @@ def main() -> None:
         report["memory_symbol_comparison"] = memory_report
     (output / "comparison.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8", newline="\n",
+        encoding="utf-8",
+        newline="\n",
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     thresholds = {
@@ -600,8 +601,7 @@ def main() -> None:
             args.minimum_z80_f1 or args.minimum_instruction_f1,
         ),
     }
-    for cpu, key in (("68000", "instruction_comparison"),
-                     ("Z80", "z80_instruction_comparison")):
+    for cpu, key in (("68000", "instruction_comparison"), ("Z80", "z80_instruction_comparison")):
         comparison = report.get(key)
         (
             minimum_instruction_match,
@@ -614,10 +614,7 @@ def main() -> None:
                 raise SystemExit(f"{cpu} reference instruction comparison is missing")
             actual = comparison["matching_instruction_percentage"]
             if actual < minimum_instruction_match:
-                raise SystemExit(
-                    f"{cpu} instruction match {actual}% is below "
-                    f"{minimum_instruction_match}%"
-                )
+                raise SystemExit(f"{cpu} instruction match {actual}% is below {minimum_instruction_match}%")
         for label, minimum, field in (
             ("precision", minimum_precision, "instruction_precision_percentage"),
             ("F1", minimum_f1, "instruction_f1_percentage"),
@@ -628,19 +625,14 @@ def main() -> None:
                 raise SystemExit(f"{cpu} reference instruction comparison is missing")
             actual = comparison[field]
             if actual < minimum:
-                raise SystemExit(
-                    f"{cpu} instruction {label} {actual}% is below {minimum}%"
-                )
+                raise SystemExit(f"{cpu} instruction {label} {actual}% is below {minimum}%")
         if minimum_source_match:
             emission = comparison.get("source_emission") if isinstance(comparison, dict) else None
             if not isinstance(emission, dict):
                 raise SystemExit(f"{cpu} assembled source comparison is missing")
             actual = emission["matching_reference_percentage"]
             if actual < minimum_source_match:
-                raise SystemExit(
-                    f"{cpu} assembled source match {actual}% is below "
-                    f"{minimum_source_match}%"
-                )
+                raise SystemExit(f"{cpu} assembled source match {actual}% is below {minimum_source_match}%")
 
 
 if __name__ == "__main__":

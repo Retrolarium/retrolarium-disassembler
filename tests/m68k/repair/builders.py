@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 
-
-
 HEADER = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\treferences\tflow_type\tsymbol\tfunction\n"
 
 

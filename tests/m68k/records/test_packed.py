@@ -5,7 +5,11 @@ from dataclasses import replace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" / "python"))
-from retrolarium_disassembler.m68k.records.packed import discover_packed_orphan_closure, _call_continuations, _complete_cfg
+from retrolarium_disassembler.m68k.records.packed import (
+    discover_packed_orphan_closure,
+    _call_continuations,
+    _complete_cfg,
+)
 from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_disassembler.megadrive.emit import _asm_instruction
 from retrolarium_disassembler.facts import InstructionReference
@@ -32,10 +36,13 @@ class PackedClosureTests(unittest.TestCase):
     def discover(self, **kwargs):
         data = bytearray(cartridge(size=0x800))
         for fact in (*self.known.values(), *self.decoded.values()):
-            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
-        return [c.address for c in discover_packed_orphan_closure(
-            parse_megadrive(bytes(data)), self.known, self.decoded,
-            render_instruction=_asm_instruction, **kwargs)]
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
+        return [
+            c.address
+            for c in discover_packed_orphan_closure(
+                parse_megadrive(bytes(data)), self.known, self.decoded, render_instruction=_asm_instruction, **kwargs
+            )
+        ]
 
     def test_multiple_adjacent_routines_and_tail_jump_in_one_batch(self):
         result = self.discover()
@@ -59,19 +66,22 @@ class PackedClosureTests(unittest.TestCase):
             0x20C: instruction(0x20C, "4a40", "TST.W", "D0w"),
             0x20E: instruction(0x20E, "4e75", "RTS", flow="TERMINATOR"),
         }
+
         def checked_body():
             data = bytearray(cartridge(size=0x800))
-            data[(32+5)*4:(33+5)*4] = (0x500).to_bytes(4, "big")
+            data[(32 + 5) * 4 : (33 + 5) * 4] = (0x500).to_bytes(4, "big")
             data[0x20A:0x20C] = b"\x00\x07"  # parameter has no instruction fact
             for fact in (*self.known.values(), *self.decoded.values()):
-                data[fact.cpu_address:fact.cpu_address+fact.length] = fact.raw
+                data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
             image = parse_megadrive(bytes(data))
             traps = {a: f for a, f in self.decoded.items() if f.mnemonic == "TRAP"}
-            inline = {c.call_address: c for c in discover_inline_trap_calls(
-                image, {**traps, **self.known}) if c.handler in self.known}
+            inline = {
+                c.call_address: c
+                for c in discover_inline_trap_calls(image, {**traps, **self.known})
+                if c.handler in self.known
+            }
             candidate = next(_call_continuations(self.known, image))
-            return _complete_cfg(image, candidate, self.known, self.decoded,
-                                 (), _asm_instruction, (), inline)
+            return _complete_cfg(image, candidate, self.known, self.decoded, (), _asm_instruction, (), inline)
 
         self.assertEqual({0x206, 0x208, 0x20C, 0x20E}, checked_body().keys())
         # A branch into the consumed word is not a valid code path.
@@ -83,12 +93,16 @@ class PackedClosureTests(unittest.TestCase):
         self.known[0x208] = replace(self.decoded[0x208], flow_type="CALL_TERMINATOR")
         self.known[0x20C] = self.decoded[0x20C]
         data = bytearray(cartridge(size=0x800))
-        data[(32+5)*4:(33+5)*4] = (0x500).to_bytes(4, "big")
+        data[(32 + 5) * 4 : (33 + 5) * 4] = (0x500).to_bytes(4, "big")
         for fact in (*self.known.values(), *self.decoded.values()):
-            data[fact.cpu_address:fact.cpu_address+fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         data[0x20A:0x20C] = b"\x4e\x75"
-        roots = {c.address for c in discover_packed_orphan_closure(
-            parse_megadrive(bytes(data)), self.known, self.decoded, render_instruction=_asm_instruction)}
+        roots = {
+            c.address
+            for c in discover_packed_orphan_closure(
+                parse_megadrive(bytes(data)), self.known, self.decoded, render_instruction=_asm_instruction
+            )
+        }
         self.assertNotIn(0x20A, roots)
         del self.known[0x208], self.known[0x20C]
         # Handler facts existing only in the speculative probe cannot prove ABI.
@@ -103,8 +117,7 @@ class PackedClosureTests(unittest.TestCase):
 
     def test_data_use_or_z80_copy_blocks_expansion(self):
         self.assertEqual([0x202], self.discover(protected_ranges=((0x202, 0x210),)))
-        self.known[0x220] = replace(self.known[0x220],
-                                  references=(InstructionReference(0x203, "READ", 0),))
+        self.known[0x220] = replace(self.known[0x220], references=(InstructionReference(0x203, "READ", 0),))
         self.assertEqual([0x202], self.discover())
 
     def test_branch_into_operand_and_closed_loop_block_expansion(self):
@@ -114,8 +127,7 @@ class PackedClosureTests(unittest.TestCase):
         self.assertEqual([0x202], self.discover())
 
     def test_suppressed_call_continuation_requires_complete_cfg(self):
-        self.known[0x200] = instruction(0x200, "4eb900000240", "JSR", "0x240.l",
-                                      "CALL_TERMINATOR", (0x240,))
+        self.known[0x200] = instruction(0x200, "4eb900000240", "JSR", "0x240.l", "CALL_TERMINATOR", (0x240,))
         self.known[0x240] = instruction(0x240, "4e75", "RTS", flow="TERMINATOR")
         self.decoded = {
             0x206: instruction(0x206, "7001", "MOVEQ", "0x1|D0"),
@@ -125,32 +137,29 @@ class PackedClosureTests(unittest.TestCase):
         del self.decoded[0x208]
         data = bytearray(cartridge(size=0x800))
         for fact in (*self.known.values(), *self.decoded.values()):
-            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         image = parse_megadrive(bytes(data))
         candidate = next(_call_continuations(self.known, image))
-        self.assertFalse(_complete_cfg(image, candidate, self.known, self.decoded,
-                                       (), _asm_instruction, ()))
+        self.assertFalse(_complete_cfg(image, candidate, self.known, self.decoded, (), _asm_instruction, ()))
 
     def test_no_return_jump_or_data_does_not_seed_continuation(self):
-        self.known[0x200] = instruction(0x200, "4ef900000240", "JMP", "0x240.l",
-                                      "CALL_TERMINATOR", (0x240,))
+        self.known[0x200] = instruction(0x200, "4ef900000240", "JMP", "0x240.l", "CALL_TERMINATOR", (0x240,))
         self.known[0x240] = instruction(0x240, "4e75", "RTS", flow="TERMINATOR")
         self.decoded = {
             0x206: instruction(0x206, "7001", "MOVEQ", "0x1|D0"),
             0x208: instruction(0x208, "4e75", "RTS", flow="TERMINATOR"),
         }
         self.assertFalse(list(_call_continuations(self.known, parse_megadrive(cartridge(size=0x800)))))
-        self.known[0x200] = replace(self.known[0x200], raw=bytes.fromhex("4eb900000240"),
-                                  mnemonic="JSR")
+        self.known[0x200] = replace(self.known[0x200], raw=bytes.fromhex("4eb900000240"), mnemonic="JSR")
         data = bytearray(cartridge(size=0x800))
         for fact in (*self.known.values(), *self.decoded.values()):
-            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         image = parse_megadrive(bytes(data))
         candidate = next(_call_continuations(self.known, image))
-        self.assertFalse(_complete_cfg(image, candidate, self.known, self.decoded,
-                                       ((0x206, 0x210),), _asm_instruction, ()))
-        self.assertFalse(_complete_cfg(image, candidate, self.known, self.decoded,
-                                       (), _asm_instruction, (0x206,)))
+        self.assertFalse(
+            _complete_cfg(image, candidate, self.known, self.decoded, ((0x206, 0x210),), _asm_instruction, ())
+        )
+        self.assertFalse(_complete_cfg(image, candidate, self.known, self.decoded, (), _asm_instruction, (0x206,)))
 
     def test_large_gap_requires_complete_prefix_with_known_code_link(self):
         del self.known[0x220]
@@ -164,10 +173,11 @@ class PackedClosureTests(unittest.TestCase):
         }
         data = bytearray(cartridge(size=0xC00))
         for fact in (*self.known.values(), *self.decoded.values()):
-            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         image = parse_megadrive(bytes(data))
-        discover = lambda: discover_packed_orphan_closure(image, self.known, self.decoded,
-                                                         render_instruction=_asm_instruction)
+        discover = lambda: discover_packed_orphan_closure(
+            image, self.known, self.decoded, render_instruction=_asm_instruction
+        )
         self.assertIn(0x202, [candidate.address for candidate in discover()])
         del self.decoded[0x206]
         self.assertNotIn(0x202, [candidate.address for candidate in discover()])
@@ -187,13 +197,21 @@ class PackedClosureTests(unittest.TestCase):
         self.known[0xA06] = instruction(0xA06, "3018", "MOVE.W", "(A0)+|D0w")
         data = bytearray(cartridge(size=0xC00))
         for fact in (*self.known.values(), *self.decoded.values()):
-            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         image = parse_megadrive(bytes(data))
-        self.assertNotIn(0x202, [candidate.address for candidate in discover_packed_orphan_closure(
-            image, self.known, self.decoded, render_instruction=_asm_instruction)])
+        self.assertNotIn(
+            0x202,
+            [
+                candidate.address
+                for candidate in discover_packed_orphan_closure(
+                    image, self.known, self.decoded, render_instruction=_asm_instruction
+                )
+            ],
+        )
 
     def test_only_addresses_read_through_their_register_are_data(self):
         from retrolarium_disassembler.m68k.abstract import immediate_rom_addresses
+
         image = parse_megadrive(cartridge(size=0x800))
         known = {
             0x300: instruction(0x300, "47f900000400", "LEA", "(0x400).l|A3"),

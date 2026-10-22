@@ -11,13 +11,15 @@ from tools.benchmarks.source import read_listing
 class GnuReferenceTests(unittest.TestCase):
     def test_section_mapping_relocations_wrapping_macros_and_data(self):
         rom = bytes.fromhex("60024eb9000000104e714e7523456789")
-        text = ("1               \t.section .text\n"
-                "2 0000 6000      \t BRA.b Target\n"
-                "3 0002 4EB9 0000 \t JSR Target\n"
-                "3      0000\n"
-                "4 0008 4E71      \t>>> NOP\n"
-                "5 000a 4E75      \t RTS\n"
-                "6 000c 2345 6789 \t .incbin \"data.bin\"\n")
+        text = (
+            "1               \t.section .text\n"
+            "2 0000 6000      \t BRA.b Target\n"
+            "3 0002 4EB9 0000 \t JSR Target\n"
+            "3      0000\n"
+            "4 0008 4E71      \t>>> NOP\n"
+            "5 000a 4E75      \t RTS\n"
+            '6 000c 2345 6789 \t .incbin "data.bin"\n'
+        )
         normalized, expected = normalize_listing(text, rom, {".text": 0})
         self.assertEqual({0: rom[:2], 2: rom[2:8], 8: rom[8:10], 10: rom[10:12]}, expected)
         with tempfile.TemporaryDirectory() as directory:
@@ -33,9 +35,9 @@ class GnuReferenceTests(unittest.TestCase):
 
     def test_long_instruction_end_before_a_gap_is_not_truncated(self):
         rom = bytes.fromhex("23fc1234567800c000044e714e75")
-        text = ("1 0000 23FC 1234 \t MOVE.l #0x12345678,0xc00004\n"
-                "1      5678 00C0\n1      0004\n"
-                "2 000c 4E75      \t RTS\n")
+        text = (
+            "1 0000 23FC 1234 \t MOVE.l #0x12345678,0xc00004\n1      5678 00C0\n1      0004\n2 000c 4E75      \t RTS\n"
+        )
         normalized, expected = normalize_listing(text, rom, {".text": 0})
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "listing.lst"
@@ -61,9 +63,17 @@ class GnuReferenceTests(unittest.TestCase):
             upstream.write_bytes(b"other")
             flat.write_bytes(b"original")
             with self.assertRaisesRegex(ValueError, "byte-identical"):
-                prepare(name="case", original=original, upstream_binary=upstream,
-                        flattened_binary=flat, source=root / "source", listing=root / "listing",
-                        link_map=root / "map", object_name="obj/main.o", output=root / "out")
+                prepare(
+                    name="case",
+                    original=original,
+                    upstream_binary=upstream,
+                    flattened_binary=flat,
+                    source=root / "source",
+                    listing=root / "listing",
+                    link_map=root / "map",
+                    object_name="obj/main.o",
+                    output=root / "out",
+                )
 
 
 if __name__ == "__main__":

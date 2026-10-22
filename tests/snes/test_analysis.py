@@ -33,9 +33,7 @@ def image_with_code(code: bytes):
     data[header + 0x3C : header + 0x3E] = (0x9000).to_bytes(2, "little")
     data[header + 0x1C : header + 0x20] = bytes(4)
     checksum = (cartridge_checksum(data) + 0x1FE) & 0xFFFF
-    data[header + 0x1C : header + 0x1E] = (checksum ^ 0xFFFF).to_bytes(
-        2, "little"
-    )
+    data[header + 0x1C : header + 0x1E] = (checksum ^ 0xFFFF).to_bytes(2, "little")
     data[header + 0x1E : header + 0x20] = checksum.to_bytes(2, "little")
     return parse_snes(bytes(data))
 
@@ -45,9 +43,7 @@ class SnesAnalysisTests(unittest.TestCase):
     def write_facts(path: Path, rows: list[str]) -> None:
         path.write_text(
             "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\t"
-            "references\tflow_type\tsymbol\tfunction\n"
-            + "\n".join(rows)
-            + "\n",
+            "references\tflow_type\tsymbol\tfunction\n" + "\n".join(rows) + "\n",
             encoding="utf-8",
         )
 
@@ -70,11 +66,14 @@ class SnesAnalysisTests(unittest.TestCase):
         self.assertEqual(3, facts[0x009005].length)
         self.assertEqual(3, facts[0x009008].length)
         self.assertEqual(2, facts[0x00900D].length)
-        self.assertEqual((0, 0, 0), (
-            facts[0x009005].state_before.e,
-            facts[0x009005].state_before.m,
-            facts[0x009005].state_before.x,
-        ))
+        self.assertEqual(
+            (0, 0, 0),
+            (
+                facts[0x009005].state_before.e,
+                facts[0x009005].state_before.m,
+                facts[0x009005].state_before.x,
+            ),
+        )
         self.assertEqual(0x1000, facts[0x009000].physical_offset)
         self.assertEqual(
             [("call", 0x009020), ("fallthrough", 0x009016)],
@@ -84,9 +83,7 @@ class SnesAnalysisTests(unittest.TestCase):
             [("branch", 0x009021)],
             [(flow.kind, flow.target) for flow in facts[0x009016].flows],
         )
-        self.assertFalse(
-            any(item.kind == "ambiguous-width" for item in result.diagnostics)
-        )
+        self.assertFalse(any(item.kind == "ambiguous-width" for item in result.diagnostics))
         manifest = analysis_manifest(result)
         self.assertEqual("retrolarium.snes.state-analysis", manifest["schema"])
 
@@ -108,8 +105,9 @@ class SnesAnalysisTests(unittest.TestCase):
         facts = {item.logical_address: item for item in result.instructions}
         self.assertIsNone(facts[0x009004].state_after.carry)
         self.assertNotEqual(3, facts.get(0x009008).length if 0x009008 in facts else 0)
-        self.assertNotIn(0x00900A, {address for address, item in facts.items()
-                                   if address < 0x00900A < address + item.length})
+        self.assertNotIn(
+            0x00900A, {address for address, item in facts.items() if address < 0x00900A < address + item.length}
+        )
 
     def test_tracks_pbr_dbr_and_direct_page_evidence(self) -> None:
         code = bytes.fromhex("18 FB 4B AB C2 20 A9 34 12 5B DB")
@@ -148,21 +146,15 @@ class SnesAnalysisTests(unittest.TestCase):
                     "SNES_ROM\tbus\t9002\t1\tFF\tSBC\t\t\t\tFALL_THROUGH\t\t",
                 ],
             )
-            backend = load_snes_ghidra_facts(
-                facts_path, image, physical_bank=0
-            )
+            backend = load_snes_ghidra_facts(facts_path, image, physical_bank=0)
             accepted = validate_backend_facts(result, backend)
             self.assertEqual({0x1000, 0x1001}, set(accepted))
 
             self.write_facts(
                 facts_path,
-                [
-                    "SNES_ROM\tbus\t9000\t2\tEA DB\tNOP\t\t\t\tFALL_THROUGH\t\t"
-                ],
+                ["SNES_ROM\tbus\t9000\t2\tEA DB\tNOP\t\t\t\tFALL_THROUGH\t\t"],
             )
-            backend = load_snes_ghidra_facts(
-                facts_path, image, physical_bank=0
-            )
+            backend = load_snes_ghidra_facts(facts_path, image, physical_bank=0)
             with self.assertRaisesRegex(FactError, "boundary disagrees"):
                 validate_backend_facts(result, backend)
 

@@ -30,8 +30,10 @@ class MegaDriveTests(unittest.TestCase):
     def test_only_speculative_facts_allow_alternate_overlapping_decodes(self):
         image = parse_megadrive(cartridge())
         header = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
-        rows = ["ROM\tram\t0200\t4\t00010203\tORI.B\t\t\tFALL_THROUGH\t\t\n",
-                "ROM\tram\t0202\t4\t02030405\tORI.B\t\t\tFALL_THROUGH\t\t\n"]
+        rows = [
+            "ROM\tram\t0200\t4\t00010203\tORI.B\t\t\tFALL_THROUGH\t\t\n",
+            "ROM\tram\t0202\t4\t02030405\tORI.B\t\t\tFALL_THROUGH\t\t\n",
+        ]
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "probes.tsv"
             path.write_text(header + "".join(rows), encoding="utf-8")
@@ -52,16 +54,11 @@ class MegaDriveTests(unittest.TestCase):
 
     def test_imports_m68k_facts_only_after_rom_byte_validation(self) -> None:
         image = parse_megadrive(cartridge())
-        header = (
-            "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\t"
-            "flows\tflow_type\tsymbol\tfunction\n"
-        )
+        header = "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "instructions.tsv"
             path.write_text(
-                header
-                + "ROM\tram\t0200\t2\t00 01\tori.b\t#0x1|D0\t"
-                "00000204\tFALL_THROUGH\tVector_Reset\t\n",
+                header + "ROM\tram\t0200\t2\t00 01\tori.b\t#0x1|D0\t00000204\tFALL_THROUGH\tVector_Reset\t\n",
                 encoding="utf-8",
                 newline="\n",
             )
@@ -70,9 +67,7 @@ class MegaDriveTests(unittest.TestCase):
             self.assertEqual((0x204,), facts[0x200].flows)
 
             path.write_text(
-                header
-                + "RAM\tram\t0200\t2\t00 01\tori.b\t#0x1|D0\t"
-                "\tFALL_THROUGH\t\t\n",
+                header + "RAM\tram\t0200\t2\t00 01\tori.b\t#0x1|D0\t\tFALL_THROUGH\t\t\n",
                 encoding="utf-8",
                 newline="\n",
             )
@@ -102,9 +97,7 @@ class MegaDriveTests(unittest.TestCase):
         self.assertEqual([], manifest["warnings"])
 
     def test_preserves_homebrew_capacity_header_and_missing_checksum(self) -> None:
-        image = parse_megadrive(
-            cartridge(size=0x401, declared_end=0x3FFFFF, checksum=False)
-        )
+        image = parse_megadrive(cartridge(size=0x401, declared_end=0x3FFFFF, checksum=False))
 
         self.assertEqual(0x400, image.actual_rom_end)
         self.assertEqual("absent", image.checksum_status)
@@ -112,11 +105,7 @@ class MegaDriveTests(unittest.TestCase):
         self.assertIn("0x3FFFFF", image.warnings[0])
         self.assertEqual(
             int.from_bytes(image.data[-1:] + b"\0", "big"),
-            (
-                cartridge_checksum(image.data)
-                - cartridge_checksum(image.data[:-1])
-            )
-            & 0xFFFF,
+            (cartridge_checksum(image.data) - cartridge_checksum(image.data[:-1])) & 0xFFFF,
         )
 
     def test_reports_checksum_mismatch_without_losing_the_image(self) -> None:

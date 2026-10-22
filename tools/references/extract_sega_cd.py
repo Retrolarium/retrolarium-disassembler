@@ -1,4 +1,5 @@
 """Extract a Sega CD CHD into CUE/BIN tracks, a Mode 1 ISO, and disc files."""
+
 from __future__ import annotations
 
 import argparse
@@ -8,7 +9,7 @@ import shutil
 import subprocess
 
 
-SYNC = b"\0" + b"\xFF" * 10 + b"\0"
+SYNC = b"\0" + b"\xff" * 10 + b"\0"
 
 
 def mode1_raw_to_iso(track: Path, output: Path) -> int:
@@ -62,8 +63,17 @@ def main() -> None:
         parser.error(f"extraction already exists in {output}; use --force to replace it")
     output.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(chdman.resolve()), "verify", "-i", str(chd)], check=True)
-    command = [str(chdman.resolve()), "extractcd", "-i", str(chd),
-               "-o", str(cue), "-ob", str(output / "disc-track%t.bin"), "-sb"]
+    command = [
+        str(chdman.resolve()),
+        "extractcd",
+        "-i",
+        str(chd),
+        "-o",
+        str(cue),
+        "-ob",
+        str(output / "disc-track%t.bin"),
+        "-sb",
+    ]
     if args.force:
         command.append("-f")
     subprocess.run(command, check=True)

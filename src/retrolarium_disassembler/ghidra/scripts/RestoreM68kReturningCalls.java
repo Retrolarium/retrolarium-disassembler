@@ -1,11 +1,12 @@
 // Preserve normal call continuations proven from a balanced path to RTS.
-//@category Retrolarium
+// @category Retrolarium
 
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.FlowOverride;
+import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.mem.MemoryBlock;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 

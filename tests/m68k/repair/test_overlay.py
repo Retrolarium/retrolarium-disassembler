@@ -23,13 +23,17 @@ class OverlayTests(unittest.TestCase):
                 facts = workspace / "instructions.tsv"
                 facts.write_text(HEADER + row(0x1000, "4E75", "RTS"))
                 probes = workspace / "probes.tsv"
-                probes.write_text(HEADER + row(0x1002, "0C040E04", "CMPI.B", "#0xe04|D4b", flow="FALL_THROUGH")
-                                 + row(0x1004, "0E040C04", "MOVES.B", "D0b|D4b", flow="FALL_THROUGH"))
+                probes.write_text(
+                    HEADER
+                    + row(0x1002, "0C040E04", "CMPI.B", "#0xe04|D4b", flow="FALL_THROUGH")
+                    + row(0x1004, "0E040C04", "MOVES.B", "D0b|D4b", flow="FALL_THROUGH")
+                )
                 return GhidraArtifacts(facts, workspace / "report", workspace / "log", probes)
 
             with patch("retrolarium_disassembler.m68k.repair.overlay.run_m68k_overlay_analysis", decode):
-                result = analyze_overlay(source, root / "analysis", root, root,
-                                         base_address=0x1000, entry_addresses=(0x1000,))
+                result = analyze_overlay(
+                    source, root / "analysis", root, root, base_address=0x1000, entry_addresses=(0x1000,)
+                )
             with result.facts.open() as stream:
                 self.assertEqual(["00001000"], [r["address"] for r in csv.DictReader(stream, delimiter="\t")])
 
@@ -58,8 +62,9 @@ class OverlayTests(unittest.TestCase):
                 return GhidraArtifacts(facts, workspace / "report.json", workspace / "log", probes)
 
             with patch("retrolarium_disassembler.m68k.repair.overlay.run_m68k_overlay_analysis", decode):
-                result = analyze_overlay(source, root / "analysis", root, root,
-                                         base_address=0x1000, entry_addresses=(0x1000,))
+                result = analyze_overlay(
+                    source, root / "analysis", root, root, base_address=0x1000, entry_addresses=(0x1000,)
+                )
             self.assertEqual([(0x1000,), (0x1000, 0x1008)], calls)
             with result.facts.open() as stream:
                 self.assertEqual(2, len(list(csv.DictReader(stream, delimiter="\t"))))
@@ -79,8 +84,9 @@ class OverlayTests(unittest.TestCase):
                 return GhidraArtifacts(facts, workspace / "report", workspace / "log", probes)
 
             with patch("retrolarium_disassembler.m68k.repair.overlay.run_m68k_overlay_analysis", decode):
-                result = analyze_overlay(source, root / "analysis", root, root,
-                                         base_address=0x1000, entry_addresses=(0x1000,))
+                result = analyze_overlay(
+                    source, root / "analysis", root, root, base_address=0x1000, entry_addresses=(0x1000,)
+                )
             with result.facts.open() as stream:
                 rows = list(csv.DictReader(stream, delimiter="\t"))
             self.assertEqual(["00001000"], [r["address"] for r in rows])

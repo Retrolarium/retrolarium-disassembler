@@ -77,8 +77,16 @@ class _M68kHarness:
         return self.passes[min(index, len(self.passes) - 1)]
 
     def run_megadrive_analysis(
-        self, analysis_input, program_root, ghidra_home, scripts, *, seed_plan, probe_orphans=False,
-        probe_requests=None, fallthrough_repairs=None,
+        self,
+        analysis_input,
+        program_root,
+        ghidra_home,
+        scripts,
+        *,
+        seed_plan,
+        probe_orphans=False,
+        probe_requests=None,
+        fallthrough_repairs=None,
     ):
         # Snapshot what the decoder would read at invocation time.
         self.plans_seen.append(seed_plan.read_text(encoding="ascii"))
@@ -94,30 +102,19 @@ class _M68kHarness:
         self.interpreter_entrypoints.append(set(entrypoints))
         current = self._current()
         edges = tuple(current.get("edges", ()))
-        self._trusted_facts = {
-            address: SimpleNamespace(cpu_address=address)
-            for address in current.get("trusted", ())
-        }
+        self._trusted_facts = {address: SimpleNamespace(cpu_address=address) for address in current.get("trusted", ())}
         return TrustedCfg(
             facts=self._trusted_facts,
             interpretation=_interpretation(*edges),
-            roots=frozenset(entrypoints) | {
-                edge.target_address for edge in edges
-                if edge.confidence == "proven"
-            },
+            roots=frozenset(entrypoints) | {edge.target_address for edge in edges if edge.confidence == "proven"},
             # "reached" marks starts reached from the seeds without adding
             # fake facts, which the post-loop writer cannot serialize.
-            entry_reached=frozenset(
-                (*current.get("trusted", ()), *current.get("reached", ()))
-            ),
+            entry_reached=frozenset((*current.get("trusted", ()), *current.get("reached", ()))),
             iterations=1,
         )
 
     def load_facts(self, path, image, **kwargs):
-        self._last_facts = {
-            address: SimpleNamespace(cpu_address=address)
-            for address in self._current().get("raw", ())
-        }
+        self._last_facts = {address: SimpleNamespace(cpu_address=address) for address in self._current().get("raw", ())}
         return self._last_facts
 
     def handlers(self, image, facts):

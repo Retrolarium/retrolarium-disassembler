@@ -23,7 +23,6 @@ class GhidraArtifacts:
     orphan_facts: Path | None = None
 
 
-
 # cmd.exe runs a .bat launcher and splits or expands its line at these
 # characters whatever quoting Python adds.
 _CMD_SPECIAL = set('&|<>^%!"')
@@ -42,8 +41,9 @@ def run_launcher(command: list[str], *, cwd: Path, timeout: float = LAUNCHER_TIM
                     f"cmd.exe cannot pass this path to Ghidra safely (it holds one of {''.join(sorted(_CMD_SPECIAL))}): "
                     f"{argument}"
                 )
-    process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, errors="replace")
+    process = subprocess.Popen(
+        command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace"
+    )
     try:
         output, _ = process.communicate(timeout=timeout)
     except BaseException as exc:
@@ -56,6 +56,7 @@ def run_launcher(command: list[str], *, cwd: Path, timeout: float = LAUNCHER_TIM
             raise GhidraError(f"Ghidra did not finish in {int(timeout // 60)} minutes") from None
         raise
     return subprocess.CompletedProcess(command, process.returncode, output, None)
+
 
 def find_headless(ghidra_home: Path) -> Path:
     suffix = ".bat" if os.name == "nt" else ""
@@ -123,19 +124,34 @@ def run_megadrive_analysis(
         # Set proven call-site overrides before no-return analysis can erase
         # their continuations and replace them with inferred scalar data.
         # Reapply after analysis as well; neither step clears existing data.
-        pre_analysis_scripts=(("-preScript", "RestoreM68kReturningCalls.java",
-            str(seed_plan.with_name("normal-return-calls.txt").resolve()))
-            if seed_plan.with_name("normal-return-calls.txt").is_file() else ()),
+        pre_analysis_scripts=(
+            (
+                "-preScript",
+                "RestoreM68kReturningCalls.java",
+                str(seed_plan.with_name("normal-return-calls.txt").resolve()),
+            )
+            if seed_plan.with_name("normal-return-calls.txt").is_file()
+            else ()
+        ),
         export_block="ROM",
         probe_m68k_orphans=probe_orphans,
         probe_requests=probe_requests,
         post_analysis_scripts=(
-            (("-postScript", "RestoreM68kReturningCalls.java",
-             str(seed_plan.with_name("normal-return-calls.txt").resolve()))
-             if seed_plan.with_name("normal-return-calls.txt").is_file() else ())
+            (
+                (
+                    "-postScript",
+                    "RestoreM68kReturningCalls.java",
+                    str(seed_plan.with_name("normal-return-calls.txt").resolve()),
+                )
+                if seed_plan.with_name("normal-return-calls.txt").is_file()
+                else ()
+            )
             + ("-postScript", "RestoreM68kPlannedSeeds.java", str(seed_plan.resolve()))
-            + (("-postScript", "RestoreM68kFallthrough.java", str(fallthrough_repairs.resolve()))
-               if fallthrough_repairs is not None else ())
+            + (
+                ("-postScript", "RestoreM68kFallthrough.java", str(fallthrough_repairs.resolve()))
+                if fallthrough_repairs is not None
+                else ()
+            )
         ),
     )
 
@@ -174,18 +190,25 @@ def run_m68k_overlay_analysis(
         project_prefix="m68k_overlay_",
         expected_language="68000:BE:32:default",
         import_arguments=(
-            "-loader", "BinaryLoader",
-            "-loader-blockName", "CD_MODULE",
-            "-loader-baseAddr", f"0x{base_address:08X}",
-            "-processor", "68000:BE:32:default",
+            "-loader",
+            "BinaryLoader",
+            "-loader-blockName",
+            "CD_MODULE",
+            "-loader-baseAddr",
+            f"0x{base_address:08X}",
+            "-processor",
+            "68000:BE:32:default",
         ),
         seed_script="SeedM68kOverlay.java",
         seed_arguments=(str(seed_plan.resolve()),),
         export_block="CD_MODULE",
         probe_m68k_orphans=probe_orphans,
         probe_requests=probe_requests,
-        post_analysis_scripts=(("-postScript", "RestoreM68kFallthrough.java", str(fallthrough_repairs.resolve()))
-                               if fallthrough_repairs is not None else ()),
+        post_analysis_scripts=(
+            ("-postScript", "RestoreM68kFallthrough.java", str(fallthrough_repairs.resolve()))
+            if fallthrough_repairs is not None
+            else ()
+        ),
     )
 
 
@@ -371,9 +394,12 @@ def _run_analysis(
             "-postScript",
             "ExportInstructionFacts.java",
             *export_arguments,
-            *(["-postScript", "ProbeM68kUnusedCode.java", str(orphan_facts.resolve())]
-              + ([str(probe_requests.resolve())] if probe_requests is not None else [])
-              if orphan_facts is not None else []),
+            *(
+                ["-postScript", "ProbeM68kUnusedCode.java", str(orphan_facts.resolve())]
+                + ([str(probe_requests.resolve())] if probe_requests is not None else [])
+                if orphan_facts is not None
+                else []
+            ),
             "-deleteProject",
         ]
         result = run_launcher(command, cwd=workspace)
@@ -390,9 +416,7 @@ def _run_analysis(
             if script_error and not result.returncode
             else f"failed with exit code {result.returncode}"
         )
-        raise GhidraError(
-            f"Ghidra headless {reason}\n{tail}"
-        )
+        raise GhidraError(f"Ghidra headless {reason}\n{tail}")
     if not facts.is_file() or not report.is_file():
         raise GhidraError("Ghidra completed without required fact artifacts")
     if orphan_facts is not None and not orphan_facts.is_file():

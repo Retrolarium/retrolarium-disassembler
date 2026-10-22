@@ -1,4 +1,5 @@
 """ROM record callbacks selected through a returned base stored in RAM."""
+
 from collections import deque
 import re
 
@@ -25,7 +26,7 @@ def _relative_bases(image, table, occupied):
     for at in range(start, limit, 2):
         if at < 0x200 or at + 2 > limit or at in occupied or at + 1 in occupied:
             break
-        target = table + int.from_bytes(image.data[at:at + 2], "big")
+        target = table + int.from_bytes(image.data[at : at + 2], "big")
         physical = target - image.header.rom_start
         if target & 1 or not start < physical < len(image.data) - 3:
             break
@@ -78,13 +79,18 @@ def _returned_bases(image, facts, entry, register, occupied):
             if not offsets or operands[0] != offsets[0] or bases != (offsets[1],):
                 return ()
             bases, offsets = offsets[2], None
-        elif (_STACK.search(fact.operands)
-              or mnemonic in {"EXG", "SWAP", "MOVEM.L", "MOVEM.W"}
-              or any(re.search(r"(?<![A-Z0-9])" + register + r"(?![A-Z0-9])", operand)
-                     for operand in operands) and not mnemonic.startswith(("CMP", "TST", "BTST"))):
+        elif (
+            _STACK.search(fact.operands)
+            or mnemonic in {"EXG", "SWAP", "MOVEM.L", "MOVEM.W"}
+            or any(re.search(r"(?<![A-Z0-9])" + register + r"(?![A-Z0-9])", operand) for operand in operands)
+            and not mnemonic.startswith(("CMP", "TST", "BTST"))
+        ):
             return ()
-        elif (re.fullmatch(r"D[0-7]W", operands[-1]) and mnemonic.endswith(".W")
-              and mnemonic.split(".")[0] in {"LSR", "LSL", "ANDI", "ADDI", "SUBI", "ADDQ", "SUBQ"}):
+        elif (
+            re.fullmatch(r"D[0-7]W", operands[-1])
+            and mnemonic.endswith(".W")
+            and mnemonic.split(".")[0] in {"LSR", "LSL", "ANDI", "ADDI", "SUBI", "ADDQ", "SUBQ"}
+        ):
             if offsets and operands[-1][:2] == offsets[0]:
                 offsets = None
         elif re.fullmatch(r"D[0-7][BWL]?", operands[-1]) and not mnemonic.startswith(("CMP", "TST", "BTST")):
@@ -141,42 +147,65 @@ def discover_ram_record_dispatch_seeds(image, facts):
             fact = facts.get(cursor)
             if not fact:
                 break
-            code.append(fact); cursor += fact.length
+            code.append(fact)
+            cursor += fact.length
         if len(code) != 5:
             continue
         index, scale, add, load, jump = code
         dr = index.operands.rsplit("|", 1)[-1].upper()
         shift = re.fullmatch(r"#0X([1-4])\|" + dr, scale.operands.upper())
         field = re.fullmatch(r"\((0X[0-9A-F]+)," + ar + r"\)\|(A[0-6])", load.operands.upper())
-        if (index.mnemonic.upper() != "MOVE.W" or not re.fullmatch(r"D[0-7]W", dr)
-                or index.operands.upper().split("|")[0] in {f"({ar})+", f"-({ar})"}
-                or any(f.flow_type.upper() != "FALL_THROUGH" for f in code[:4])
-                or scale.mnemonic.upper() != "LSL.W" or not shift
-                or add.mnemonic.upper() != "LEA" or add.operands.upper() != f"(0X0,{ar},{dr}*0X1)|{ar}"
-                or load.mnemonic.upper() != "MOVEA.L" or not field
-                or jump.mnemonic.upper() not in {"JMP", "JSR"} or jump.operands.upper() != f"({field[2]})"):
+        if (
+            index.mnemonic.upper() != "MOVE.W"
+            or not re.fullmatch(r"D[0-7]W", dr)
+            or index.operands.upper().split("|")[0] in {f"({ar})+", f"-({ar})"}
+            or any(f.flow_type.upper() != "FALL_THROUGH" for f in code[:4])
+            or scale.mnemonic.upper() != "LSL.W"
+            or not shift
+            or add.mnemonic.upper() != "LEA"
+            or add.operands.upper() != f"(0X0,{ar},{dr}*0X1)|{ar}"
+            or load.mnemonic.upper() != "MOVEA.L"
+            or not field
+            or jump.mnemonic.upper() not in {"JMP", "JSR"}
+            or jump.operands.upper() != f"({field[2]})"
+        ):
             continue
         stride, displacement = 1 << int(shift[1], 16), int(field[1], 0)
         if displacement > stride - 4:
             continue
         for base in sorted(bases):
             start = base - image.header.rom_start
-            following = min((b-image.header.rom_start for b in bases if b > base), default=len(image.data))
+            following = min((b - image.header.rom_start for b in bases if b > base), default=len(image.data))
             targets = []
-            for at in range(start, min(following, start + 256*stride), stride):
-                if (at < 0x200 or at + stride > len(image.data) or any(at+b in occupied for b in range(stride))
-                        or at != start and image.header.rom_start + at in boundaries):
+            for at in range(start, min(following, start + 256 * stride), stride):
+                if (
+                    at < 0x200
+                    or at + stride > len(image.data)
+                    or any(at + b in occupied for b in range(stride))
+                    or at != start
+                    and image.header.rom_start + at in boundaries
+                ):
                     break
-                pointer = int.from_bytes(image.data[at+displacement:at+displacement+4], "big")
-                physical = pointer-image.header.rom_start
-                if (pointer & 1 or not 0x200 <= physical <= len(image.data)-2 or physical in interiors
-                        or start <= physical < at+stride or image.data[physical:physical+2] in {b"\x00\x00", b"\xff\xff"}):
+                pointer = int.from_bytes(image.data[at + displacement : at + displacement + 4], "big")
+                physical = pointer - image.header.rom_start
+                if (
+                    pointer & 1
+                    or not 0x200 <= physical <= len(image.data) - 2
+                    or physical in interiors
+                    or start <= physical < at + stride
+                    or image.data[physical : physical + 2] in {b"\x00\x00", b"\xff\xff"}
+                ):
                     break
                 targets.append(pointer)
             if len(set(targets)) < 3 or not set(targets) & starts:
                 continue
             for target in targets:
-                result[target] = DecoderSeed(target, "ram_record_dispatch", "high",
+                result[target] = DecoderSeed(
+                    target,
+                    "ram_record_dispatch",
+                    "high",
                     f"returned ROM group base stored in RAM {slot:06X}; stride {stride}, "
-                    f"field +{displacement} called at {jump.cpu_address:06X}; group {base:06X}", read.cpu_address)
+                    f"field +{displacement} called at {jump.cpu_address:06X}; group {base:06X}",
+                    read.cpu_address,
+                )
     return tuple(result[a] for a in sorted(result))

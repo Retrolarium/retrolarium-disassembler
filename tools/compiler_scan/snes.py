@@ -18,6 +18,7 @@ scanned as raw bytes; no vendor library is needed:
 
 OUTPUT_DIR receives scan.csv and summary.md.
 """
+
 import argparse
 import collections
 import csv
@@ -29,8 +30,16 @@ from tools.compiler_scan.megadrive import BAD_TAGS, GOOD, TOOL_STRINGS, extract,
 
 PD_TAG = re.compile(r"\(PD\)", re.I)
 EXTENSIONS = (".smc", ".sfc", ".swc", ".fig")
-SNES_TOOL_STRINGS = TOOL_STRINGS + [b"Western Design", b"WDC816", b"816-tcc", b"PVSnesLib", b"pvsneslib",
-                                    b"tcc__", b"Archimedes", b"Zardoz"]
+SNES_TOOL_STRINGS = TOOL_STRINGS + [
+    b"Western Design",
+    b"WDC816",
+    b"816-tcc",
+    b"PVSnesLib",
+    b"pvsneslib",
+    b"tcc__",
+    b"Archimedes",
+    b"Zardoz",
+]
 
 CALL = re.compile(rb"\x22...|\x20..", re.S)
 CLEANUP = re.compile(rb"\xFA\xFA|\x7A\x7A|\x68\x68|(?:\xC2.)?\x3B\x18\x69..\x1B", re.S)
@@ -48,8 +57,11 @@ def choose(entries):
 
 
 def homebrew(entries):
-    return [e for e in entries if e.lower().endswith(EXTENSIONS) and PD_TAG.search(e)
-            and not BAD_TAGS.search(PD_TAG.sub("", e))]
+    return [
+        e
+        for e in entries
+        if e.lower().endswith(EXTENSIONS) and PD_TAG.search(e) and not BAD_TAGS.search(PD_TAG.sub("", e))
+    ]
 
 
 def scan(rom):
@@ -100,11 +112,18 @@ def write_outputs(rows, output):
     lines = ["# SNES compiler scan", "", f"{len(rows)} games scanned.", ""]
     lines += [f"- {key}: {len(groups[key])}" for key in VERDICTS]
     for key in VERDICTS[:-1]:
-        lines += ["", f"## {key}", "", "| game | ROM | KB | call cleanup | LDA n,S /KB | stack frames | DP frames | strings |",
-                  "|---|---|---:|---:|---:|---:|---:|---|"]
+        lines += [
+            "",
+            f"## {key}",
+            "",
+            "| game | ROM | KB | call cleanup | LDA n,S /KB | stack frames | DP frames | strings |",
+            "|---|---|---:|---:|---:|---:|---:|---|",
+        ]
         for row in sorted(groups[key], key=lambda r: -float(r["cleanup_ratio"])):
-            lines.append(f"| {row['game']} | {row['rom']} | {row['rom_kb']} | {row['cleanup_ratio']} | "
-                         f"{row['stack_loads_per_kb']} | {row['stack_frames']} | {row['dp_frames']} | {row['tool_strings']} |")
+            lines.append(
+                f"| {row['game']} | {row['rom']} | {row['rom_kb']} | {row['cleanup_ratio']} | "
+                f"{row['stack_loads_per_kb']} | {row['stack_frames']} | {row['dp_frames']} | {row['tool_strings']} |"
+            )
     (output / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -131,7 +150,7 @@ def main():
     if args.only:
         archives = [a for a in archives if args.only.lower() in a.name.lower()]
     if args.limit:
-        archives = archives[:args.limit]
+        archives = archives[: args.limit]
     rows = []
     for number, archive in enumerate(archives, 1):
         entries = list_archive(archive)

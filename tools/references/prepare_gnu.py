@@ -5,6 +5,7 @@ of the flattened source. GNU listing addresses are section-relative; the
 linker map supplies physical bases. Relocations come from the proven linked
 ROM. Only explicit M68K statements (including expanded macros) are counted.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -80,8 +81,13 @@ def normalize_listing(text: str, rom: bytes, bases: dict[str, int]) -> tuple[str
         if section not in bases:
             raise ValueError(f"unmapped GNU section {section}")
         address = bases[section] + int(words[1], 16)
-        pending = {"line": words[0], "address": address, "raw": bytes.fromhex("".join(words[2:])),
-                   "source": source, "labels": labels}
+        pending = {
+            "line": words[0],
+            "address": address,
+            "raw": bytes.fromhex("".join(words[2:])),
+            "source": source,
+            "labels": labels,
+        }
         labels = []
     finish()
     instructions = {}
@@ -93,7 +99,7 @@ def normalize_listing(text: str, rom: bytes, bases: dict[str, int]) -> tuple[str
         if is_instruction:
             if len(raw) not in {2, 4, 6, 8, 10} or address < 0 or address + len(raw) > len(rom):
                 raise ValueError(f"invalid complete instruction at {address:#x}")
-            actual = rom[address:address + len(raw)]
+            actual = rom[address : address + len(raw)]
             opcode = int.from_bytes(raw[:2], "big")
             mask = 0xFF00 if opcode & 0xF000 == 0x6000 else 0xFFFF
             if opcode & mask != int.from_bytes(actual[:2], "big") & mask:
@@ -110,7 +116,7 @@ def normalize_listing(text: str, rom: bytes, bases: dict[str, int]) -> tuple[str
             rows.append((address, label, b""))
         # At most six bytes fit the existing AS listing column. Explicit end
         # boundaries below establish full lengths without decoding assets.
-        payload = rom[address:address + min(len(raw), 6)]
+        payload = rom[address : address + min(len(raw), 6)]
         display = source if is_instruction else "dc.b ; GNU data boundary: " + source
         rows.append((address, display, payload))
     preceding_end = 0
@@ -119,19 +125,29 @@ def normalize_listing(text: str, rom: bytes, bases: dict[str, int]) -> tuple[str
             raise ValueError(f"overlapping GNU instructions at {address:#x}")
         preceding_end = end
         if end - address >= 6 and end < len(rom):
-            rows.append((end, "; complete GNU instruction boundary", rom[end:end + 2]))
+            rows.append((end, "; complete GNU instruction boundary", rom[end : end + 2]))
     out = []
     for number, (address, source, raw) in enumerate(sorted(rows, key=lambda r: r[0]), 1):
         if len(raw) % 2:
             encoded = " ".join(f"{v:02X}" for v in raw)
         else:
-            encoded = " ".join(raw[i:i+2].hex().upper() for i in range(0, len(raw), 2))
+            encoded = " ".join(raw[i : i + 2].hex().upper() for i in range(0, len(raw), 2))
         out.append(f"{number:6d}/{address:08X} : {encoded:<21}{source}")
     return "\n".join(out) + "\n", instructions
 
 
-def prepare(*, name: str, original: Path, upstream_binary: Path, flattened_binary: Path,
-            source: Path, listing: Path, link_map: Path, object_name: str, output: Path) -> dict:
+def prepare(
+    *,
+    name: str,
+    original: Path,
+    upstream_binary: Path,
+    flattened_binary: Path,
+    source: Path,
+    listing: Path,
+    link_map: Path,
+    object_name: str,
+    output: Path,
+) -> dict:
     rom = original.read_bytes()
     if upstream_binary.read_bytes() != rom or flattened_binary.read_bytes() != rom:
         raise ValueError("both upstream and flattened builds must be byte-identical to original")
@@ -146,17 +162,29 @@ def prepare(*, name: str, original: Path, upstream_binary: Path, flattened_binar
         raise ValueError("normalized GNU listing lost instruction bytes or lengths")
     binary = output / "reference.bin"
     binary.write_bytes(rom)
-    result = {"name": name, "status": "verified-original", "matches_upstream": True,
-              "matching_original_roms": [str(original.resolve())], "binary": str(binary.resolve()),
-              "binary_sha256": digest(binary), "source": str(target_source.resolve()),
-              "source_sha256": digest(target_source), "listing": str(target_listing.resolve()),
-              "listing_sha256": digest(target_listing), "reference_instructions": len(found),
-              "uncertain_instruction_addresses": 0, "listing_provenance": {
-                  "assembler": "GNU as (complete continuation bytes), GNU ld section map",
-                  "upstream_binary_sha256": digest(upstream_binary),
-                  "flattened_binary_sha256": digest(flattened_binary),
-                  "gnu_listing_sha256": digest(listing), "linker_map_sha256": digest(link_map),
-                  "instructions_outside_rom": 0, "section_bases": bases}}
+    result = {
+        "name": name,
+        "status": "verified-original",
+        "matches_upstream": True,
+        "matching_original_roms": [str(original.resolve())],
+        "binary": str(binary.resolve()),
+        "binary_sha256": digest(binary),
+        "source": str(target_source.resolve()),
+        "source_sha256": digest(target_source),
+        "listing": str(target_listing.resolve()),
+        "listing_sha256": digest(target_listing),
+        "reference_instructions": len(found),
+        "uncertain_instruction_addresses": 0,
+        "listing_provenance": {
+            "assembler": "GNU as (complete continuation bytes), GNU ld section map",
+            "upstream_binary_sha256": digest(upstream_binary),
+            "flattened_binary_sha256": digest(flattened_binary),
+            "gnu_listing_sha256": digest(listing),
+            "linker_map_sha256": digest(link_map),
+            "instructions_outside_rom": 0,
+            "section_bases": bases,
+        },
+    }
     (output / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     return result
 

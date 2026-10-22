@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "retrolarium-core" 
 
 from retrolarium_disassembler.facts import InstructionReference
 from retrolarium_disassembler.m68k.repair.unused import (
-    discover_validated_unused_candidates, validate_unused_fragment,
+    discover_validated_unused_candidates,
+    validate_unused_fragment,
 )
 from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_disassembler.megadrive.emit import _asm_instruction
@@ -33,25 +34,29 @@ class UnusedCodeTests(unittest.TestCase):
     def image(self, fragment):
         raw = bytearray(cartridge(size=0x500))
         for item in (self.previous, self.following, *fragment):
-            raw[item.cpu_address:item.cpu_address + item.length] = item.raw
+            raw[item.cpu_address : item.cpu_address + item.length] = item.raw
         return parse_megadrive(bytes(raw))
 
     def validate(self, fragment=None, **kwargs):
         fragment = self.body if fragment is None else fragment
         return validate_unused_fragment(
-            self.image(fragment), fragment, {0x200: self.previous},
+            self.image(fragment),
+            fragment,
+            {0x200: self.previous},
             data_addresses=kwargs.pop("data_addresses", set()),
-            render_instruction=_asm_instruction, **kwargs,
+            render_instruction=_asm_instruction,
+            **kwargs,
         )[0]
 
     def test_complete_gap_becomes_candidate_without_runtime_dead_claim(self):
         accepted, rejected = discover_validated_unused_candidates(
-            self.image(self.body), {0x200: self.previous, 0x20A: self.following},
-            {item.cpu_address: item for item in self.body}, render_instruction=_asm_instruction,
+            self.image(self.body),
+            {0x200: self.previous, 0x20A: self.following},
+            {item.cpu_address: item for item in self.body},
+            render_instruction=_asm_instruction,
         )
         self.assertEqual(1, len(accepted))
-        self.assertEqual((0x202, 0x20A, 4),
-                         (accepted[0].address, accepted[0].end, accepted[0].instruction_count))
+        self.assertEqual((0x202, 0x20A, 4), (accepted[0].address, accepted[0].end, accepted[0].instruction_count))
         self.assertEqual("unknown", accepted[0].runtime_status)
         self.assertIn("nop", accepted[0].signatures)
 
@@ -75,7 +80,8 @@ class UnusedCodeTests(unittest.TestCase):
 
     def test_nop_rts_padding_rejected(self):
         body = tuple(instruction(0x202 + i * 2, "4e71", "NOP") for i in range(4)) + (
-            instruction(0x20A, "4e75", "RTS", flow="TERMINATOR"),)
+            instruction(0x20A, "4e75", "RTS", flow="TERMINATOR"),
+        )
         self.assertEqual("insufficient_instruction_variety", self.validate(body))
 
     def test_small_data_header_before_real_code_is_not_promoted(self):
@@ -128,17 +134,20 @@ class UnusedCodeTests(unittest.TestCase):
         self.assertIsNone(self.validate(body))
         following = instruction(0x210, "4e75", "RTS", flow="TERMINATOR")
         accepted, _ = discover_validated_unused_candidates(
-            self.image(body), {0x200: self.previous, 0x210: following},
-            {item.cpu_address: item for item in body}, render_instruction=_asm_instruction,
+            self.image(body),
+            {0x200: self.previous, 0x210: following},
+            {item.cpu_address: item for item in body},
+            render_instruction=_asm_instruction,
         )
         self.assertEqual(0x210, accepted[0].end)
 
     def test_data_reference_prevents_skipping_to_later_code_looking_bytes(self):
-        reader = replace(self.previous, operands="(0x204).l|D0",
-                         references=(InstructionReference(0x204, "READ", 0),))
+        reader = replace(self.previous, operands="(0x204).l|D0", references=(InstructionReference(0x204, "READ", 0),))
         accepted, rejected = discover_validated_unused_candidates(
-            self.image(self.body), {0x200: reader, 0x20A: self.following},
-            {item.cpu_address: item for item in self.body}, render_instruction=_asm_instruction,
+            self.image(self.body),
+            {0x200: reader, 0x20A: self.following},
+            {item.cpu_address: item for item in self.body},
+            render_instruction=_asm_instruction,
         )
         self.assertFalse(accepted)
 

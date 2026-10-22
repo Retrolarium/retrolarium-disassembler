@@ -4,6 +4,7 @@ No function names or game addresses are used. A ROM address passed in an
 address register must reach a store into a field that decoded code executes.
 The bounded interprocedural walk stops at a register clobber or unknown call.
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -31,9 +32,13 @@ def _executed_fields(facts):
     for fact in facts.values():
         match = _LOAD.fullmatch(fact.operands)
         call = facts.get(fact.cpu_address + fact.length)
-        if (fact.mnemonic.upper() == "MOVEA.L" and match and call
-                and call.mnemonic.upper() in {"JSR", "JMP"}
-                and call.operands.upper() == f"({match[3].upper()})"):
+        if (
+            fact.mnemonic.upper() == "MOVEA.L"
+            and match
+            and call
+            and call.mnemonic.upper() in {"JSR", "JMP"}
+            and call.operands.upper() == f"({match[3].upper()})"
+        ):
             fields[int(match[1] or "0", 0)] = call.cpu_address
     return fields
 
@@ -89,28 +94,38 @@ def _stores_on_path(facts, start, register, fields, *, bookmark=False):
 
 def discover_callback_abi_seeds(image: MegaDriveImage, facts: dict[int, InstructionFact], *, execution_facts=None):
     facts = {fact.cpu_address: fact for fact in facts.values()}
-    executors = facts if execution_facts is None else {
-        fact.cpu_address: fact for fact in execution_facts.values()}
+    executors = facts if execution_facts is None else {fact.cpu_address: fact for fact in execution_facts.values()}
     fields = _executed_fields(executors)
     if not fields:
         return ()
     _, interiors, _ = instruction_sets(facts)
     seeds = {}
     summaries = {}
-    data = {ref.address & 0xFFFFFF for fact in facts.values()
-            if fact.mnemonic.upper() != "LEA" for ref in fact.references
-            if ref.reference_type.upper() == "READ"
-            or ref.reference_type.upper() == "DATA" and not fact.operands.startswith("#")}
+    data = {
+        ref.address & 0xFFFFFF
+        for fact in facts.values()
+        if fact.mnemonic.upper() != "LEA"
+        for ref in fact.references
+        if ref.reference_type.upper() == "READ"
+        or ref.reference_type.upper() == "DATA"
+        and not fact.operands.startswith("#")
+    }
 
     def accept(target, source, stores, kind):
         physical = target - image.header.rom_start
-        if (target & 1 or physical in interiors or target in data
-                or not 0x200 <= physical < len(image.data) - 1
-                or image.data[physical:physical + 2] in {b"\0\0", b"\xff\xff"}):
+        if (
+            target & 1
+            or physical in interiors
+            or target in data
+            or not 0x200 <= physical < len(image.data) - 1
+            or image.data[physical : physical + 2] in {b"\0\0", b"\xff\xff"}
+        ):
             return
-        evidence = (f"callback field executed at {','.join(f'{a:06X}' for a in fields.values())}; "
-                    f"callee stores {'return PC' if kind == 'callback_bookmark' else 'parameter'} "
-                    f"at {','.join(f'{a:06X}' for a in sorted(stores))}")
+        evidence = (
+            f"callback field executed at {','.join(f'{a:06X}' for a in fields.values())}; "
+            f"callee stores {'return PC' if kind == 'callback_bookmark' else 'parameter'} "
+            f"at {','.join(f'{a:06X}' for a in sorted(stores))}"
+        )
         seeds[target] = DecoderSeed(target, kind, "high", evidence, source)
 
     for lea in facts.values():
@@ -165,9 +180,13 @@ def discover_callback_abi_seeds(image: MegaDriveImage, facts: dict[int, Instruct
     for load in executors.values():
         match = _LOAD.fullmatch(load.operands)
         call = executors.get(load.cpu_address + load.length)
-        if (load.mnemonic.upper() == "MOVEA.L" and match and call
-                and call.mnemonic.upper() in {"JSR", "JMP"}
-                and call.operands.upper() == f"({match[3].upper()})"):
+        if (
+            load.mnemonic.upper() == "MOVEA.L"
+            and match
+            and call
+            and call.mnemonic.upper() in {"JSR", "JMP"}
+            and call.operands.upper() == f"({match[3].upper()})"
+        ):
             readers[(int(match[1] or "0", 0), match[2].upper())] = call.cpu_address
     assignments = {}
     for store in facts.values():
@@ -177,9 +196,13 @@ def discover_callback_abi_seeds(image: MegaDriveImage, facts: dict[int, Instruct
         target = int(match[1], 0)
         key = (int(match[2] or "0", 0), match[3].upper())
         entry = facts.get(target)
-        if (key in readers and entry and target not in data
-                and entry.raw[:2] not in {b"\0\0", b"\xff\xff"}
-                and entry.raw[0] >> 4 not in {0xA, 0xF}):
+        if (
+            key in readers
+            and entry
+            and target not in data
+            and entry.raw[:2] not in {b"\0\0", b"\xff\xff"}
+            and entry.raw[0] >> 4 not in {0xA, 0xF}
+        ):
             assignments.setdefault(key, []).append((target, store.cpu_address))
     for key, stores in assignments.items():
         if len({target for target, _ in stores}) < 2:

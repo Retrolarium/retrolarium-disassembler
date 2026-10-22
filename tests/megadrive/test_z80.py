@@ -13,8 +13,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "retrolarium-core" 
 from retrolarium_disassembler.facts import FactError, InstructionFact, InstructionReference, load_z80_ghidra_facts
 from retrolarium_core.megadrive import parse_megadrive
 from retrolarium_disassembler.megadrive.z80 import (
-    CrossCpuCopy, detect_z80_copies, fragment_z80_facts,
-    group_z80_copies, z80_im1_handler_seed,
+    CrossCpuCopy,
+    detect_z80_copies,
+    fragment_z80_facts,
+    group_z80_copies,
+    z80_im1_handler_seed,
 )
 from megadrive.builders import cartridge
 from megadrive.builders import fact
@@ -37,35 +40,48 @@ class MegaDriveZ80Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             listing = Path(temporary) / "instructions.tsv"
             listing.write_text(header, encoding="utf-8")
-            self.assertEqual({}, load_z80_ghidra_facts(listing, b"\xFF" * 16, base_address=0x1C00))
+            self.assertEqual({}, load_z80_ghidra_facts(listing, b"\xff" * 16, base_address=0x1C00))
             with self.assertRaisesRegex(FactError, "no instructions"):
-                load_z80_ghidra_facts(listing, b"\xFF" * 16)
+                load_z80_ghidra_facts(listing, b"\xff" * 16)
 
     def test_unrooted_copy_still_rejects_corrupt_instruction_bytes(self) -> None:
-        text = ("block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
-                "Z80_RAM\tram\t1C00\t1\t00\tNOP\t\t\tFALL_THROUGH\t\t\n")
+        text = (
+            "block\tspace\taddress\tlength\tbytes\tmnemonic\toperands\tflows\tflow_type\tsymbol\tfunction\n"
+            "Z80_RAM\tram\t1C00\t1\t00\tNOP\t\t\tFALL_THROUGH\t\t\n"
+        )
         with tempfile.TemporaryDirectory() as temporary:
             listing = Path(temporary) / "instructions.tsv"
             listing.write_text(text, encoding="utf-8")
             with self.assertRaisesRegex(FactError, "bytes disagree"):
-                load_z80_ghidra_facts(listing, b"\xFF", base_address=0x1C00)
+                load_z80_ghidra_facts(listing, b"\xff", base_address=0x1C00)
 
     def test_adjacent_fragments_form_one_logical_image(self) -> None:
         first = CrossCpuCopy(
-            edge_id="first", schema_id="test", source_cpu_id="m68k",
-            source_space="m68k", source_start=0x280, source_end=0x283,
-            target_cpu_id="z80.00", target_space="z80", target_start=0,
-            target_end=3, size=4, payload_sha256="0" * 64,
-            evidence_addresses=(), confidence="proven-static-copy",
+            edge_id="first",
+            schema_id="test",
+            source_cpu_id="m68k",
+            source_space="m68k",
+            source_start=0x280,
+            source_end=0x283,
+            target_cpu_id="z80.00",
+            target_space="z80",
+            target_start=0,
+            target_end=3,
+            size=4,
+            payload_sha256="0" * 64,
+            evidence_addresses=(),
+            confidence="proven-static-copy",
         )
         second = replace(
-            first, edge_id="second", source_start=0x290,
-            source_end=0x293, target_start=4, target_end=7,
+            first,
+            edge_id="second",
+            source_start=0x290,
+            source_end=0x293,
+            target_start=4,
+            target_end=7,
         )
-        logical, = group_z80_copies((second, first))
-        self.assertEqual(("first", "second"), tuple(
-            copy.edge_id for copy in logical.fragments
-        ))
+        (logical,) = group_z80_copies((second, first))
+        self.assertEqual(("first", "second"), tuple(copy.edge_id for copy in logical.fragments))
         facts = {
             3: fact(3, "JP", "0x0004"),
             4: fact(4, "RET", ""),
@@ -77,19 +93,36 @@ class MegaDriveZ80Tests(unittest.TestCase):
 
     def test_gaps_and_overlaps_stay_separate(self) -> None:
         first = CrossCpuCopy(
-            edge_id="first", schema_id="test", source_cpu_id="m68k",
-            source_space="m68k", source_start=0x280, source_end=0x283,
-            target_cpu_id="z80.00", target_space="z80", target_start=0,
-            target_end=3, size=4, payload_sha256="0" * 64,
-            evidence_addresses=(), confidence="proven-static-copy",
+            edge_id="first",
+            schema_id="test",
+            source_cpu_id="m68k",
+            source_space="m68k",
+            source_start=0x280,
+            source_end=0x283,
+            target_cpu_id="z80.00",
+            target_space="z80",
+            target_start=0,
+            target_end=3,
+            size=4,
+            payload_sha256="0" * 64,
+            evidence_addresses=(),
+            confidence="proven-static-copy",
         )
         gap = replace(
-            first, edge_id="gap", source_start=0x290, source_end=0x293,
-            target_start=8, target_end=11,
+            first,
+            edge_id="gap",
+            source_start=0x290,
+            source_end=0x293,
+            target_start=8,
+            target_end=11,
         )
         overlap = replace(
-            first, edge_id="overlap", source_start=0x2A0,
-            source_end=0x2A3, target_start=2, target_end=5,
+            first,
+            edge_id="overlap",
+            source_start=0x2A0,
+            source_end=0x2A3,
+            target_start=2,
+            target_end=5,
         )
         self.assertEqual(2, len(group_z80_copies((first, gap))))
         self.assertEqual(2, len(group_z80_copies((first, overlap))))
@@ -107,12 +140,10 @@ class MegaDriveZ80Tests(unittest.TestCase):
             fact(0x218, "MOVE.B", "(A0)+|(A1)+"),
             fact(0x21A, "DBF", "D0w|0x00000218", flows=(0x218,)),
         )
-        copy, = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
-        self.assertEqual((0x280, 0x2BF, 0, 0x40),
-                         (copy.source_start, copy.source_end, copy.target_start, copy.size))
+        (copy,) = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
+        self.assertEqual((0x280, 0x2BF, 0, 0x40), (copy.source_start, copy.source_end, copy.target_start, copy.size))
         # The subtracted register must be the copy source.
-        broken = tuple(replace(item, operands="A2|D0") if item.cpu_address == 0x20E else item
-                       for item in sequence)
+        broken = tuple(replace(item, operands="A2|D0") if item.cpu_address == 0x20E else item for item in sequence)
         self.assertEqual((), detect_z80_copies(image, {item.physical_offset: item for item in broken}))
 
     def test_a_later_write_of_the_source_register_is_not_skipped(self) -> None:
@@ -142,11 +173,10 @@ class MegaDriveZ80Tests(unittest.TestCase):
             fact(0x20E, "DBF", "D0w|0x00000208", flows=(0x208,)),
             fact(0x240, "MOVE.W", "#0x3f|D0w"),
             fact(0x244, "MOVEQ", "0x0|D1"),
-            fact(0x246, "LEA", "(0x38,PC)|A0",
-                 references=(InstructionReference(0x280, "DATA", 0),)),
+            fact(0x246, "LEA", "(0x38,PC)|A0", references=(InstructionReference(0x280, "DATA", 0),)),
             fact(0x24A, "BSR.W", "0x00000200", flows=(0x200,)),
         )
-        copy, = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
+        (copy,) = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
 
         self.assertEqual((0x280, 0x2BF), (copy.source_start, copy.source_end))
         self.assertEqual((0, 63), (copy.target_start, copy.target_end))
@@ -156,13 +186,12 @@ class MegaDriveZ80Tests(unittest.TestCase):
         image = parse_megadrive(cartridge())
         sequence = (
             *COPY_ROUTINE,
-            fact(0x240, "LEA", "(0x38,PC)|A0",
-                 references=(InstructionReference(0x280, "DATA", 0),)),
+            fact(0x240, "LEA", "(0x38,PC)|A0", references=(InstructionReference(0x280, "DATA", 0),)),
             fact(0x244, "MOVE.W", "#0x3f|D0w"),
             fact(0x248, "MOVE.W", "#0x1000|D1w"),
             fact(0x24C, "BSR.W", "0x00000200", flows=(0x200,)),
         )
-        copy, = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
+        (copy,) = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
 
         self.assertEqual((0x280, 0x2BF), (copy.source_start, copy.source_end))
         self.assertEqual((0x1000, 0x103F), (copy.target_start, copy.target_end))
@@ -174,8 +203,7 @@ class MegaDriveZ80Tests(unittest.TestCase):
             *COPY_ROUTINE,
             fact(0x240, "MOVE.W", "#0x3f|D0w"),
             fact(0x244, "MOVEQ", "0x0|D1"),
-            fact(0x246, "LEA", "(0x38,PC)|A0",
-                 references=(InstructionReference(0x280, "DATA", 0),)),
+            fact(0x246, "LEA", "(0x38,PC)|A0", references=(InstructionReference(0x280, "DATA", 0),)),
             fact(0x24A, "MOVE.W", "D2w|D0w"),
             fact(0x24C, "BSR.W", "0x00000200", flows=(0x200,)),
         )
@@ -183,26 +211,23 @@ class MegaDriveZ80Tests(unittest.TestCase):
             *COPY_ROUTINE,
             fact(0x240, "MOVE.W", "#0x3f|D0w"),
             fact(0x244, "MOVE.W", "#0x1fe0|D1w"),
-            fact(0x248, "LEA", "(0x38,PC)|A0",
-                 references=(InstructionReference(0x280, "DATA", 0),)),
+            fact(0x248, "LEA", "(0x38,PC)|A0", references=(InstructionReference(0x280, "DATA", 0),)),
             fact(0x24C, "BSR.W", "0x00000200", flows=(0x200,)),
         )
         for sequence in (clobbered, overflow):
-            self.assertEqual((), detect_z80_copies(
-                image, {item.physical_offset: item for item in sequence}))
+            self.assertEqual((), detect_z80_copies(image, {item.physical_offset: item for item in sequence}))
 
     def test_dbf_counter_skips_intervening_hardware_register_write(self) -> None:
         image = parse_megadrive(cartridge())
         sequence = (
-            fact(0x206, "LEA", "(0x40,PC)|A0",
-                 references=(InstructionReference(0x258, "DATA", 0),)),
+            fact(0x206, "LEA", "(0x40,PC)|A0", references=(InstructionReference(0x258, "DATA", 0),)),
             fact(0x20A, "LEA", "(0xa00000).l|A1"),
             fact(0x210, "MOVE.W", "#0xa|D0w"),
             fact(0x214, "MOVE.W", "#0x100|(0xa11100).l"),
             fact(0x21C, "MOVE.B", "(A0)+|(A1)+"),
             fact(0x21E, "DBF", "D0w|0x0000021c", flows=(0x21C,)),
         )
-        copy, = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
+        (copy,) = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
 
         self.assertEqual(11, copy.size)
         self.assertEqual((0x206, 0x20A, 0x210, 0x21C, 0x21E), copy.evidence_addresses)
@@ -214,10 +239,8 @@ class MegaDriveZ80Tests(unittest.TestCase):
         both = {0: z80(0, b"\xf3"), 1: z80(1, b"\xed\x56"), 3: z80(3, b"\xfb")}
         self.assertEqual(0x38, z80_im1_handler_seed(both, 0, 0x2000))
         self.assertIsNone(z80_im1_handler_seed(both, 0x1000, 0x100))
-        self.assertIsNone(z80_im1_handler_seed(
-            {1: z80(1, b"\xed\x56")}, 0, 0x2000))
-        self.assertIsNone(z80_im1_handler_seed(
-            {1: z80(1, b"\xed\x5e"), 3: z80(3, b"\xfb")}, 0, 0x2000))
+        self.assertIsNone(z80_im1_handler_seed({1: z80(1, b"\xed\x56")}, 0, 0x2000))
+        self.assertIsNone(z80_im1_handler_seed({1: z80(1, b"\xed\x5e"), 3: z80(3, b"\xfb")}, 0, 0x2000))
 
     def test_recovers_a_proven_postincrement_dbf_copy(self) -> None:
         image = parse_megadrive(cartridge())
@@ -233,17 +256,13 @@ class MegaDriveZ80Tests(unittest.TestCase):
             fact(0x214, "MOVE.B", "(A0)+|(A1)+"),
             fact(0x216, "DBF", "D0w|0x00000214", flows=(0x214,)),
         )
-        copy, = detect_z80_copies(
-            image, {item.physical_offset: item for item in sequence}
-        )
+        (copy,) = detect_z80_copies(image, {item.physical_offset: item for item in sequence})
 
         self.assertEqual((0x258, 0x262), (copy.source_start, copy.source_end))
         self.assertEqual((0, 10), (copy.target_start, copy.target_end))
         self.assertEqual(11, copy.size)
         self.assertEqual("proven-static-copy", copy.confidence)
-        self.assertEqual(
-            (0x206, 0x20A, 0x210, 0x214, 0x216), copy.evidence_addresses
-        )
+        self.assertEqual((0x206, 0x20A, 0x210, 0x214, 0x216), copy.evidence_addresses)
 
     def test_rejects_copy_without_loop_or_outside_z80_ram(self) -> None:
         image = parse_megadrive(cartridge())
@@ -261,9 +280,7 @@ class MegaDriveZ80Tests(unittest.TestCase):
 
         self.assertEqual(
             (),
-            detect_z80_copies(
-                image, {item.physical_offset: item for item in sequence}
-            ),
+            detect_z80_copies(image, {item.physical_offset: item for item in sequence}),
         )
 
 

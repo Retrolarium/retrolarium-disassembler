@@ -27,10 +27,15 @@ class SourceBenchmarkTests(unittest.TestCase):
         rom = bytes.fromhex("0880 0001 4E75")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "main.lst"
-            path.write_text("\n".join([
-                listing_line(0, "0880 0001", "bclr. #1,d0", 21),
-                listing_line(4, "4E75", "rts", 21),
-            ]), encoding="utf-8")
+            path.write_text(
+                "\n".join(
+                    [
+                        listing_line(0, "0880 0001", "bclr. #1,d0", 21),
+                        listing_line(4, "4E75", "rts", 21),
+                    ]
+                ),
+                encoding="utf-8",
+            )
             found, opened = read_listing(path, rom)
         self.assertEqual({0: rom[:4], 4: rom[4:]}, found)
         self.assertFalse(opened)
@@ -39,12 +44,17 @@ class SourceBenchmarkTests(unittest.TestCase):
         rom = bytes.fromhex("3168 0010 002E 317C00 3168 0010 002E 00000000")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "main.lst"
-            path.write_text("\n".join([
-                listing_line(0, "3168 0010 002E", "move.w 16(a0),46(a0)", 21),
-                listing_line(6, "317C 00", "dc.b $31,$7C,0", 21),
-                listing_line(9, "3168 0010 002E", "move.w 16(a0),46(a0)", 21),
-                listing_line(15, "", 'binclude "payload.bin"', 21),
-            ]), encoding="utf-8")
+            path.write_text(
+                "\n".join(
+                    [
+                        listing_line(0, "3168 0010 002E", "move.w 16(a0),46(a0)", 21),
+                        listing_line(6, "317C 00", "dc.b $31,$7C,0", 21),
+                        listing_line(9, "3168 0010 002E", "move.w 16(a0),46(a0)", 21),
+                        listing_line(15, "", 'binclude "payload.bin"', 21),
+                    ]
+                ),
+                encoding="utf-8",
+            )
             found, opened = read_listing(path, rom)
         self.assertEqual({0: rom[:6], 9: rom[9:15]}, found)
         self.assertFalse(opened)
@@ -80,11 +90,17 @@ class SourceBenchmarkTests(unittest.TestCase):
         rom = bytes.fromhex("33FC 0001 00A1 1100 4E75 4EB9 0000")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "main.lst"
-            path.write_text("\n".join([
-                listing_line(0, "33FC 0001 00A1", "move.w #1,($A11100).l", 21),
-                listing_line(8, "4E75", "rts", 21),
-                listing_line(10, "4EB9 0000", "jsr (Target).l", 21),
-            ]) + "\n", encoding="utf-8")
+            path.write_text(
+                "\n".join(
+                    [
+                        listing_line(0, "33FC 0001 00A1", "move.w #1,($A11100).l", 21),
+                        listing_line(8, "4E75", "rts", 21),
+                        listing_line(10, "4EB9 0000", "jsr (Target).l", 21),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             known, open_ended = read_listing(path, rom)
 
         self.assertEqual(rom[:8], known[0])
@@ -112,10 +128,16 @@ class SourceBenchmarkTests(unittest.TestCase):
         rom = bytes.fromhex("4EF9 0001 865E 000E 8D92 0001")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "main.lst"
-            path.write_text("\n".join([
-                listing_line(0, "4EF9 0001 865E", "jmp Target", 21),
-                listing_line(10, "0001", "dc.w 1", 21),
-            ]) + "\n", encoding="utf-8")
+            path.write_text(
+                "\n".join(
+                    [
+                        listing_line(0, "4EF9 0001 865E", "jmp Target", 21),
+                        listing_line(10, "0001", "dc.w 1", 21),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             known, open_ended = read_listing(path, rom)
         self.assertEqual(rom[:6], known[0])
         self.assertEqual(frozenset(), open_ended)
@@ -126,9 +148,7 @@ class SourceBenchmarkTests(unittest.TestCase):
 
     def test_z80_program_only_owns_reference_bytes_it_contains(self) -> None:
         known = {0x0000: b"\x3e\x01", 0x1000: b"\xc9", 0x1001: b"\x00"}
-        result = compare_z80_program(
-            known, 0x1000, b"\xc9\xaf", {0x1000: b"\xc9", 0x1001: b"\xaf"}
-        )
+        result = compare_z80_program(known, 0x1000, b"\xc9\xaf", {0x1000: b"\xc9", 0x1001: b"\xaf"})
 
         self.assertEqual(1, result["reference_instructions"])
         self.assertEqual(1, result["matching_instruction_starts"])
@@ -140,12 +160,18 @@ class SourceBenchmarkTests(unittest.TestCase):
             generated = root / "project" / "source"
             output = root / "comparison"
             (output / "reference").mkdir(parents=True)
-            (output / "reference" / "z80_driver.lst").write_text("\n".join([
-                listing_line(0x0000, "3E 01", "ld a,1", 36),
-                listing_line(0x0002, "C9", "ret", 36),
-                listing_line(0x1000, "AF", "xor a", 36),
-                listing_line(0x1001, "C9", "ret", 36),
-            ]) + "\n", encoding="utf-8")
+            (output / "reference" / "z80_driver.lst").write_text(
+                "\n".join(
+                    [
+                        listing_line(0x0000, "3E 01", "ld a,1", 36),
+                        listing_line(0x0002, "C9", "ret", 36),
+                        listing_line(0x1000, "AF", "xor a", 36),
+                        listing_line(0x1001, "C9", "ret", 36),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             (generated / "build").mkdir(parents=True)
             programs = {
                 "program00": (0x0000, bytes.fromhex("3E01C9"), [(0, "3E 01"), (2, "C9")]),
@@ -155,13 +181,17 @@ class SourceBenchmarkTests(unittest.TestCase):
                 (generated / "build" / f"z80-{name}.bin").write_bytes(payload)
                 facts_root = generated.parent / "analysis" / "z80" / name
                 facts_root.mkdir(parents=True)
-                (facts_root / "instructions.json").write_text(json.dumps({
-                    "instructions": [
-                        {"physical_offset": offset, "logical_address": base + offset,
-                         "bytes": raw}
-                        for offset, raw in facts
-                    ]
-                }), encoding="utf-8")
+                (facts_root / "instructions.json").write_text(
+                    json.dumps(
+                        {
+                            "instructions": [
+                                {"physical_offset": offset, "logical_address": base + offset, "bytes": raw}
+                                for offset, raw in facts
+                            ]
+                        }
+                    ),
+                    encoding="utf-8",
+                )
             report = z80_instruction_comparison(root / "reference", generated, output)
 
         assert report is not None

@@ -1,5 +1,5 @@
 // Seed one statically proven SNES SPC700 upload as an independent Program.
-//@category Retrolarium
+// @category Retrolarium
 
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;

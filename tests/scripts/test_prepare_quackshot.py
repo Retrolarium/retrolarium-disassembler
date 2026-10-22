@@ -11,8 +11,7 @@ from tools.references.prepare_quackshot import extract_assets, prepare
 class QuackShotReferenceTests(unittest.TestCase):
     def test_extract_only_verified_asset_bytes_into_staged_tree(self):
         rom = b"prefix-ASSET-suffix"
-        item = {"path": "src/font.bin", "offset": 7, "size": 5,
-                "sha256": hashlib.sha256(b"ASSET").hexdigest()}
+        item = {"path": "src/font.bin", "offset": 7, "size": 5, "sha256": hashlib.sha256(b"ASSET").hexdigest()}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             # Generated includes need not exist in a pristine upstream clone.
@@ -28,12 +27,22 @@ class QuackShotReferenceTests(unittest.TestCase):
             root.mkdir()
             for path in ("../escape.bin", "qs.s", "src/../../escape.bin"):
                 with self.subTest(path=path), self.assertRaisesRegex(ValueError, "escapes"):
-                    extract_assets(root, b"DATA", {"assets": [
-                        {"path": path, "offset": 0, "size": 4, "sha256": hashlib.sha256(b"DATA").hexdigest()}]})
+                    extract_assets(
+                        root,
+                        b"DATA",
+                        {
+                            "assets": [
+                                {"path": path, "offset": 0, "size": 4, "sha256": hashlib.sha256(b"DATA").hexdigest()}
+                            ]
+                        },
+                    )
             for offset, size in ((-1, 4), (0, 0), (2, 4)):
                 with self.subTest(offset=offset, size=size), self.assertRaisesRegex(ValueError, "exceeds ROM"):
-                    extract_assets(root, b"DATA", {"assets": [
-                        {"path": "src/file.bin", "offset": offset, "size": size, "sha256": "irrelevant"}]})
+                    extract_assets(
+                        root,
+                        b"DATA",
+                        {"assets": [{"path": "src/file.bin", "offset": offset, "size": size, "sha256": "irrelevant"}]},
+                    )
             self.assertEqual([], list(root.rglob("*.bin")))
 
     def test_wrong_revision_is_rejected_before_git_or_output_creation(self):

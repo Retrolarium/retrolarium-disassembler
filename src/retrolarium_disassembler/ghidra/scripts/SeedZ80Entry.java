@@ -1,14 +1,15 @@
 // Seed an extracted Mega Drive Z80 RAM program at logical address zero and,
 // when IM 1 and EI are decoded, its RST 38h interrupt handler.
-//@category Retrolarium
+// @category Retrolarium
 
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.data.WordDataType;
 import ghidra.program.model.listing.InstructionIterator;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
-import ghidra.program.model.data.WordDataType;
+
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -52,7 +53,9 @@ public class SeedZ80Entry extends GhidraScript {
                 if (parts.length == 3 && parts[0].equals("T")) {
                     long start = Long.parseLong(parts[1], 16);
                     long end = Long.parseLong(parts[2], 16);
-                    if (start < 0 || end > ram.getSize() || start >= end
+                    if (start < 0
+                            || end > ram.getSize()
+                            || start >= end
                             || (end - start) % 2 != 0) {
                         throw new IllegalArgumentException("invalid Z80 word table: " + line);
                     }
@@ -72,8 +75,9 @@ public class SeedZ80Entry extends GhidraScript {
             for (long offset = table.start; offset < table.end; offset += 2) {
                 createData(ram.getStart().add(offset), WordDataType.dataType);
             }
-            println(String.format("[TABLE] Z80 word dispatch 0x%04X..0x%04X",
-                table.start, table.end));
+            println(
+                    String.format(
+                            "[TABLE] Z80 word dispatch 0x%04X..0x%04X", table.start, table.end));
         }
         Address entry = ram.getStart();
         // Only an image loaded at logical zero contains the reset entry; a
@@ -97,13 +101,18 @@ public class SeedZ80Entry extends GhidraScript {
             Address vector = entry.add(IM1_VECTOR);
             if (ram.contains(vector)) {
                 createLabel(vector, "Z80_IM1_Handler", true);
-                im1 = disassemble(vector)
-                    || currentProgram.getListing().getInstructionAt(vector) != null;
+                im1 =
+                        disassemble(vector)
+                                || currentProgram.getListing().getInstructionAt(vector) != null;
             }
         }
-        println("[OK] seeded Mega Drive Z80 entry " + entry
-            + ", " + seeded + " dispatch targets"
-            + (im1 ? " and IM1 handler" : ""));
+        println(
+                "[OK] seeded Mega Drive Z80 entry "
+                        + entry
+                        + ", "
+                        + seeded
+                        + " dispatch targets"
+                        + (im1 ? " and IM1 handler" : ""));
     }
 
     private static final long IM1_VECTOR = 0x38;
@@ -112,8 +121,10 @@ public class SeedZ80Entry extends GhidraScript {
     private boolean usesInterruptMode1(MemoryBlock ram) throws Exception {
         boolean im1 = false;
         boolean ei = false;
-        InstructionIterator iterator = currentProgram.getListing()
-            .getInstructions(new AddressSet(ram.getStart(), ram.getEnd()), true);
+        InstructionIterator iterator =
+                currentProgram
+                        .getListing()
+                        .getInstructions(new AddressSet(ram.getStart(), ram.getEnd()), true);
         while (iterator.hasNext()) {
             byte[] bytes = iterator.next().getBytes();
             if (bytes.length == 2 && (bytes[0] & 0xFF) == 0xED && (bytes[1] & 0xFF) == 0x56) {

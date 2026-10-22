@@ -61,9 +61,7 @@ def build_snes_in_container(project: Path, container: str) -> Path:
     ]
     result = subprocess.run(command, text=True)
     if result.returncode:
-        raise SnesPipelineError(
-            f"SNES ca65 container build failed with {result.returncode}"
-        )
+        raise SnesPipelineError(f"SNES ca65 container build failed with {result.returncode}")
     rebuilt = project / "build" / "rebuilt.sfc"
     if not rebuilt.is_file():
         raise SnesPipelineError(f"expected rebuilt image was not produced: {rebuilt}")
@@ -209,9 +207,7 @@ def _extract_spc700_programs(
                 base_address=copy.target_start,
             )
             instructions = root / "instructions.json"
-            _write_spc700_instructions(
-                instructions, image.sha256, cpu_id, facts
-            )
+            _write_spc700_instructions(instructions, image.sha256, cpu_id, facts)
             report = json.loads(artifacts.report.read_text(encoding="utf-8"))
             program.update(
                 {
@@ -269,18 +265,14 @@ def disassemble_snes(
     _write_json(state_path, analysis_manifest(analysis))
     write_pointer_report(pointers_path, image, pointers)
     write_symbol_report(symbols_path, image, symbols)
-    spc_programs, edges, assets = _extract_spc700_programs(
-        analysis_dir, image, copies, ghidra_home
-    )
+    spc_programs, edges, assets = _extract_spc700_programs(analysis_dir, image, copies, ghidra_home)
     evidence = {
         "schema": "retrolarium.cross-cpu-evidence",
         "schema_version": 1,
         "platform": "snes",
         "input_sha256": image.sha256,
         "edges": edges,
-        "opaque_policy": (
-            "ROM bytes without complete static upload evidence remain raw assets"
-        ),
+        "opaque_policy": ("ROM bytes without complete static upload evidence remain raw assets"),
     }
     evidence_path = analysis_dir / "cross-cpu-evidence.json"
     _write_json(evidence_path, evidence)
@@ -365,9 +357,7 @@ def disassemble_snes(
                 "raw_bytes": emission.raw_bytes,
             },
             "whole_rom_fallback": False,
-            "emission": _emission_record(
-                emission, generated_dir / "emission.json"
-            ),
+            "emission": _emission_record(emission, generated_dir / "emission.json"),
         },
         "operations": {
             "build": {

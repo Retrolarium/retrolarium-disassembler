@@ -15,8 +15,13 @@ from retrolarium_disassembler.facts import InstructionReference
 
 class OverlayProbeTests(unittest.TestCase):
     def test_pseudo_absolute_word_targets_use_same_bus_normalization_as_raw(self):
-        instruction = fact(0xFF2000, "JSR", "(0x9000).w", flows=(0xFFFF9000,),
-            references=(InstructionReference(0xFFFF9000, "READ", 0),))
+        instruction = fact(
+            0xFF2000,
+            "JSR",
+            "(0x9000).w",
+            flows=(0xFFFF9000,),
+            references=(InstructionReference(0xFFFF9000, "READ", 0),),
+        )
         normalized = overlay._normalize_bus_targets({0xFF2000: instruction})[0xFF2000]
         self.assertEqual((0xFF9000,), normalized.flows)
         self.assertEqual(0xFF9000, normalized.references[0].address)
@@ -47,11 +52,18 @@ class OverlayProbeTests(unittest.TestCase):
                     decode_request(address, 0x1000, "failed dispatch witness")
                 return lambda _: False
 
-            with patch.object(overlay, "run_m68k_overlay_analysis", decode), \
-                    patch.object(overlay, "make_dispatch_handler_validator", validator), \
-                    patch.object(overlay, "M68kProbeRequests", lambda image, **kwargs: M68kProbeRequests(image, max_requests=budget, **kwargs)):
-                artifacts = overlay.analyze_overlay(source, root / "analysis", root, root,
-                    base_address=0x1000, entry_addresses=(0x1000,))
+            with (
+                patch.object(overlay, "run_m68k_overlay_analysis", decode),
+                patch.object(overlay, "make_dispatch_handler_validator", validator),
+                patch.object(
+                    overlay,
+                    "M68kProbeRequests",
+                    lambda image, **kwargs: M68kProbeRequests(image, max_requests=budget, **kwargs),
+                ),
+            ):
+                artifacts = overlay.analyze_overlay(
+                    source, root / "analysis", root, root, base_address=0x1000, entry_addresses=(0x1000,)
+                )
             with artifacts.facts.open() as stream:
                 emitted = list(csv.DictReader(stream, delimiter="\t"))
             progress = json.loads((root / "analysis/decoder-passes.json").read_text())

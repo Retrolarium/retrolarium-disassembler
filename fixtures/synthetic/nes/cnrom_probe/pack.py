@@ -21,9 +21,7 @@ def main() -> None:
     if len(prg) != PRG_SIZE:
         raise SystemExit(f"expected {PRG_SIZE} PRG bytes, got {len(prg)}")
     header = b"NES\x1a" + bytes((2, CHR_BANKS, 0x30, 0x00)) + bytes(8)
-    chr_data = b"".join(
-        bytes((bank,)) * CHR_BANK_SIZE for bank in range(CHR_BANKS)
-    )
+    chr_data = b"".join(bytes((bank,)) * CHR_BANK_SIZE for bank in range(CHR_BANKS))
     args.output.write_bytes(header + prg + chr_data)
 
 

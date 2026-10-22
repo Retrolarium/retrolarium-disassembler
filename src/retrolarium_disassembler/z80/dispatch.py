@@ -22,16 +22,17 @@ def _word_lookup_helper(payload: bytes, address: int, base_address: int) -> bool
     offset = address - base_address
     if not 0 <= offset <= len(payload) - 10:
         return False
-    if payload[offset:offset + 5] != b"\x4f\x06\x00\x09\x09":
+    if payload[offset : offset + 5] != b"\x4f\x06\x00\x09\x09":
         return False
     cursor = offset + 5
     while cursor < min(offset + 12, len(payload)) and payload[cursor] == 0:
         cursor += 1
-    return payload[cursor:cursor + 5] == b"\x7e\x23\x66\x6f\xc9"
+    return payload[cursor : cursor + 5] == b"\x7e\x23\x66\x6f\xc9"
 
 
 def _direct_code(
-    by_address: dict[int, InstructionFact], roots: set[int],
+    by_address: dict[int, InstructionFact],
+    roots: set[int],
 ) -> dict[int, InstructionFact]:
     """Follow explicit control flow, excluding inferred register jump targets."""
     reached: dict[int, InstructionFact] = {}
@@ -46,8 +47,12 @@ def _direct_code(
         if not flow.startswith("COMPUTED"):
             pending.extend(fact.flows)
         if flow in {
-            "FALL_THROUGH", "CONDITIONAL_JUMP", "CONDITIONAL_TERMINATOR",
-            "UNCONDITIONAL_CALL", "CONDITIONAL_CALL", "COMPUTED_CALL",
+            "FALL_THROUGH",
+            "CONDITIONAL_JUMP",
+            "CONDITIONAL_TERMINATOR",
+            "UNCONDITIONAL_CALL",
+            "CONDITIONAL_CALL",
+            "COMPUTED_CALL",
         }:
             pending.append(address + fact.length)
     return reached
@@ -98,15 +103,12 @@ def discover_z80_dispatch_tables(
             # It bounds the table without relying on pointer-shaped bytes
             # that may belong to the next adjacent table.
             preceding = next(
-                (item for item in by_address.values()
-                 if item.cpu_address + item.length == address),
+                (item for item in by_address.values() if item.cpu_address + item.length == address),
                 None,
             )
             count_limit = (
                 min(64, 0x100 - preceding.raw[1])
-                if preceding is not None
-                and len(preceding.raw) == 2
-                and preceding.raw[0] == 0xD6
+                if preceding is not None and len(preceding.raw) == 2 and preceding.raw[0] == 0xD6
                 else 64
             )
             candidates.append((table, address, lookup_address, count_limit))
@@ -147,25 +149,27 @@ def discover_z80_dispatch_tables(
         if inferred_table_jump:
             direct = _direct_code(by_address, roots)
             table_covered = {
-                byte for fact in direct.values()
-                for byte in range(fact.cpu_address, fact.cpu_address + fact.length)
+                byte for fact in direct.values() for byte in range(fact.cpu_address, fact.cpu_address + fact.length)
             }
             table_flows = {
-                target for fact in direct.values()
+                target
+                for fact in direct.values()
                 if not fact.flow_type.upper().startswith("COMPUTED")
                 for target in fact.flows
             }
         else:
             table_covered, table_flows = covered, flow_targets
         targets: list[int] = []
-        for address in range(
-            table, min(following, table + 2 * count_limit, limit - 1), 2
-        ):
-            if (address in table_covered or address + 1 in table_covered
-                    or address in table_flows or address + 1 in table_flows):
+        for address in range(table, min(following, table + 2 * count_limit, limit - 1), 2):
+            if (
+                address in table_covered
+                or address + 1 in table_covered
+                or address in table_flows
+                or address + 1 in table_flows
+            ):
                 break
             offset = address - base_address
-            target = int.from_bytes(payload[offset:offset + 2], "little")
+            target = int.from_bytes(payload[offset : offset + 2], "little")
             if not base_address <= target < limit or table <= target < address + 2:
                 break
             if target in table_covered and target not in instruction_starts:
@@ -177,23 +181,23 @@ def discover_z80_dispatch_tables(
                 # wrong. Keep that boundary and all explicitly reached code.
                 direct = _direct_code(by_address, {target})
                 table_covered.update(
-                    byte for fact in direct.values()
-                    for byte in range(fact.cpu_address, fact.cpu_address + fact.length)
+                    byte for fact in direct.values() for byte in range(fact.cpu_address, fact.cpu_address + fact.length)
                 )
                 table_flows.update(
-                    destination for fact in direct.values()
+                    destination
+                    for fact in direct.values()
                     if not fact.flow_type.upper().startswith("COMPUTED")
                     for destination in fact.flows
                 )
-        if (len(targets) >= 4
-                and not any(table <= target < table + len(targets) * 2
-                            for target in targets)):
-            tables.append(Z80DispatchTable(
-                logical_start=table,
-                logical_end=table + len(targets) * 2,
-                dispatch_address=min(dispatches),
-                lookup_address=lookup,
-                targets=tuple(targets),
-                dispatch_addresses=tuple(sorted(dispatches)),
-            ))
+        if len(targets) >= 4 and not any(table <= target < table + len(targets) * 2 for target in targets):
+            tables.append(
+                Z80DispatchTable(
+                    logical_start=table,
+                    logical_end=table + len(targets) * 2,
+                    dispatch_address=min(dispatches),
+                    lookup_address=lookup,
+                    targets=tuple(targets),
+                    dispatch_addresses=tuple(sorted(dispatches)),
+                )
+            )
     return tuple(tables)

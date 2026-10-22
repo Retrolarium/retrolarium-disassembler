@@ -20,6 +20,7 @@ is scanned without disassembly:
 OUTPUT_DIR receives scan.csv (one row per game) and summary.md;
 --recompute re-classifies an existing scan.csv without rescanning.
 """
+
 import argparse
 import csv
 import re
@@ -29,17 +30,38 @@ from pathlib import Path
 
 SEVEN_ZIP = r"C:\Program Files\7-Zip\7z.exe"
 REGION_ORDER = ["U", "W", "UE", "JU", "JUE", "E", "J", "UK", "F", "G", "S", "B", "K", "A", "4"]
-BAD_TAGS = re.compile(r"\[(?:h|t|T|b|f|o|a|p|x|c)\w*[^\]]*\]|\((?:Beta|Proto|PD|Hack|Sample|Demo|Prototype)[^)]*\)", re.I)
+BAD_TAGS = re.compile(
+    r"\[(?:h|t|T|b|f|o|a|p|x|c)\w*[^\]]*\]|\((?:Beta|Proto|PD|Hack|Sample|Demo|Prototype)[^)]*\)", re.I
+)
 GOOD = "[!]"
 # Long, unambiguous markers only: short ones like "GCC" occur by chance in data.
-TOOL_STRINGS = [b"Sierra Systems", b"SIERRA SYSTEMS", b"Microtec", b"MICROTEC", b"MCC68K", b"SN Systems",
-                b"Psy-Q", b"PSY-Q", b"gcc2_compiled", b"GNU C", b"Lattice", b"Aztec C", b"Introl",
-                b"Green Hills", b"Whitesmiths", b"Cross Products", b"SNASM", b"Copyright 1987"]
+TOOL_STRINGS = [
+    b"Sierra Systems",
+    b"SIERRA SYSTEMS",
+    b"Microtec",
+    b"MICROTEC",
+    b"MCC68K",
+    b"SN Systems",
+    b"Psy-Q",
+    b"PSY-Q",
+    b"gcc2_compiled",
+    b"GNU C",
+    b"Lattice",
+    b"Aztec C",
+    b"Introl",
+    b"Green Hills",
+    b"Whitesmiths",
+    b"Cross Products",
+    b"SNASM",
+    b"Copyright 1987",
+]
 SIERRA_FP_MESSAGE = b"Floating Point Divide by Zero Exception."
 # Sierra's inline long multiply (as emitted for Lib_Rand in Pirates! Gold):
 # movea.l d3,a0; move.l d0,d1; move.l d0,d3; mulu d2,d0; swap d1; mulu d2,d1;
 # swap d2; mulu d2,d3; add.w d3,d1; swap d0; add.w d1,d0; swap d0; move.l a0,d3
-SIERRA_LONG_MULTIPLY = bytes.fromhex("2043 2200 2600 C0C2 4841 C2C2 4842 C6C2 D243 4840 D041 4840 2608".replace(" ", ""))
+SIERRA_LONG_MULTIPLY = bytes.fromhex(
+    "2043 2200 2600 C0C2 4841 C2C2 4842 C6C2 D243 4840 D041 4840 2608".replace(" ", "")
+)
 
 
 def region_rank(name):
@@ -50,8 +72,11 @@ def region_rank(name):
 
 def choose(entries):
     """Pick one good dump from an archive listing."""
-    roms = [e for e in entries if e.lower().endswith((".bin", ".gen", ".md", ".smd"))
-            and "32X" not in e and not BAD_TAGS.search(e)]
+    roms = [
+        e
+        for e in entries
+        if e.lower().endswith((".bin", ".gen", ".md", ".smd")) and "32X" not in e and not BAD_TAGS.search(e)
+    ]
     verified = [e for e in roms if GOOD in e]
     plain = [e for e in roms if "[" not in e]
     pool = verified or plain
@@ -59,8 +84,9 @@ def choose(entries):
 
 
 def list_archive(archive):
-    out = subprocess.run([SEVEN_ZIP, "l", "-slt", str(archive)], capture_output=True, text=True,
-                         errors="replace").stdout
+    out = subprocess.run(
+        [SEVEN_ZIP, "l", "-slt", str(archive)], capture_output=True, text=True, errors="replace"
+    ).stdout
     return [line[7:] for line in out.splitlines() if line.startswith("Path = ")][1:]
 
 
@@ -72,7 +98,7 @@ def deinterleave_smd(data):
     body = data[512:] if len(data) % 16384 == 512 else data
     out = bytearray()
     for block in range(0, len(body), 16384):
-        chunk = body[block:block + 16384]
+        chunk = body[block : block + 16384]
         half = len(chunk) // 2
         for i in range(half):
             out.append(chunk[half + i])
@@ -88,7 +114,7 @@ def sierra_windows(lib_dir, width=24):
             continue
         data = path.read_bytes()
         for offset in range(0, len(data) - width, 8):
-            window = data[offset:offset + width]
+            window = data[offset : offset + width]
             if len(set(window)) >= 10:
                 windows.add(window)
     return windows
@@ -106,7 +132,7 @@ def scan(rom, windows):
         elif word == 0x4E5E:
             unlk += 1
         elif word == 0x4EB9 and offset + 8 <= len(rom):
-            target = int.from_bytes(rom[offset + 2:offset + 6], "big")
+            target = int.from_bytes(rom[offset + 2 : offset + 6], "big")
             if 0x200 <= target < len(rom) and not target & 1:
                 jsr += 1
                 following = (rom[offset + 6] << 8) | rom[offset + 7]
@@ -115,12 +141,15 @@ def scan(rom, windows):
     library_hits = 0
     if windows:
         for offset in range(0, len(rom) - 24, 2):
-            if rom[offset:offset + 24] in windows:
+            if rom[offset : offset + 24] in windows:
                 library_hits += 1
     tools = sorted({s.decode() for s in TOOL_STRINGS if s in rom})
     return {
         "size": len(rom),
-        "link": link, "unlk": unlk, "jsr_abs": jsr, "jsr_cleanup": cleaned,
+        "link": link,
+        "unlk": unlk,
+        "jsr_abs": jsr,
+        "jsr_cleanup": cleaned,
         "cleanup_ratio": round(cleaned / jsr, 3) if jsr else 0.0,
         "sierra_long_multiply": rom.count(SIERRA_LONG_MULTIPLY),
         "sierra_fp_message": int(SIERRA_FP_MESSAGE in rom),
@@ -162,12 +191,19 @@ def write_summary(rows, output):
     for key in VERDICTS:
         lines.append(f"- {key}: {len(groups.get(key, []))}")
     for key in VERDICTS[:-1]:
-        lines += ["", f"## {key}", "", "| game | ROM | LINK | JSR cleanup | Sierra mul | FP msg | lib windows | strings |",
-                  "|---|---|---:|---:|---:|---:|---:|---|"]
+        lines += [
+            "",
+            f"## {key}",
+            "",
+            "| game | ROM | LINK | JSR cleanup | Sierra mul | FP msg | lib windows | strings |",
+            "|---|---|---:|---:|---:|---:|---:|---|",
+        ]
         for row in sorted(groups.get(key, []), key=lambda r: -int(r["link"])):
-            lines.append(f"| {row['game']} | {row['rom']} | {row['link']} | {row['cleanup_ratio']} | "
-                         f"{row['sierra_long_multiply']} | {row['sierra_fp_message']} | "
-                         f"{row['sierra_library_windows']} | {row['tool_strings']} |")
+            lines.append(
+                f"| {row['game']} | {row['rom']} | {row['link']} | {row['cleanup_ratio']} | "
+                f"{row['sierra_long_multiply']} | {row['sierra_fp_message']} | "
+                f"{row['sierra_library_windows']} | {row['tool_strings']} |"
+            )
     (output / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -178,8 +214,7 @@ def main():
     parser.add_argument("--sierra-lib")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--only")
-    parser.add_argument("--recompute", action="store_true",
-                        help="re-classify OUTPUT_DIR/scan.csv without rescanning")
+    parser.add_argument("--recompute", action="store_true", help="re-classify OUTPUT_DIR/scan.csv without rescanning")
     args = parser.parse_args()
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
@@ -197,7 +232,7 @@ def main():
     if args.only:
         archives = [a for a in archives if args.only.lower() in a.name.lower()]
     if args.limit:
-        archives = archives[:args.limit]
+        archives = archives[: args.limit]
     rows = []
     for number, archive in enumerate(archives, 1):
         name = choose(list_archive(archive))

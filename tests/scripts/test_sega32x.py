@@ -21,10 +21,9 @@ class Sega32xVectorTests(unittest.TestCase):
         data = bytearray(0x800)
         data[0x100:0x108] = b"SEGA 32X"
         code = bytes.fromhex("4EF9008804004EF8C02A4E714EF900FFC0364E754EF900880410")
-        data[0x200:0x200 + len(code)] = code
+        data[0x200 : 0x200 + len(code)] = code
         _, _, entries = fixed_window_entries(bytes(data))
-        self.assertEqual({0x880200, 0x880206, 0x88020A, 0x88020C,
-                          0x880212, 0x880214, 0x880400, 0x880410}, set(entries))
+        self.assertEqual({0x880200, 0x880206, 0x88020A, 0x88020C, 0x880212, 0x880214, 0x880400, 0x880410}, set(entries))
 
     def test_rejects_non_32x_input(self):
         with self.assertRaises(ValueError):

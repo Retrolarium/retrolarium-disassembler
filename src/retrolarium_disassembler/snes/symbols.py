@@ -69,9 +69,7 @@ def generate_symbols(
             "vector",
             f"{vector.mode}_{vector.name}_vector",
         )
-    instruction_addresses = {
-        instruction.logical_address for instruction in result.instructions
-    }
+    instruction_addresses = {instruction.logical_address for instruction in result.instructions}
     for instruction in result.instructions:
         for flow in instruction.flows:
             target = flow.target
@@ -131,13 +129,7 @@ def generate_symbols(
                 logical_address=address,
                 physical_offset=physical,
                 aliases=tuple(sorted(aliases.get(address, set()))),
-                evidence=tuple(
-                    sorted(
-                        evidence
-                        for values in kind_claims.values()
-                        for evidence in values
-                    )
-                ),
+                evidence=tuple(sorted(evidence for values in kind_claims.values() for evidence in values)),
             )
         )
     identifiers = [symbol.symbol_id for symbol in symbols]

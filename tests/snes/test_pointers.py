@@ -35,9 +35,7 @@ class SnesPointerTests(unittest.TestCase):
         layouts = {}
         for mapping in ("lorom", "hirom"):
             image = probe_image(mapping)
-            candidates = accepted_pointer_tables(
-                detect_pointer_candidates(image, analyze_snes(image))
-            )
+            candidates = accepted_pointer_tables(detect_pointer_candidates(image, analyze_snes(image)))
             by_schema = {
                 candidate.schema_id: candidate
                 for candidate in candidates
@@ -50,10 +48,7 @@ class SnesPointerTests(unittest.TestCase):
                     targets,
                     tuple(entry.target for entry in by_schema[schema_id].entries),
                 )
-            layouts[mapping] = {
-                schema: candidate.physical_start
-                for schema, candidate in by_schema.items()
-            }
+            layouts[mapping] = {schema: candidate.physical_start for schema, candidate in by_schema.items()}
         self.assertNotEqual(layouts["lorom"], layouts["hirom"])
 
     def test_symbols_are_logically_stable_across_lorom_and_hirom(self) -> None:
@@ -63,9 +58,7 @@ class SnesPointerTests(unittest.TestCase):
             analysis = analyze_snes(image)
             pointers = detect_pointer_candidates(image, analysis)
             symbols = generate_symbols(image, analysis, pointers)
-            generated.append(
-                {(symbol.name, symbol.kind, symbol.logical_address) for symbol in symbols}
-            )
+            generated.append({(symbol.name, symbol.kind, symbol.logical_address) for symbol in symbols})
             by_address = {symbol.logical_address: symbol for symbol in symbols}
             self.assertEqual("entry", by_address[0x9000].kind)
             self.assertEqual("subroutine", by_address[0x901B].kind)

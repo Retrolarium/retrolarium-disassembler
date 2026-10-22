@@ -9,10 +9,24 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.benchmarks.extra_reference import benchmark, comparable
 from tools.references.extra_profiles import (
-    PROFILES, TJE_SHA1, Identity, classify_build, confirm_existing, genesis_checksum,
-    inspect_sega_cd_image, landstalker_build, normalise_vasm_listing, option_overrides,
-    parse_simple_yaml, prepare_profile, quackshot_name, read_header, scan_roms,
-    sega_cd_applicability, select_split_input, vasm_absolute_pc_labels,
+    PROFILES,
+    TJE_SHA1,
+    Identity,
+    classify_build,
+    confirm_existing,
+    genesis_checksum,
+    inspect_sega_cd_image,
+    landstalker_build,
+    normalise_vasm_listing,
+    option_overrides,
+    parse_simple_yaml,
+    prepare_profile,
+    quackshot_name,
+    read_header,
+    scan_roms,
+    sega_cd_applicability,
+    select_split_input,
+    vasm_absolute_pc_labels,
     nemesis_cli_compress,
 )
 from tools.references.prepare_extra import PROFILES as FIRST_BATCH
@@ -25,7 +39,7 @@ REFERENCES = Path(__file__).resolve().parents[3] / "references"
 def make_rom(serial="GM 00001234-00", region="JUE", size=0x1000, *, valid=True, swap=False, patch=None):
     data = bytearray(size)
     body = bytes(range(256)) * (size // 256 + 1)
-    data[0x200:] = body[:size - 0x200]
+    data[0x200:] = body[: size - 0x200]
     if swap:  # different contents, same additive checksum
         data[0x200:0x202], data[0x202:0x204] = data[0x202:0x204], data[0x200:0x202]
     data[0x100:0x110] = b"SEGA MEGA DRIVE "
@@ -90,9 +104,9 @@ class HeaderAndSelectionTests(unittest.TestCase):
         original = make_rom()
         self.write("Totally unrelated name.gen", original)
         self.write("copy/Same bytes elsewhere.bin", original)
-        self.write("Game (U) [!].gen", make_rom(patch=0x400))           # hack, stale checksum
-        self.write("Game (U) [b].bin", original + bytes(0x1000))       # overdump
-        self.write("notes.txt", original)                              # not a ROM suffix
+        self.write("Game (U) [!].gen", make_rom(patch=0x400))  # hack, stale checksum
+        self.write("Game (U) [b].bin", original + bytes(0x1000))  # overdump
+        self.write("notes.txt", original)  # not a ROM suffix
         pool, problems = scan_roms([self.root])
         self.assertEqual([], problems)
         chosen = select_split_input(pool, identity_of(original))
@@ -139,14 +153,18 @@ class HeaderAndSelectionTests(unittest.TestCase):
 
     def test_inventory_hash_mismatch_excludes_candidate(self):
         path = self.write("roms/game.gen", make_rom())
-        inventory = self.write("inventory.json", json.dumps(
-            [{"path": str(path), "sha256": "0" * 64},
-             {"path": str(self.root / "missing.gen"), "sha256": "1" * 64}]).encode())
+        inventory = self.write(
+            "inventory.json",
+            json.dumps(
+                [{"path": str(path), "sha256": "0" * 64}, {"path": str(self.root / "missing.gen"), "sha256": "1" * 64}]
+            ).encode(),
+        )
         pool, problems = scan_roms([self.root / "roms"], inventory)
         self.assertEqual([], pool)
-        self.assertEqual(["SHA-256 differs from inventory; excluded",
-                          "listed original is missing or not a cartridge file"],
-                         [item["problem"] for item in problems])
+        self.assertEqual(
+            ["SHA-256 differs from inventory; excluded", "listed original is missing or not a cartridge file"],
+            [item["problem"] for item in problems],
+        )
 
     def test_confirm_existing_matches_by_hash_without_rebuild(self):
         dest = self.root / "kid-chameleon-us"
@@ -154,9 +172,13 @@ class HeaderAndSelectionTests(unittest.TestCase):
         binary = make_rom(serial="GM MK-1010 -00")
         (dest / "reference.bin").write_bytes(binary)
         (dest / "reference-m68k.lst").write_bytes(b"listing\n")
-        record = {"name": "kid-chameleon-us", "status": "upstream-only", "matching_original_roms": [],
-                  "binary_sha256": hashlib.sha256(binary).hexdigest(),
-                  "listing_sha256": hashlib.sha256(b"listing\n").hexdigest()}
+        record = {
+            "name": "kid-chameleon-us",
+            "status": "upstream-only",
+            "matching_original_roms": [],
+            "binary_sha256": hashlib.sha256(binary).hexdigest(),
+            "listing_sha256": hashlib.sha256(b"listing\n").hexdigest(),
+        }
         (dest / "result.json").write_text(json.dumps(record), encoding="utf-8")
         self.write("roms/Kid Chameleon/whatever.gen", binary)
         self.write("roms/Kid Chameleon/Chameleon Kid (J) [!].gen", make_rom(serial="GM MK-1010 -00", swap=True))
@@ -170,8 +192,10 @@ class HeaderAndSelectionTests(unittest.TestCase):
 
 
 class UpstreamConfigurationTests(unittest.TestCase):
-    OPTIONS = ("\nbugfixes = 0\t\t\t; if 1, include bug fixes\r\n"
-               "revision = 1\t\t\t; 0 = Japanese; 1 = English; 2 = Portuguese\r\n")
+    OPTIONS = (
+        "\nbugfixes = 0\t\t\t; if 1, include bug fixes\r\n"
+        "revision = 1\t\t\t; 0 = Japanese; 1 = English; 2 = Portuguese\r\n"
+    )
 
     def test_option_override_is_scoped_and_restored(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -192,10 +216,12 @@ class UpstreamConfigurationTests(unittest.TestCase):
             self.assertEqual(self.OPTIONS.encode(), path.read_bytes())
 
     def test_build_yaml_subset_and_expanded_rejection(self):
-        text = ("Builds:\n    US:\n        Source: landstalker_us.asm\n        Target: landstalker_us.bin\n"
-                "        Buildopts: /p /d /o ae-,l_\n        Defines:\n            REGION: 0\n"
-                "            EXPANDED: 0\n    US_EXPANDED:\n        Source: landstalker_us_expanded.asm\n"
-                "        Buildopts: /p\n        Defines:\n            EXPANDED: 1\n")
+        text = (
+            "Builds:\n    US:\n        Source: landstalker_us.asm\n        Target: landstalker_us.bin\n"
+            "        Buildopts: /p /d /o ae-,l_\n        Defines:\n            REGION: 0\n"
+            "            EXPANDED: 0\n    US_EXPANDED:\n        Source: landstalker_us_expanded.asm\n"
+            "        Buildopts: /p\n        Defines:\n            EXPANDED: 1\n"
+        )
         self.assertEqual("0", parse_simple_yaml(text)["Builds"]["US"]["Defines"]["REGION"])
         with tempfile.TemporaryDirectory() as directory:
             (Path(directory) / "build.yaml").write_text(text, encoding="utf-8")
@@ -214,8 +240,9 @@ class UpstreamConfigurationTests(unittest.TestCase):
         root = REFERENCES / "landstalker_disasm"
         japanese = landstalker_build(root, "JP")
         self.assertEqual("landstalker_jp.asm", japanese["source"])
-        self.assertEqual(("1", "0", "1"), tuple(japanese["defines"][key]
-                                                for key in ("REGION", "FIX_COLL_1", "REFRESH_GOLD_CTR")))
+        self.assertEqual(
+            ("1", "0", "1"), tuple(japanese["defines"][key] for key in ("REGION", "FIX_COLL_1", "REFRESH_GOLD_CTR"))
+        )
         german = landstalker_build(root, "DE")
         self.assertEqual(("4", "0"), (german["defines"]["REGION"], german["defines"]["REFRESH_GOLD_CTR"]))
 
@@ -241,7 +268,7 @@ class ListingTests(unittest.TestCase):
         "Symbols by name:",
         "Loop                            A:0000000E",
     ]
-    ROM = bytes.fromhex("70001234" "23FC1234567800FF0000" "4E75")
+    ROM = bytes.fromhex("7000123423FC1234567800FF00004E75")
 
     def read(self, lines, rom):
         with tempfile.TemporaryDirectory() as directory:
@@ -309,23 +336,37 @@ class ProfileTableTests(unittest.TestCase):
         source = ' move.w $170e0(pc,d0.l),d0 ; $abcd(pc)\n lea $20(a0),a1\n dc.b "$123(pc)"\n'
         translated, count = vasm_absolute_pc_labels(source)
         self.assertEqual(1, count)
-        self.assertEqual(' move.w (__rl_rom_base+$170e0)(pc,d0.l),d0 ; $abcd(pc)\n lea $20(a0),a1\n dc.b "$123(pc)"\n', translated)
+        self.assertEqual(
+            ' move.w (__rl_rom_base+$170e0)(pc,d0.l),d0 ; $abcd(pc)\n lea $20(a0),a1\n dc.b "$123(pc)"\n', translated
+        )
 
     def test_default_vasm_listing_retains_continuation_bytes(self):
         rom = bytes.fromhex("23FC12345678000100004E75")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "vasm.lst"
             out = Path(directory) / "normal.lst"
-            path.write_text("00:00000000 23FC123456780001\t 1: move.l #$12345678,($10000).l\n"
-                            "00:00000008 0000\n00:0000000A 4E75\t 2: rts\n", encoding="utf-8")
+            path.write_text(
+                "00:00000000 23FC123456780001\t 1: move.l #$12345678,($10000).l\n"
+                "00:00000008 0000\n00:0000000A 4E75\t 2: rts\n",
+                encoding="utf-8",
+            )
             found, uncertain, _ = normalise_vasm_listing(path, rom, out)
             self.assertEqual({0: rom[:10], 10: rom[10:]}, found)
             self.assertFalse(uncertain)
             self.assertEqual((found, uncertain), read_listing(out, rom))
 
     def test_first_batch_is_unchanged_and_names_are_disjoint(self):
-        self.assertEqual({"altered-beast-ue-rev02", "spinball-us", "mean-bean", "shining-force-us",
-                          "shining-force-2-us", "kid-chameleon-us"}, set(FIRST_BATCH))
+        self.assertEqual(
+            {
+                "altered-beast-ue-rev02",
+                "spinball-us",
+                "mean-bean",
+                "shining-force-us",
+                "shining-force-2-us",
+                "kid-chameleon-us",
+            },
+            set(FIRST_BATCH),
+        )
         self.assertFalse(set(FIRST_BATCH) & set(PROFILES))
 
     def test_every_profile_is_explicit(self):
@@ -349,8 +390,7 @@ class ProfileTableTests(unittest.TestCase):
             root = Path(directory)
             disc = root / "sfcd-j.iso"
             disc.write_bytes(sega_cd_image("GM T-33024 -00", "J"))
-            result = prepare_profile("shining-force-cd", root / "refs", root / "out/sfcd", [],
-                                     {"sega_cd_image": disc})
+            result = prepare_profile("shining-force-cd", root / "refs", root / "out/sfcd", [], {"sega_cd_image": disc})
             self.assertEqual("unsupported", result["status"])
             self.assertFalse(result["applicability"]["same_release"])
             self.assertTrue((root / "out/sfcd/result.json").is_file())
@@ -370,10 +410,15 @@ class ProfileTableTests(unittest.TestCase):
 class BenchmarkAdapterTests(unittest.TestCase):
     def test_only_verified_originals_are_scored(self):
         self.assertIn("not a verified original", comparable({"status": "upstream-only"}))
-        self.assertIn("not a verified original", comparable({"status": "original-mismatch",
-                                                             "matching_original_roms": ["x"]}))
-        unit = {"status": "verified-original", "matching_original_roms": ["x"], "matches_upstream": True,
-                "reference_instructions": 0}
+        self.assertIn(
+            "not a verified original", comparable({"status": "original-mismatch", "matching_original_roms": ["x"]})
+        )
+        unit = {
+            "status": "verified-original",
+            "matching_original_roms": ["x"],
+            "matches_upstream": True,
+            "reference_instructions": 0,
+        }
         self.assertIn("no instructions", comparable(unit))
         unit["reference_instructions"] = 5
         self.assertIsNone(comparable(unit))
@@ -389,13 +434,23 @@ class BenchmarkAdapterTests(unittest.TestCase):
             (root / "original.gen").write_bytes(rom)
             (root / "reference-m68k.lst").write_text("changed\n", encoding="utf-8")
             digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
-            units = [{"name": "case", "status": "verified-original", "matches_upstream": True,
-                      "matching_original_roms": [str(root / "original.gen")], "reference_instructions": 1,
-                      "uncertain_instruction_addresses": 0, "source": str(root / "main.s"),
-                      "source_sha256": digest(root / "main.s"), "binary": str(root / "reference.bin"),
-                      "binary_sha256": digest(root / "reference.bin"),
-                      "listing": str(root / "reference-m68k.lst"), "listing_sha256": "0" * 64},
-                     {"name": "other", "status": "upstream-only"}]
+            units = [
+                {
+                    "name": "case",
+                    "status": "verified-original",
+                    "matches_upstream": True,
+                    "matching_original_roms": [str(root / "original.gen")],
+                    "reference_instructions": 1,
+                    "uncertain_instruction_addresses": 0,
+                    "source": str(root / "main.s"),
+                    "source_sha256": digest(root / "main.s"),
+                    "binary": str(root / "reference.bin"),
+                    "binary_sha256": digest(root / "reference.bin"),
+                    "listing": str(root / "reference-m68k.lst"),
+                    "listing_sha256": "0" * 64,
+                },
+                {"name": "other", "status": "upstream-only"},
+            ]
             (root / "manifest.json").write_text(json.dumps({"units": units}), encoding="utf-8")
             report = benchmark(root, root / "projects", root / "comparison")
             self.assertEqual("normalized reference listing hash changed", report["cases"][0]["error"])

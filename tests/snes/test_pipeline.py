@@ -25,9 +25,7 @@ class SnesPipelineTests(unittest.TestCase):
             self.assertEqual("retrolarium.snes.disassembly", manifest["schema"])
             self.assertEqual("blind", manifest["mode"])
             self.assertIsNone(manifest["input"]["source"])
-            self.assertEqual(
-                len(image.data), manifest["source"]["coverage"]["rom_bytes"]
-            )
+            self.assertEqual(len(image.data), manifest["source"]["coverage"]["rom_bytes"])
             self.assertFalse(manifest["source"]["whole_rom_fallback"])
             self.assertEqual(
                 "generated/emission.json",
@@ -36,15 +34,9 @@ class SnesPipelineTests(unittest.TestCase):
             self.assertEqual("not-run", manifest["verification"]["status"])
             self.assertTrue((output / "retrolarium-project.json").is_file())
             self.assertTrue((output / "analysis/pointers.json").is_file())
-            self.assertTrue(
-                (output / "analysis/cross-cpu-evidence.json").is_file()
-            )
-            self.assertEqual(
-                1, manifest["cross_cpu_evidence"]["edge_count"]
-            )
-            analysis = __import__("json").loads(
-                (output / "analysis/analysis.json").read_text(encoding="utf-8")
-            )
+            self.assertTrue((output / "analysis/cross-cpu-evidence.json").is_file())
+            self.assertEqual(1, manifest["cross_cpu_evidence"]["edge_count"])
+            analysis = __import__("json").loads((output / "analysis/analysis.json").read_text(encoding="utf-8"))
             self.assertEqual(2, len(analysis["programs"]))
             self.assertEqual("extracted", analysis["programs"][1]["status"])
             self.assertEqual("spc700-program", manifest["assets"]["items"][0]["kind"])

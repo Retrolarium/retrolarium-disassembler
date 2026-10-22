@@ -19,19 +19,20 @@ class SonicCdBenchmarkTests(unittest.TestCase):
 
     def test_first_pass_branch_operand_is_verified_against_disc_bytes(self):
         image = bytes.fromhex("67084E754E71")
-        listing = "\n".join((
-            "00001000 6700        \tbeq.s Target",
-            "00001002 4E75        \trts",
-            "00001004 4E71        \tNOP",
-            "00001006 4E75        \trts",  # outside the file
-            "00001000 4E71        \tnop",  # conflicting opcode
-        ))
+        listing = "\n".join(
+            (
+                "00001000 6700        \tbeq.s Target",
+                "00001002 4E75        \trts",
+                "00001004 4E71        \tNOP",
+                "00001006 4E75        \trts",  # outside the file
+                "00001000 4E71        \tnop",  # conflicting opcode
+            )
+        )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "reference.lst"
             path.write_text(listing, encoding="utf-8")
             found, _, stats = reference_instructions(path, image, 0x1000)
-        self.assertEqual({0: bytes.fromhex("6708"), 2: bytes.fromhex("4E75"),
-                          4: bytes.fromhex("4E71")}, found)
+        self.assertEqual({0: bytes.fromhex("6708"), 2: bytes.fromhex("4E75"), 4: bytes.fromhex("4E71")}, found)
         self.assertEqual(1, stats["unmapped"])
         self.assertEqual(1, stats["opcode_conflicts"])
 

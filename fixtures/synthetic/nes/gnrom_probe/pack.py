@@ -21,13 +21,9 @@ def main() -> None:
     banks = [path.read_bytes() for path in args.banks]
     for index, bank in enumerate(banks):
         if len(bank) != PRG_BANK_SIZE:
-            raise SystemExit(
-                f"bank {index} has {len(bank)} bytes, expected {PRG_BANK_SIZE}"
-            )
+            raise SystemExit(f"bank {index} has {len(bank)} bytes, expected {PRG_BANK_SIZE}")
     header = b"NES\x1a" + bytes((8, CHR_BANKS, 0x20, 0x40)) + bytes(8)
-    chr_data = b"".join(
-        bytes((0x40 + bank,)) * CHR_BANK_SIZE for bank in range(CHR_BANKS)
-    )
+    chr_data = b"".join(bytes((0x40 + bank,)) * CHR_BANK_SIZE for bank in range(CHR_BANKS))
     args.output.write_bytes(header + b"".join(banks) + chr_data)
 
 

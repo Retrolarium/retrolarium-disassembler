@@ -30,7 +30,7 @@ class CallbackAbiTests(unittest.TestCase):
     def discover(self):
         data = bytearray(cartridge(size=0x800))
         for fact in self.facts.values():
-            data[fact.cpu_address:fact.cpu_address + fact.length] = fact.raw
+            data[fact.cpu_address : fact.cpu_address + fact.length] = fact.raw
         data[0x400:0x404] = bytes.fromhex("70014e75")
         return {s.address: s for s in discover_callback_abi_seeds(parse_megadrive(bytes(data)), self.facts)}
 

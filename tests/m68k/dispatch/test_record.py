@@ -18,9 +18,9 @@ class RecordCallbackTests(unittest.TestCase):
         self.data[0x300:0x328] = bytes(40)
         # Five eight-byte records, including a completely empty slot.
         for i, target in enumerate((0x400, 0, 0x420, 0x440, 0x460)):
-            self.data[0x304 + i * 8:0x308 + i * 8] = target.to_bytes(4, "big")
+            self.data[0x304 + i * 8 : 0x308 + i * 8] = target.to_bytes(4, "big")
             if target:
-                self.data[target:target + 2] = bytes.fromhex("7001")
+                self.data[target : target + 2] = bytes.fromhex("7001")
         self.items = [
             replace(fact(0x200, "LEA", "(0x300).l|A3"), length=6),
             fact(0x206, "CLR.W", "D2w"),
@@ -33,17 +33,18 @@ class RecordCallbackTests(unittest.TestCase):
         ]
 
     def seeds(self):
-        return discover_record_callback_seeds(parse_megadrive(bytes(self.data)),
-                                             {f.cpu_address: f for f in self.items})
+        return discover_record_callback_seeds(parse_megadrive(bytes(self.data)), {f.cpu_address: f for f in self.items})
 
     def test_record_stride_empty_slot_and_different_object_register(self):
         self.assertEqual([0x400, 0x420, 0x440, 0x460], [s.address for s in self.seeds()])
 
     def test_requires_executed_field_and_unsigned_index(self):
-        for address, changes in ((0x244, {"mnemonic": "NOP"}),
-                                 (0x206, {"mnemonic": "NOP"}),
-                                 (0x20A, {"operands": "#0x2|D2w"}),
-                                 (0x240, {"operands": "(0x8,A5)|-(SP)"})):
+        for address, changes in (
+            (0x244, {"mnemonic": "NOP"}),
+            (0x206, {"mnemonic": "NOP"}),
+            (0x20A, {"operands": "#0x2|D2w"}),
+            (0x240, {"operands": "(0x8,A5)|-(SP)"}),
+        ):
             old = self.items[:]
             self.items = [replace(f, **changes) if f.cpu_address == address else f for f in old]
             self.assertFalse(self.seeds())
@@ -67,7 +68,8 @@ class RecordCallbackTests(unittest.TestCase):
         ]
         self.data[0x500:0x502] = bytes.fromhex("7001")
         result = discover_object_field_handler_candidates(
-            parse_megadrive(bytes(self.data)), {f.cpu_address: f for f in self.items})
+            parse_megadrive(bytes(self.data)), {f.cpu_address: f for f in self.items}
+        )
         self.assertEqual([0x500], [c.address for c in result])
 
 

@@ -3,18 +3,18 @@
 // per line; each address is disassembled in every executable PRG space
 // whose initialized block contains it.
 
+import ghidra.app.script.GhidraScript;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressSpace;
+import ghidra.program.model.mem.Memory;
+import ghidra.program.model.mem.MemoryBlock;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-
-import ghidra.app.script.GhidraScript;
-import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressSpace;
-import ghidra.program.model.mem.Memory;
-import ghidra.program.model.mem.MemoryBlock;
 
 public class SeedNesVectors extends GhidraScript {
     private static final long[] VECTOR_OFFSETS = {0xfffaL, 0xfffcL, 0xfffeL};
@@ -24,8 +24,7 @@ public class SeedNesVectors extends GhidraScript {
     protected void run() throws Exception {
         String[] args = getScriptArgs();
         if (args.length > 1) {
-            throw new IllegalArgumentException(
-                "usage: SeedNesVectors.java [seed-plan]");
+            throw new IllegalArgumentException("usage: SeedNesVectors.java [seed-plan]");
         }
         List<Long> planned = args.length == 1 ? readPlan(args[0]) : new ArrayList<>();
 
@@ -49,15 +48,25 @@ public class SeedNesVectors extends GhidraScript {
                 int high = memory.getByte(vector.add(1)) & 0xff;
                 Address target = space.getAddress(low | (high << 8));
                 if (!isExecutable(memory, target)) {
-                    println("[SKIP] " + space.getName() + " "
-                        + VECTOR_NAMES[index] + " target " + target);
+                    println(
+                            "[SKIP] "
+                                    + space.getName()
+                                    + " "
+                                    + VECTOR_NAMES[index]
+                                    + " target "
+                                    + target);
                     continue;
                 }
                 if (disassemble(target)) {
                     seeded++;
                 }
-                println("[SEED] " + space.getName() + " "
-                    + VECTOR_NAMES[index] + " target " + target);
+                println(
+                        "[SEED] "
+                                + space.getName()
+                                + " "
+                                + VECTOR_NAMES[index]
+                                + " target "
+                                + target);
             }
         }
         println("[OK] seeded " + seeded + " NES vector targets");
@@ -81,8 +90,7 @@ public class SeedNesVectors extends GhidraScript {
             }
         }
         if (args.length == 1) {
-            println("[OK] seeded " + planSeeded + " of " + planned.size()
-                + " NES plan targets");
+            println("[OK] seeded " + planSeeded + " of " + planned.size() + " NES plan targets");
         }
     }
 
@@ -106,7 +114,7 @@ public class SeedNesVectors extends GhidraScript {
             }
             if (!line.matches("[0-9A-Fa-f]{1,4}")) {
                 throw new IllegalArgumentException(
-                    "invalid NES seed at line " + lineNumber + ": " + raw);
+                        "invalid NES seed at line " + lineNumber + ": " + raw);
             }
             long address = Long.parseLong(line, 16);
             if (!addresses.contains(address)) {

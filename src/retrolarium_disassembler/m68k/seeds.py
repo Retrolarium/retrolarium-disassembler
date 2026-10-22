@@ -39,11 +39,11 @@ class RamCopyRegion:
 
 
 def _word(data: bytes, offset: int) -> int:
-    return int.from_bytes(data[offset:offset + 2], "big")
+    return int.from_bytes(data[offset : offset + 2], "big")
 
 
 def _long(data: bytes, offset: int) -> int:
-    return int.from_bytes(data[offset:offset + 4], "big")
+    return int.from_bytes(data[offset : offset + 4], "big")
 
 
 def _signed_word(value: int) -> int:
@@ -95,13 +95,15 @@ def discover_ram_copy_regions(image: MegaDriveImage, *, scan_start: int = 0x200)
             or destination & 0xFF0000 != 0xFF0000
         ):
             continue
-        regions.append(RamCopyRegion(
-            source_start=source,
-            source_end=source + length,
-            destination_start=destination,
-            destination_end=destination + length,
-            loader_address=offset,
-        ))
+        regions.append(
+            RamCopyRegion(
+                source_start=source,
+                source_end=source + length,
+                destination_start=destination,
+                destination_end=destination + length,
+                loader_address=offset,
+            )
+        )
     return tuple(regions)
 
 
@@ -123,9 +125,7 @@ def discover_ram_copy_seeds(image: MegaDriveImage) -> tuple[DecoderSeed, ...]:
     )
 
 
-def _branch_table(
-    data: bytes, table: int, *, maximum_size: int | None = None
-) -> tuple[tuple[int, int], ...]:
+def _branch_table(data: bytes, table: int, *, maximum_size: int | None = None) -> tuple[tuple[int, int], ...]:
     entries = []
     cursor = table
     while cursor + 4 <= len(data):
@@ -141,9 +141,7 @@ def _branch_table(
     return tuple(entries)
 
 
-def _short_branch_table(
-    data: bytes, table: int, *, maximum_size: int | None = None
-) -> tuple[tuple[int, int], ...]:
+def _short_branch_table(data: bytes, table: int, *, maximum_size: int | None = None) -> tuple[tuple[int, int], ...]:
     entries = []
     cursor = table
     while cursor + 2 <= len(data):
@@ -163,9 +161,7 @@ def _short_branch_table(
     return tuple(entries)
 
 
-def _indexed_dispatch_table(
-    data: bytes, table: int
-) -> tuple[tuple[int, int], ...]:
+def _indexed_dispatch_table(data: bytes, table: int) -> tuple[tuple[int, int], ...]:
     """Read the BRA.S or BRA.W run selected by a PC-indexed jump."""
     opcode = _word(data, table)
     if opcode == 0x6000:
@@ -186,26 +182,31 @@ def _branch_table_seeds(
     seeds = []
     detail = f"{evidence} at 0x{table:06X} ({len(entries)} entries)"
     for entry, target in entries:
-        seeds.append(DecoderSeed(
-            address=entry,
-            kind=f"{kind}_entry",
-            confidence="high",
-            evidence=detail,
-            source_address=source_address,
-        ))
-        seeds.append(DecoderSeed(
-            address=target,
-            kind=f"{kind}_target",
-            confidence="high",
-            evidence=detail,
-            source_address=entry,
-        ))
+        seeds.append(
+            DecoderSeed(
+                address=entry,
+                kind=f"{kind}_entry",
+                confidence="high",
+                evidence=detail,
+                source_address=source_address,
+            )
+        )
+        seeds.append(
+            DecoderSeed(
+                address=target,
+                kind=f"{kind}_target",
+                confidence="high",
+                evidence=detail,
+                source_address=entry,
+            )
+        )
     return tuple(seeds)
 
 
 def discover_indexed_branch_table_seeds(
     image: MegaDriveImage,
-    *, scan_start: int = 0x200,
+    *,
+    scan_start: int = 0x200,
 ) -> tuple[DecoderSeed, ...]:
     """Find BRA.W tables addressed by JSR/JMP d8(PC,Dn.W)."""
     data = image.data
@@ -222,34 +223,32 @@ def discover_indexed_branch_table_seeds(
         if displacement & 0x80:
             displacement -= 0x100
         table = offset + 2 + displacement
-        if (
-            table in seen_tables
-            or table < 0x200
-            or table & 1
-            or table + 8 > len(data)
-        ):
+        if table in seen_tables or table < 0x200 or table & 1 or table + 8 > len(data):
             continue
         seen_tables.add(table)
         entries = _indexed_dispatch_table(data, table)
         if len(entries) < 2:
             continue
-        seeds.extend(_branch_table_seeds(
-            table,
-            entries,
-            kind="indexed_branch_table",
-            evidence=(
-                f"BRA dispatch selected by PC-indexed "
-                f"{'JSR' if _word(data, offset) == 0x4EBB else 'JMP'} "
-                f"at 0x{offset:06X}"
-            ),
-            source_address=offset,
-        ))
+        seeds.extend(
+            _branch_table_seeds(
+                table,
+                entries,
+                kind="indexed_branch_table",
+                evidence=(
+                    f"BRA dispatch selected by PC-indexed "
+                    f"{'JSR' if _word(data, offset) == 0x4EBB else 'JMP'} "
+                    f"at 0x{offset:06X}"
+                ),
+                source_address=offset,
+            )
+        )
     return tuple(seeds)
 
 
 def discover_dense_branch_table_seeds(
     image: MegaDriveImage,
-    *, scan_start: int = 0x200,
+    *,
+    scan_start: int = 0x200,
 ) -> tuple[DecoderSeed, ...]:
     """Find otherwise unreferenced runs of at least four valid BRA.W stubs."""
     data = image.data
@@ -260,13 +259,15 @@ def discover_dense_branch_table_seeds(
         if len(entries) < 4:
             offset += 2
             continue
-        seeds.extend(_branch_table_seeds(
-            offset,
-            entries,
-            kind="dense_branch_table",
-            evidence="dense run of valid BRA.W dispatch stubs",
-            source_address=None,
-        ))
+        seeds.extend(
+            _branch_table_seeds(
+                offset,
+                entries,
+                kind="dense_branch_table",
+                evidence="dense run of valid BRA.W dispatch stubs",
+                source_address=None,
+            )
+        )
         offset += len(entries) * 4
     return tuple(seeds)
 
@@ -299,17 +300,16 @@ def discover_ram_trampoline_tables(
         count = _word(data, table) + 1
         if not 4 <= count <= 1024 or table + 2 + count * 2 > len(data):
             continue
-        targets = tuple(
-            _word(data, table + 2 + index * 2)
-            for index in range(count)
-        )
+        targets = tuple(_word(data, table + 2 + index * 2) for index in range(count))
         if not all(_valid_code_address(data, target) for target in targets):
             continue
-        tables.append(RamTrampolineTable(
-            table_address=table,
-            loader_address=offset,
-            targets=targets,
-        ))
+        tables.append(
+            RamTrampolineTable(
+                table_address=table,
+                loader_address=offset,
+                targets=targets,
+            )
+        )
     return tuple(tables)
 
 
@@ -320,8 +320,7 @@ def discover_ram_trampoline_seeds(
     seeds = []
     for table in discover_ram_trampoline_tables(image):
         evidence = (
-            f"counted ROM table at 0x{table.table_address:06X} builds "
-            f"{len(table.targets)} JMP abs.l trampolines in RAM"
+            f"counted ROM table at 0x{table.table_address:06X} builds {len(table.targets)} JMP abs.l trampolines in RAM"
         )
         seeds.extend(
             DecoderSeed(

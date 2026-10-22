@@ -46,9 +46,7 @@ class FixtureBuildTests(unittest.TestCase):
             ]
         }
         lock = {"repositories": []}
-        with self.assertRaisesRegex(
-            build_fixtures.FixtureError, "local source needs source_sha256"
-        ):
+        with self.assertRaisesRegex(build_fixtures.FixtureError, "local source needs source_sha256"):
             build_fixtures.validate_lock(config, lock)
 
     def test_unknown_source_kind_is_rejected(self) -> None:
@@ -157,10 +155,10 @@ Fraction: equ SIZE*10/1024%10
         header = 0x7FC0
         data = bytearray(0x8000)
         data[header + 0x15] = 0x20
-        data[header + 0x1C:header + 0x20] = b"bad!"
+        data[header + 0x1C : header + 0x20] = b"bad!"
         checksum = ucon64_compat.patch_checksum(data, header)
-        complement = int.from_bytes(data[header + 0x1C:header + 0x1E], "little")
-        stored = int.from_bytes(data[header + 0x1E:header + 0x20], "little")
+        complement = int.from_bytes(data[header + 0x1C : header + 0x1E], "little")
+        stored = int.from_bytes(data[header + 0x1E : header + 0x20], "little")
         self.assertEqual(checksum, stored)
         self.assertEqual(0xFFFF, checksum ^ complement)
         self.assertEqual(checksum, sum(data) & 0xFFFF)

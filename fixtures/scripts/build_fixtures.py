@@ -155,9 +155,7 @@ def validate_lock(config: dict[str, Any], lock: dict[str, Any]) -> None:
             raise FixtureError(f"{project_id}: source commit differs from lock")
 
 
-def selected_projects(
-    config: dict[str, Any], requested: Iterable[str]
-) -> list[dict[str, Any]]:
+def selected_projects(config: dict[str, Any], requested: Iterable[str]) -> list[dict[str, Any]]:
     mapped = project_map(config)
     ids = list(requested)
     if not ids or ids == ["all"]:
@@ -174,9 +172,7 @@ def source_status(project: dict[str, Any]) -> tuple[Path, str, bool]:
         actual = source_tree_sha256(source)
         expected = project.get("source_sha256")
         if actual != expected:
-            raise FixtureError(
-                f"{project['id']}: local source sha256 is {actual}, expected {expected}"
-            )
+            raise FixtureError(f"{project['id']}: local source sha256 is {actual}, expected {expected}")
         return source, actual, False
     if not (source / ".git").exists():
         raise FixtureError(f"{project['id']}: upstream source is not cloned")
@@ -184,9 +180,7 @@ def source_status(project: dict[str, Any]) -> tuple[Path, str, bool]:
     expected = project["commit"]
     dirty = bool(capture(["git", "status", "--porcelain"], cwd=source))
     if actual != expected:
-        raise FixtureError(
-            f"{project['id']}: expected commit {expected}, found {actual}"
-        )
+        raise FixtureError(f"{project['id']}: expected commit {expected}, found {actual}")
     return source, actual, dirty
 
 
@@ -194,14 +188,11 @@ def verify_submodules(repository: dict[str, Any], source: Path) -> None:
     for submodule in repository.get("submodules", []):
         submodule_path = within(source, submodule["path"])
         if not (submodule_path / ".git").exists():
-            raise FixtureError(
-                f"{repository['id']}: submodule is not initialized: {submodule['path']}"
-            )
+            raise FixtureError(f"{repository['id']}: submodule is not initialized: {submodule['path']}")
         actual = capture(["git", "rev-parse", "HEAD"], cwd=submodule_path)
         if actual != submodule["commit"]:
             raise FixtureError(
-                f"{repository['id']}: submodule {submodule['path']} expected "
-                f"{submodule['commit']}, found {actual}"
+                f"{repository['id']}: submodule {submodule['path']} expected {submodule['commit']}, found {actual}"
             )
 
 
@@ -244,13 +235,9 @@ def fetch_repository(repository: dict[str, Any]) -> None:
 def validate_output_policy(config: dict[str, Any]) -> None:
     policy = config["output_policy"]
     allowed = {
-        platform: {suffix.lower() for suffix in suffixes}
-        for platform, suffixes in policy["allowed_extensions"].items()
+        platform: {suffix.lower() for suffix in suffixes} for platform, suffixes in policy["allowed_extensions"].items()
     }
-    expected_outputs = {
-        within(FIXTURES_ROOT, project["output"]).resolve()
-        for project in config["projects"]
-    }
+    expected_outputs = {within(FIXTURES_ROOT, project["output"]).resolve() for project in config["projects"]}
     for platform, suffixes in allowed.items():
         output_dir = within(FIXTURES_ROOT, f"{platform}/bin")
         if not output_dir.exists():
@@ -270,9 +257,7 @@ def validate_rom(project: dict[str, Any], path: Path) -> dict[str, Any]:
     data = path.read_bytes()
     expected_size = project.get("expected_size")
     if expected_size is not None and len(data) != expected_size:
-        raise FixtureError(
-            f"{project['id']}: expected {expected_size} bytes, got {len(data)}"
-        )
+        raise FixtureError(f"{project['id']}: expected {expected_size} bytes, got {len(data)}")
     platform = project["platform"]
     if platform == "nes" and not data.startswith(b"NES\x1a"):
         raise FixtureError(f"{project['id']}: missing iNES header")
@@ -284,9 +269,7 @@ def validate_rom(project: dict[str, Any], path: Path) -> dict[str, Any]:
     digest = sha256(path)
     expected_sha256 = project.get("expected_sha256")
     if expected_sha256 is not None and digest != expected_sha256:
-        raise FixtureError(
-            f"{project['id']}: expected sha256 {expected_sha256}, got {digest}"
-        )
+        raise FixtureError(f"{project['id']}: expected sha256 {expected_sha256}, got {digest}")
     return {"size": len(data), "sha256": digest}
 
 
@@ -300,11 +283,7 @@ def adapt_asm68k_for_clownassembler(workspace: Path) -> None:
         changed = False
 
         for original in lines:
-            newline = (
-                "\r\n"
-                if original.endswith("\r\n")
-                else "\n" if original.endswith("\n") else ""
-            )
+            newline = "\r\n" if original.endswith("\r\n") else "\n" if original.endswith("\n") else ""
             line = original.removesuffix(newline)
             if line.lstrip().startswith(";"):
                 output.append(original)
@@ -319,10 +298,7 @@ def adapt_asm68k_for_clownassembler(workspace: Path) -> None:
                 old_name = macro.group(2)
                 new_name = f"__rt_{global_scope}_{old_name}"
                 local_macros[old_name.lower()] = new_name
-                line = (
-                    f"{macro.group(1)}{new_name}{macro.group(3)} macro"
-                    f"{macro.group(4)}"
-                )
+                line = f"{macro.group(1)}{new_name}{macro.group(3)} macro{macro.group(4)}"
 
             for old_name, new_name in local_macros.items():
                 line = re.sub(
@@ -341,9 +317,7 @@ def adapt_asm68k_for_clownassembler(workspace: Path) -> None:
                 digits = hexadecimal.group(2)
                 if len(digits) % 2:
                     raise FixtureError(f"odd number of hex digits in {source}: {digits}")
-                values = ",".join(
-                    f"${digits[index:index + 2]}" for index in range(0, len(digits), 2)
-                )
+                values = ",".join(f"${digits[index : index + 2]}" for index in range(0, len(digits), 2))
                 line = f"{hexadecimal.group(1)}dc.b {values}{hexadecimal.group(3)}"
 
             if re.match(r"^\s*inform\s", line, re.I):
@@ -357,9 +331,7 @@ def adapt_asm68k_for_clownassembler(workspace: Path) -> None:
             if modulo_equ:
                 left = modulo_equ.group(2).strip()
                 right = modulo_equ.group(3).strip()
-                line = (
-                    f"{modulo_equ.group(1)}({left})-(({left})/({right}))*({right})"
-                )
+                line = f"{modulo_equ.group(1)}({left})-(({left})/({right}))*({right})"
 
             line = re.sub(
                 r"#-([A-Za-z_.$@][\w.$@]*)/([0-9]+)",
@@ -381,10 +353,15 @@ def prepare_workspace(project: dict[str, Any], source: Path) -> Path:
     shutil.copytree(source, workspace, ignore=shutil.ignore_patterns(".git"))
     # git apply takes --directory relative to the top of the checkout the
     # fixtures live in (the disassembler's repository, or a larger one).
-    repository_root = Path(subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], cwd=FIXTURES_ROOT,
-        check=True, capture_output=True, text=True,
-    ).stdout.strip())
+    repository_root = Path(
+        subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=FIXTURES_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
     workspace_directory = workspace.resolve().relative_to(repository_root.resolve()).as_posix()
     for relative_patch in project.get("patches", []):
         patch = within(FIXTURES_ROOT, relative_patch)
@@ -402,9 +379,7 @@ def prepare_workspace(project: dict[str, Any], source: Path) -> Path:
 
 def atomic_copy(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=destination.parent, prefix=f".{destination.name}.", suffix=".tmp"
-    )
+    descriptor, temporary_name = tempfile.mkstemp(dir=destination.parent, prefix=f".{destination.name}.", suffix=".tmp")
     os.close(descriptor)
     temporary = Path(temporary_name)
     try:
@@ -462,15 +437,10 @@ def build_project(config: dict[str, Any], project: dict[str, Any]) -> dict[str, 
             "output": project["output"],
         }
     )
-    identity_key = (
-        "source_sha256"
-        if project.get("source_kind", "upstream") == "local"
-        else "source_commit"
-    )
+    identity_key = "source_sha256" if project.get("source_kind", "upstream") == "local" else "source_commit"
     result[identity_key] = source_identity
     print(
-        f"OK {project['id']}: {result['size']} bytes "
-        f"sha256={result['sha256']}",
+        f"OK {project['id']}: {result['size']} bytes sha256={result['sha256']}",
         flush=True,
     )
     return result
@@ -480,22 +450,17 @@ def write_results(results: list[dict[str, Any]]) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {"schema_version": 1, "results": results}
     temporary = STATE_PATH.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, STATE_PATH)
 
 
-def verify_outputs(
-    config: dict[str, Any], projects: Iterable[dict[str, Any]]
-) -> None:
+def verify_outputs(config: dict[str, Any], projects: Iterable[dict[str, Any]]) -> None:
     validate_output_policy(config)
     for project in projects:
         output = within(FIXTURES_ROOT, project["output"])
         result = validate_rom(project, output)
         print(
-            f"OK {project['id']}: {result['size']} bytes "
-            f"sha256={result['sha256']}",
+            f"OK {project['id']}: {result['size']} bytes sha256={result['sha256']}",
             flush=True,
         )
 
@@ -546,8 +511,7 @@ def main(argv: list[str] | None = None) -> int:
                 if project.get("source_kind", "upstream") == "local":
                     source, identity, _ = source_status(project)
                     print(
-                        f"OK {project['id']}: local source={source} "
-                        f"sha256={identity}",
+                        f"OK {project['id']}: local source={source} sha256={identity}",
                         flush=True,
                     )
                 else:
@@ -555,10 +519,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.subcommand == "toolchain":
             build_toolchain(config, args.id)
         elif args.subcommand == "build":
-            results = [
-                build_project(config, project)
-                for project in selected_projects(config, args.project)
-            ]
+            results = [build_project(config, project) for project in selected_projects(config, args.project)]
             write_results(results)
         elif args.subcommand == "verify":
             verify_outputs(config, selected_projects(config, args.project))
