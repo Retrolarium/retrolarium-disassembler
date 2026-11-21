@@ -170,11 +170,13 @@ class AbstractValue:
             return joined
         lower = 0 if bounds[0] < self.lower else self.lower
         upper = self.mask if bounds[1] > self.upper else self.upper
-        strides = [value for value in (self.stride(), other.stride()) if value]
+        # A joined value may add a residue within the old bounds as well as
+        # extend them. Changing the origin to zero must preserve that residue.
+        step = gcd(joined.stride(), bounds[0] - lower) or 1
         return AbstractValue.interval(
             lower,
             upper,
-            gcd(*strides) if strides else 1,
+            step,
             self.bits,
             address_space=joined.address_space,
         )
