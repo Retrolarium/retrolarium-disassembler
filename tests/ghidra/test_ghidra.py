@@ -335,35 +335,111 @@ class GhidraBackendTests(unittest.TestCase):
             self.assertEqual("SPC700_RAM", command[facts_index + 2])
 
 
-@unittest.skipIf(os.name == "nt", "process groups are POSIX")
 class LauncherProcessTreeTests(unittest.TestCase):
     def test_timeout_stops_children_that_hold_the_output_pipe(self) -> None:
+        # A Python fixture runs on both hosts, without sh or sleep. On POSIX
+        # its parent reaps the child after the group's SIGTERM; it never
+        # terminates the child itself. This tests group termination without
+        # depending on a container's PID 1 to reap orphaned zombies.
         started: list[subprocess.Popen] = []
+        began: list[float] = []
+        child_handle = None
         real_popen = subprocess.Popen
+        kernel = None
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
 
-        def popen(*args, **kwargs):
-            process = real_popen(*args, **kwargs)
-            started.append(process)
-            return process
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel.OpenProcess.restype = wintypes.HANDLE
+            kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel.WaitForSingleObject.restype = wintypes.DWORD
+            kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+            kernel.TerminateProcess.restype = wintypes.BOOL
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel.CloseHandle.restype = wintypes.BOOL
 
         with tempfile.TemporaryDirectory() as directory:
-            begin = time.monotonic()
-            with patch("retrolarium_disassembler.ghidra.subprocess.Popen", side_effect=popen):
-                with self.assertRaisesRegex(GhidraError, "did not finish"):
-                    run_launcher(["sh", "-c", "sleep 60 & sleep 60"], cwd=Path(directory), timeout=1)
-            self.assertLess(time.monotonic() - begin, 10)
+            root = Path(directory)
+            ready = root / "child.json"
+            launcher = root / "launcher with spaces.py"
+            launcher.write_text(
+                "import json, os, pathlib, signal, subprocess, sys, time\n"
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+                "def stopped(*args):\n"
+                "    child.wait(timeout=3)\n"
+                "    raise SystemExit(0)\n"
+                "signal.signal(signal.SIGTERM, stopped)\n"
+                "ready = pathlib.Path(sys.argv[1])\n"
+                "pending = ready.with_suffix('.tmp')\n"
+                "pending.write_text(json.dumps({'parent': os.getpid(), 'child': child.pid}))\n"
+                "pending.replace(ready)\n"
+                "while True: time.sleep(60)\n",
+                encoding="utf-8",
+            )
+            command = [sys.executable, str(launcher), str(ready)]
 
-        self.assertEqual(1, len(started))
-        group = started[0].pid
-        deadline = time.monotonic() + 5
-        while True:
+            def popen(*args, **kwargs):
+                nonlocal child_handle
+                process = real_popen(*args, **kwargs)
+                # Windows also starts taskkill; only track the launcher.
+                if args[0] != command:
+                    return process
+                started.append(process)
+                deadline = time.monotonic() + 10
+                while not ready.is_file() and process.poll() is None and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(ready.is_file(), "launcher did not start its child")
+                holder = json.loads(ready.read_text(encoding="utf-8"))
+                self.assertEqual(process.pid, holder["parent"])
+                if kernel is not None:
+                    # Keep the exact child's process object, avoiding PID reuse.
+                    child_handle = kernel.OpenProcess(0x100001, False, holder["child"])
+                    self.assertTrue(child_handle, "cannot observe the fixture child")
+                began.append(time.monotonic())
+                return process
+
             try:
-                os.killpg(group, 0)
-            except ProcessLookupError:
-                break
-            if time.monotonic() > deadline:
-                self.fail("a process of the launcher's group outlived it")
-            time.sleep(0.05)
+                with patch("retrolarium_disassembler.ghidra.subprocess.Popen", side_effect=popen):
+                    with self.assertRaisesRegex(GhidraError, "did not finish"):
+                        run_launcher(command, cwd=root, timeout=1)
+                self.assertEqual(1, len(started))
+                self.assertLess(time.monotonic() - began[0], 10)
+                self.assertIsNotNone(started[0].poll(), "launcher outlived its timeout")
+                if kernel is not None:
+                    self.assertEqual(0, kernel.WaitForSingleObject(child_handle, 5000), "child outlived its launcher")
+                else:
+                    deadline = time.monotonic() + 5
+                    while True:
+                        try:
+                            os.killpg(started[0].pid, 0)
+                        except ProcessLookupError:
+                            break
+                        if time.monotonic() > deadline:
+                            self.fail("a process of the launcher's group outlived it")
+                        time.sleep(0.05)
+            finally:
+                if kernel is not None and child_handle:
+                    if kernel.WaitForSingleObject(child_handle, 0) == 258:
+                        kernel.TerminateProcess(child_handle, 1)
+                        kernel.WaitForSingleObject(child_handle, 5000)
+                    kernel.CloseHandle(child_handle)
+                elif kernel is None and started:
+                    import signal
+
+                    try:
+                        os.killpg(started[0].pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                for process in started:
+                    if process.poll() is None:
+                        if kernel is not None:
+                            subprocess.run(
+                                ["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True, timeout=5
+                            )
+                        process.kill()
+                    process.wait(timeout=5)
 
 
 if __name__ == "__main__":

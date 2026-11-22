@@ -22,3 +22,11 @@ format-check:
 
 hooks:
 	$(PYTHON) $(CORE)/hooks.py install .
+
+# The same Python entrypoint on every host; make is optional.
+.PHONY: test test-python
+test:
+	$(PYTHON) tools/test.py
+
+test-python:
+	$(PYTHON) tools/test.py --suite python

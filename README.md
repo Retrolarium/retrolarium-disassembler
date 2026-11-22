@@ -50,7 +50,7 @@ src/retrolarium_disassembler/
   m68k/             68000 passes: dispatch/, callbacks/, frames/, records/, repair/
   z80/              Z80 dispatch tables
   snes/             W65C816 analysis, SPC700 uploads, ca65 emitter
-tests/              python -m unittest discover -s tests; folders mirror the
+tests/              python tools/test.py --suite python; folders mirror the
                     package, scripts/ covers tools/, builders.py files hold
                     the shared test images and facts
 tools/              python -m tools.<group>.<name>, from this folder:
@@ -424,7 +424,7 @@ python rldisasm.py benchmark pointers `
   build/honkey-disassembly/analysis/pointers.json `
   fixtures/oracles/nes.honkeypong.pointer-tables.json
 python rldisasm.py preset game.nes --output build/game-studio
-python -m unittest discover -s tests
+python tools/test.py --suite python
 ```
 
 The `disassemble` commands and `megadrive emit` guard their output folder: they
@@ -486,3 +486,39 @@ Software Foundation, either version 3 of the License, or (at your option) any
 later version (`GPL-3.0-or-later`, text in `LICENSE`). It comes without any
 warranty. Ghidra, GhidraNes and the SLEIGH languages it installs keep their own
 licenses.
+
+## Portable test runner
+
+The same entrypoint runs on Windows, Linux and macOS with Python 3.11 or later.
+Clone the current `retrolarium-core` beside the other products (or install a
+Core that includes `retrolarium_core.testing`). The runner selects the
+checkout's sources explicitly. No PowerShell or Bash wrapper is needed. Python
+suites use Git for repository fixtures. Native suites additionally need CMake
+and the chosen build tool, such as MSBuild, Ninja or Make. The CI matrix covers
+Windows and Linux.
+
+```text
+python tools/test.py
+python tools/test.py --suite python
+python tools/test.py --suite checks
+python tools/test.py --suite checks --format --history
+```
+
+The default runs all tests this product has. Core and Studio also build and run
+their native tests with CMake and a host C++ compiler. The Kit and Disassembler
+have Python suites. `--suite python` needs no compiler or Qt. Repository guards
+and formatting are separate opt-in checks. The test runner explicitly excludes
+the PowerShell formatter, so it never probes or starts PowerShell. The other
+formatters retain their own language-specific tools; the separate `make format`
+command still supports PowerShell files. A private stop-word list comes from
+`RETROLARIUM_STOPWORDS`, an ancestor `.stopwords`, or CI's `STOPWORDS_LIST`. A
+missing unconfigured list is reported as skipped; a configured missing file
+fails. `--history` still checks historical objects.
+
+Native test failures and timeouts fail the command. Missing game fixtures and a
+test's exit code 77 count as skips, never passes. Missing executables or tracked
+repository fixtures are failures. `--game-sources PATH` selects the prepared
+game repositories; paths with spaces work without shell quoting inside the
+runner. `--jobs`, `--config` and `--build-dir` control CMake. Windows, POSIX and
+filesystem-specific assertions still run on their own platforms; the common
+runner does not pretend another host has those APIs.
