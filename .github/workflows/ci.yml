@@ -21,9 +21,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: retrolarium-disassembler
+      - name: Read pinned Core revision
+        id: core_ref
+        run: |
+          import subprocess, sys
+          subprocess.run([sys.executable, "tools/core_pin.py"], check=True)
       - uses: actions/checkout@v4
         with:
           repository: Retrolarium/retrolarium-core
+          ref: ${{ steps.core_ref.outputs.sha }}
           path: retrolarium-core
       - uses: actions/setup-python@v5
         with:

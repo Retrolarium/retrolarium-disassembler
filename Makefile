@@ -4,7 +4,13 @@
 # `make format-check`. The stop-word list lives outside the repositories, in
 # a .stopwords file above this one (see retrolarium_core/stop_words.py).
 
+# python3 on Linux and macOS, where python may not exist; python on Windows,
+# the name the python.org installer and setup-python provide there.
+ifeq ($(OS),Windows_NT)
 PYTHON ?= python
+else
+PYTHON ?= python3
+endif
 CORE ?= ../retrolarium-core/python/retrolarium_core
 
 .PHONY: lint format format-check hooks

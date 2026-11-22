@@ -522,3 +522,14 @@ game repositories; paths with spaces work without shell quoting inside the
 runner. `--jobs`, `--config` and `--build-dir` control CMake. Windows, POSIX and
 filesystem-specific assertions still run on their own platforms; the common
 runner does not pretend another host has those APIs.
+
+## Core revision in CI
+
+CI checks out the full Core commit recorded in `.github/core-ref`, so rerunning
+an older revision uses the same dependency. `python tools/core_pin.py` validates
+and prints the pin. To update it, test the intended Core commit with this
+checkout, put its full lowercase SHA in that file, and commit the update.
+Publish the Core commit before publishing a dependent pin update.
+
+The make entrypoints use `python` on Windows and `python3` elsewhere;
+`make PYTHON=...` selects an explicit interpreter.
