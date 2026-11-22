@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from retrolarium_disassembler import AnalysisError
 
-import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from pathlib import Path
-import subprocess
 
 from retrolarium_core.contracts import validate_megadrive_disassembly_manifest
+from retrolarium_disassembler.containers import run_container_build
+from retrolarium_disassembler.files import sha256_file, write_json_atomic
 from retrolarium_disassembler.facts import (
     InstructionFact,
     load_megadrive_ghidra_facts,
@@ -72,14 +72,6 @@ from retrolarium_disassembler.z80.dispatch import Z80DispatchTable, discover_z80
 
 
 MAX_ABSTRACT_PASSES = 32
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def _write_instructions(
@@ -159,14 +151,14 @@ def _program_record(
         "language": report["language"],
         "compiler": report["compiler"],
         "analysis_input": relative(analysis_input),
-        "analysis_input_sha256": _sha256(analysis_input),
+        "analysis_input_sha256": sha256_file(analysis_input),
         "raw_facts": relative(artifacts.facts),
-        "raw_facts_sha256": _sha256(artifacts.facts),
+        "raw_facts_sha256": sha256_file(artifacts.facts),
         "instructions": relative(instructions),
-        "instructions_sha256": _sha256(instructions),
+        "instructions_sha256": sha256_file(instructions),
         "instruction_count": len(facts),
         "report": relative(artifacts.report),
-        "report_sha256": _sha256(artifacts.report),
+        "report_sha256": sha256_file(artifacts.report),
         "artifact_root": relative(program_root),
     }
 
@@ -993,18 +985,18 @@ def analyze_megadrive(rom: Path, output: Path, ghidra_home: Path) -> dict[str, o
         )
     ]
     programs[0]["abstract_analysis"] = abstract_path.relative_to(output).as_posix()
-    programs[0]["abstract_analysis_sha256"] = _sha256(abstract_path)
+    programs[0]["abstract_analysis_sha256"] = sha256_file(abstract_path)
     programs[0]["unused_code"] = unused_path.relative_to(output).as_posix()
-    programs[0]["unused_code_sha256"] = _sha256(unused_path)
+    programs[0]["unused_code_sha256"] = sha256_file(unused_path)
     if artifacts.orphan_facts is not None:
         programs[0]["unused_probe_facts"] = artifacts.orphan_facts.relative_to(output).as_posix()
-        programs[0]["unused_probe_facts_sha256"] = _sha256(artifacts.orphan_facts)
+        programs[0]["unused_probe_facts_sha256"] = sha256_file(artifacts.orphan_facts)
     programs[0]["abstract_entrypoint_candidates"] = len(abstract_candidates)
     programs[0]["abstract_orphan_candidates"] = len(orphan_candidates)
     programs[0]["abstract_decoder_seed_count"] = len(planned_seeds)
     if seed_plan.is_file():
         programs[0]["abstract_decoder_seeds"] = seed_plan.relative_to(output).as_posix()
-        programs[0]["abstract_decoder_seeds_sha256"] = _sha256(seed_plan)
+        programs[0]["abstract_decoder_seeds_sha256"] = sha256_file(seed_plan)
     edges = []
     z80_symbol_programs = []
     copies = detect_z80_copies(image, facts)
@@ -1083,7 +1075,7 @@ def analyze_megadrive(rom: Path, output: Path, ghidra_home: Path) -> dict[str, o
                 {
                     "schema": "retrolarium.z80.dispatch-tables",
                     "schema_version": 1,
-                    "input_sha256": _sha256(z80_input),
+                    "input_sha256": sha256_file(z80_input),
                     "tables": [
                         {
                             "logical_start": table.logical_start,
@@ -1125,7 +1117,7 @@ def analyze_megadrive(rom: Path, output: Path, ghidra_home: Path) -> dict[str, o
         )
         program["derived_from"] = [copy.edge_id for copy in logical.fragments]
         program["dispatch_tables"] = dispatch_path.relative_to(output).as_posix()
-        program["dispatch_tables_sha256"] = _sha256(dispatch_path)
+        program["dispatch_tables_sha256"] = sha256_file(dispatch_path)
         programs.append(program)
         z80_symbol_programs.append((cpu_id, base_address, z80_facts))
         for fragment_index, copy in enumerate(logical.fragments):
@@ -1169,18 +1161,18 @@ def analyze_megadrive(rom: Path, output: Path, ghidra_home: Path) -> dict[str, o
         "programs": programs,
         "pointers": {
             "path": "pointers.json",
-            "sha256": _sha256(pointers_path),
+            "sha256": sha256_file(pointers_path),
             "candidate_count": len(pointer_candidates),
             "accepted_count": sum(candidate.status == "accepted" for candidate in pointer_candidates),
         },
         "symbols": {
             "path": "symbols.json",
-            "sha256": _sha256(symbols_path),
+            "sha256": sha256_file(symbols_path),
             "count": len(symbols),
         },
         "cross_cpu_evidence": {
             "path": "cross-cpu-evidence.json",
-            "sha256": _sha256(evidence_path),
+            "sha256": sha256_file(evidence_path),
             "edge_count": len(edges),
         },
     }
@@ -1216,22 +1208,9 @@ def _container_script(z80_builds: Sequence[Mapping[str, str]]) -> str:
 
 def _build_emitted_project(project: Path, container: str, z80_builds: Sequence[Mapping[str, str]] = ()) -> Path:
     project = project.resolve()
-    command = [
-        "docker",
-        "run",
-        "--rm",
-        "--mount",
-        f"type=bind,source={project},target=/work",
-        "--workdir",
-        "/work",
-        container,
-        "sh",
-        "-lc",
-        _container_script(z80_builds),
-    ]
-    result = subprocess.run(command, text=True)
-    if result.returncode:
-        raise MegaDriveEmitError(f"ASL container build failed with exit code {result.returncode}")
+    returncode = run_container_build(container, project, ["sh", "-c", _container_script(z80_builds)])
+    if returncode:
+        raise MegaDriveEmitError(f"ASL container build failed with exit code {returncode}")
     rebuilt = project / "rebuilt.bin"
     if not rebuilt.is_file():
         raise MegaDriveEmitError(f"expected rebuilt ROM was not produced: {rebuilt}")
@@ -1322,7 +1301,7 @@ def emit_analyzed_megadrive(
     # before reusing a cache; imported facts also validate every byte against ROM.
     def check(path_key: str, relative: object, digest: object) -> None:
         artifact = (analysis_root / str(relative)).resolve()
-        if not artifact.is_relative_to(analysis_root) or not artifact.is_file() or _sha256(artifact) != digest:
+        if not artifact.is_relative_to(analysis_root) or not artifact.is_file() or sha256_file(artifact) != digest:
             raise MegaDriveEmitError(f"cached analysis artifact changed: {path_key}")
 
     for record in [analysis, *analysis["programs"]]:
@@ -1406,20 +1385,20 @@ def emit_analyzed_megadrive(
         "input": image_record,
         "analysis": {
             "path": "analysis/analysis.json",
-            "sha256": _sha256(analysis_root / "analysis.json"),
+            "sha256": sha256_file(analysis_root / "analysis.json"),
             "program_count": len(analysis["programs"]),
         },
         "pointers": {
             "path": "analysis/emitted-pointers.json",
-            "sha256": _sha256(analysis_root / "emitted-pointers.json"),
+            "sha256": sha256_file(analysis_root / "emitted-pointers.json"),
         },
         "symbols": {
             "path": "analysis/emitted-symbols.json",
-            "sha256": _sha256(analysis_root / "emitted-symbols.json"),
+            "sha256": sha256_file(analysis_root / "emitted-symbols.json"),
         },
         "cross_cpu_evidence": {
             "path": "analysis/cross-cpu-evidence.json",
-            "sha256": _sha256(analysis_root / "cross-cpu-evidence.json"),
+            "sha256": sha256_file(analysis_root / "cross-cpu-evidence.json"),
         },
         "assets": _emitted_assets(emitted),
         "source": {
@@ -1456,7 +1435,7 @@ def emit_analyzed_megadrive(
                 # The kit's own toolchain assembles the Z80 programs first; a
                 # container's argv does all of it, as the kit runs it.
                 "z80_prebuild": [] if build_container else list(emitted.z80_builds),
-                **({"argv": ["sh", "-lc", _container_script(emitted.z80_builds)]} if build_container else {}),
+                **({"argv": ["sh", "-c", _container_script(emitted.z80_builds)]} if build_container else {}),
                 "output": "generated/rebuilt.bin",
             },
             "verify": {
@@ -1477,10 +1456,7 @@ def emit_analyzed_megadrive(
         "verification": verification,
     }
     output.mkdir(parents=True, exist_ok=True)
-    (output / "retrolarium-project.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    # An invalid manifest is not written, and an earlier one stays whole.
     validate_megadrive_disassembly_manifest(manifest, output)
+    write_json_atomic(output / "retrolarium-project.json", manifest)
     return manifest

@@ -1,4 +1,6 @@
+import contextlib
 import csv
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -14,6 +16,10 @@ from retrolarium_disassembler.facts import InstructionReference
 
 
 class OverlayProbeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # The overlay passes report their progress on stdout.
+        self.progress = self.enterContext(contextlib.redirect_stdout(io.StringIO()))
+
     def test_pseudo_absolute_word_targets_use_same_bus_normalization_as_raw(self):
         instruction = fact(
             0xFF2000,

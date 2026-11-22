@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import stat
 import subprocess
+import time
 import urllib.request
 import zipfile
 
+from retrolarium_disassembler.files import sha256_file
+
 
 LOCK_PATH = Path(__file__).resolve().parent / "toolchains" / "disassembly.lock.json"
+# A download that sends nothing for this many seconds has stalled.
+DOWNLOAD_TIMEOUT = 60
+# Written into each installed directory: the lock entries it was installed
+# from, so a changed lock reinstalls it.
+INSTALL_MARKER = ".retrolarium-installed.json"
+_MARKER_FIELDS = ("version", "commit", "archive", "sha256")
 
 
 class ToolchainError(RuntimeError):
@@ -38,14 +46,6 @@ def entry(lock: dict[str, object], key: str) -> dict[str, object]:
         if field not in value:
             raise ToolchainError(f"{key} lock entry has no {field}")
     return value
-
-
-def sha256_file(path: Path) -> str:
-    checksum = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            checksum.update(block)
-    return checksum.hexdigest()
 
 
 def verify_archive(path: Path, expected: dict[str, object]) -> None:
@@ -73,8 +73,15 @@ def download(expected: dict[str, object], cache: Path) -> Path:
     temporary = destination.with_suffix(destination.suffix + ".part")
     request = urllib.request.Request(str(expected["url"]), headers={"User-Agent": "retrolarium-disassembler/0.1"})
     try:
-        with urllib.request.urlopen(request) as response, temporary.open("wb") as output:
-            shutil.copyfileobj(response, output, length=1024 * 1024)
+        try:
+            with (
+                urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT) as response,
+                temporary.open("wb") as output,
+            ):
+                shutil.copyfileobj(response, output, length=1024 * 1024)
+        except OSError as exc:
+            # URLError and TimeoutError are OSErrors: a stalled server ends here too.
+            raise ToolchainError(f"cannot download {expected['url']}: {exc}") from exc
         verify_archive(temporary, expected)
         os.replace(temporary, destination)
     finally:
@@ -102,6 +109,49 @@ def safe_extract(archive: Path, destination: Path) -> None:
                 mode = (member.external_attr >> 16) & 0o777
                 if mode and not member.is_dir():
                     (root / member.filename).chmod(mode)
+
+
+def install_identity(**entries: dict[str, object]) -> dict[str, object]:
+    """What a marker records of the lock entries a directory was installed from."""
+    return {
+        "schema_version": 1,
+        "components": {
+            name: {field: str(value[field]) for field in _MARKER_FIELDS if field in value}
+            for name, value in sorted(entries.items())
+        },
+    }
+
+
+def read_install_marker(directory: Path) -> dict[str, object] | None:
+    """The identity a directory was installed with; None for an install older
+    than the markers (or one whose marker cannot be read)."""
+    try:
+        marker = json.loads((directory / INSTALL_MARKER).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return marker if isinstance(marker, dict) else None
+
+
+def write_install_marker(directory: Path, identity: dict[str, object]) -> None:
+    (directory / INSTALL_MARKER).write_text(
+        json.dumps(identity, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+    )
+
+
+def replace_directory(new: Path, destination: Path) -> None:
+    """Put a fully built directory in place of the installed one: the old one
+    is renamed aside first and removed only once the new one is in place."""
+    if not destination.exists():
+        os.replace(new, destination)
+        return
+    old = destination.with_name(f"{destination.name}.old-{time.time_ns()}")
+    os.replace(destination, old)
+    try:
+        os.replace(new, destination)
+    except BaseException:
+        os.replace(old, destination)
+        raise
+    shutil.rmtree(old, ignore_errors=True)
 
 
 def property_value(path: Path, key: str) -> str | None:
@@ -224,12 +274,23 @@ def install_processor_backend(
     language_definition_name: str,
     description: str,
 ) -> None:
+    """Install, or rebuild when its marker names another lock entry. An install
+    without a marker (older than the markers) is kept."""
     destination = ghidra_home / "Ghidra" / "Extensions" / str(expected["name"])
+    identity = install_identity(**{str(expected["name"]): expected})
     if destination.exists():
-        return
+        marker = read_install_marker(destination)
+        if marker is None or marker == identity:
+            return
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
+    installed = destination
+    # Built beside the installed extension (the same file system) and swapped
+    # in only once compiled.
+    destination = installed.with_name(f".{installed.name}.new")
+    if destination.exists():
+        shutil.rmtree(destination)
     finished = False
     try:
         safe_extract(archive, staging)
@@ -275,6 +336,8 @@ def install_processor_backend(
         if result.returncode or not compiled.is_file():
             tail = "\n".join(result.stdout.splitlines()[-60:])
             raise ToolchainError(f"processor SLEIGH compilation failed with exit code {result.returncode}\n{tail}")
+        write_install_marker(destination, identity)
+        replace_directory(destination, installed)
         finished = True
     finally:
         # Interrupted too (Ctrl+C): a half-built extension would pass for an
@@ -285,7 +348,10 @@ def install_processor_backend(
             shutil.rmtree(staging)
 
 
-def install_toolchain(tool_root: Path) -> dict[str, object]:
+def install_toolchain(tool_root: Path, *, reinstall: bool = False) -> dict[str, object]:
+    """Install the locked toolchain under tool_root. An install made from
+    another lock is rebuilt beside the old one and swapped in; one older than
+    the install markers is kept unless reinstall says to rebuild it."""
     tool_root = tool_root.resolve()
     cache = tool_root / "cache"
     ghidra_home = tool_root / "ghidra"
@@ -294,7 +360,9 @@ def install_toolchain(tool_root: Path) -> dict[str, object]:
     loader_entry = entry(lock, "nes_loader")
     snes_entry = entry(lock, "snes_backend")
     spc700_entry = entry(lock, "spc700_backend")
-    if ghidra_home.exists():
+    identity = install_identity(ghidra=ghidra_entry, nes_loader=loader_entry)
+    marker = read_install_marker(ghidra_home) if ghidra_home.exists() else None
+    if ghidra_home.exists() and not reinstall and (marker is None or marker == identity):
         snes_archive = download(snes_entry, cache)
         spc700_archive = download(spc700_entry, cache)
         install_snes_backend(
@@ -309,7 +377,14 @@ def install_toolchain(tool_root: Path) -> dict[str, object]:
             spc700_entry,
             tool_root / "spc700-extension-staging",
         )
-        return toolchain_status(ghidra_home)
+        try:
+            return toolchain_status(ghidra_home)
+        except ToolchainError as exc:
+            if marker is not None:
+                raise
+            raise ToolchainError(
+                f"{exc}; {ghidra_home} predates the install markers: run ghidra install --reinstall to replace it"
+            ) from exc
     ghidra_archive = download(ghidra_entry, cache)
     loader_archive = download(loader_entry, cache)
     snes_archive = download(snes_entry, cache)
@@ -346,7 +421,8 @@ def install_toolchain(tool_root: Path) -> dict[str, object]:
             spc700_entry,
             tool_root / "spc700-extension-staging",
         )
-        source.replace(ghidra_home)
+        write_install_marker(source, identity)
+        replace_directory(source, ghidra_home)
     finally:
         if staging.exists():
             shutil.rmtree(staging)

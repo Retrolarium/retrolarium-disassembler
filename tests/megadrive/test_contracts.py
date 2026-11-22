@@ -246,8 +246,9 @@ class MegaDriveContractTests(unittest.TestCase):
             root = Path(directory)
             path = write_megadrive_project(root)
             completed = subprocess.CompletedProcess([], 0)
+            # The kit starts a container only when it is named (or "default").
             with patch("retrolarium_kit.core.project.subprocess.run", return_value=completed) as run:
-                self.assertEqual("built", build_project(path)["status"])
+                self.assertEqual("built", build_project(path, container="asm68k:test")["status"])
             self.assertEqual(
                 ["asm68k", "/p", "main.68k,rebuilt.bin"],
                 run.call_args.args[0][-3:],
@@ -290,7 +291,7 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
                     record["input"]["sha256"] = digest(data)
                 emit.assert_not_called()
 
-    def _disassemble(self, root: Path, *, build_container: str | None):
+    def _disassemble(self, root: Path, *, build_container: str | None, invalid: Exception | None = None):
         from retrolarium_disassembler.megadrive import pipeline
         from retrolarium_disassembler.z80.dispatch import Z80DispatchTable
 
@@ -391,7 +392,7 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
             patch.object(pipeline, "generate_symbols", return_value=()),
             patch.object(pipeline, "image_manifest", return_value={}),
             patch.object(pipeline, "emit_project", return_value=emitted) as emit,
-            patch.object(pipeline, "validate_megadrive_disassembly_manifest"),
+            patch.object(pipeline, "validate_megadrive_disassembly_manifest", side_effect=invalid),
             patch.object(pipeline, "_build_emitted_project", return_value=rebuilt) as build,
             patch("retrolarium_disassembler.verify.verify_exact", return_value={"status": "exact"}),
         ):
@@ -448,6 +449,28 @@ class MegaDriveDisassemblyMetadataTests(unittest.TestCase):
         self.assertEqual("docker", operation["runner"])
         self.assertEqual("sh", operation["argv"][0])
         self.assertIn("asl -xx", operation["argv"][2])
+
+    def test_an_invalid_manifest_is_never_written(self) -> None:
+        from retrolarium_core.contracts import ContractError
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with self.assertRaisesRegex(ContractError, "bad manifest"):
+                self._disassemble(root, build_container=None, invalid=ContractError("bad manifest"))
+            self.assertEqual([], [path.name for path in (root / "out").iterdir() if path.is_file()])
+
+    def test_an_invalid_manifest_leaves_the_previous_one(self) -> None:
+        from retrolarium_core.contracts import ContractError
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "out").mkdir()
+            previous = root / "out" / "retrolarium-project.json"
+            previous.write_text('{"previous": true}\n', encoding="utf-8")
+            with self.assertRaises(ContractError):
+                self._disassemble(root, build_container=None, invalid=ContractError("bad manifest"))
+            self.assertEqual('{"previous": true}\n', previous.read_text(encoding="utf-8"))
+            self.assertEqual(["retrolarium-project.json"], [p.name for p in (root / "out").iterdir() if p.is_file()])
 
 
 if __name__ == "__main__":

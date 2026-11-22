@@ -1,6 +1,9 @@
+import contextlib
+import io
 from pathlib import Path
 import hashlib
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -402,9 +405,25 @@ class ProfileTableTests(unittest.TestCase):
     def test_missing_checkout_is_blocked_not_accepted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            result = prepare_profile("landstalker-us", root / "refs", root / "out", [], {})
+            # git, run in the missing checkout, complains on its own stderr.
+            with discarded_stderr():
+                result = prepare_profile("landstalker-us", root / "refs", root / "out", [], {})
             self.assertEqual("blocked", result["status"])
             self.assertNotIn("binary_sha256", result)
+
+
+@contextlib.contextmanager
+def discarded_stderr():
+    """Discard what child processes write to this process's stderr."""
+    sys.stderr.flush()
+    saved = os.dup(2)
+    try:
+        with open(os.devnull, "w") as sink:
+            os.dup2(sink.fileno(), 2)
+        yield
+    finally:
+        os.dup2(saved, 2)
+        os.close(saved)
 
 
 class BenchmarkAdapterTests(unittest.TestCase):
@@ -452,7 +471,9 @@ class BenchmarkAdapterTests(unittest.TestCase):
                 {"name": "other", "status": "upstream-only"},
             ]
             (root / "manifest.json").write_text(json.dumps({"units": units}), encoding="utf-8")
-            report = benchmark(root, root / "projects", root / "comparison")
+            with contextlib.redirect_stdout(io.StringIO()) as printed:
+                report = benchmark(root, root / "projects", root / "comparison")
+            self.assertIn("Comparing case...", printed.getvalue())
             self.assertEqual("normalized reference listing hash changed", report["cases"][0]["error"])
             self.assertEqual(["other"], [item["name"] for item in report["not_comparable"]])
             self.assertTrue((root / "comparison/summary.md").is_file())

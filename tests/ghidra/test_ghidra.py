@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from retrolarium_disassembler.ghidra import (
     GhidraError,
+    run_launcher,
     run_megadrive_analysis,
     run_nes_analysis,
     run_spc700_analysis,
@@ -75,10 +77,10 @@ class GhidraBackendTests(unittest.TestCase):
             seed_index = command.index("-preScript")
             self.assertEqual("SeedNesVectors.java", command[seed_index + 1])
             self.assertLess(seed_index, command.index("-postScript"))
+            # Without a seed plan the vector script gets no argument.
+            self.assertEqual("-postScript", command[seed_index + 2])
 
     def test_nes_entry_seed_plan_reaches_vector_script(self) -> None:
-        from retrolarium_disassembler.nes.pipeline import _run_seeded_nes_analysis
-
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             image, ghidra_home, scripts = self.fake_layout(root)
@@ -97,7 +99,7 @@ class GhidraBackendTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "ok")
 
             with patch("retrolarium_disassembler.ghidra.run_launcher", side_effect=complete) as run:
-                _run_seeded_nes_analysis(image, workspace, ghidra_home, scripts, seed_plan)
+                run_nes_analysis(image, workspace, ghidra_home, scripts, seed_plan=seed_plan)
 
             command = run.call_args.args[0]
             seed_index = command.index("SeedNesVectors.java")
@@ -331,6 +333,37 @@ class GhidraBackendTests(unittest.TestCase):
             self.assertEqual("SeedSpc700Entry.java", command[command.index("-preScript") + 1])
             facts_index = command.index("ExportInstructionFacts.java")
             self.assertEqual("SPC700_RAM", command[facts_index + 2])
+
+
+@unittest.skipIf(os.name == "nt", "process groups are POSIX")
+class LauncherProcessTreeTests(unittest.TestCase):
+    def test_timeout_stops_children_that_hold_the_output_pipe(self) -> None:
+        started: list[subprocess.Popen] = []
+        real_popen = subprocess.Popen
+
+        def popen(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            started.append(process)
+            return process
+
+        with tempfile.TemporaryDirectory() as directory:
+            begin = time.monotonic()
+            with patch("retrolarium_disassembler.ghidra.subprocess.Popen", side_effect=popen):
+                with self.assertRaisesRegex(GhidraError, "did not finish"):
+                    run_launcher(["sh", "-c", "sleep 60 & sleep 60"], cwd=Path(directory), timeout=1)
+            self.assertLess(time.monotonic() - begin, 10)
+
+        self.assertEqual(1, len(started))
+        group = started[0].pid
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                os.killpg(group, 0)
+            except ProcessLookupError:
+                break
+            if time.monotonic() > deadline:
+                self.fail("a process of the launcher's group outlived it")
+            time.sleep(0.05)
 
 
 if __name__ == "__main__":

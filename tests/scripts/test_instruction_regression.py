@@ -1,3 +1,5 @@
+import contextlib
+import io
 from pathlib import Path
 import json
 import sys
@@ -102,11 +104,15 @@ class InstructionRegressionTests(unittest.TestCase):
                 **{"before-rom": rom, "after-rom": rom, "output": output},
             )
             argv = [value for name, path in arguments.items() for value in ("--" + name, str(path))]
-            self.assertEqual(1, main(argv))
+            with contextlib.redirect_stdout(io.StringIO()) as printed:
+                self.assertEqual(1, main(argv))
             self.assertEqual(2, json.loads(output.read_text())["lost_count"])
+            self.assertEqual("regressed", json.loads(printed.getvalue())["status"])
             rom.unlink()
-            self.assertEqual(2, main(argv))
+            with contextlib.redirect_stdout(io.StringIO()) as printed:
+                self.assertEqual(2, main(argv))
             self.assertEqual("invalid", json.loads(output.read_text())["status"])
+            self.assertEqual("invalid", json.loads(printed.getvalue())["status"])
 
 
 if __name__ == "__main__":

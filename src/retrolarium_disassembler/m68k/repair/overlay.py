@@ -10,7 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from retrolarium_disassembler.facts import _load_ghidra_facts
+from retrolarium_disassembler.facts import TSV_FORMAT, _load_ghidra_facts
 from retrolarium_disassembler.ghidra import GhidraArtifacts, run_m68k_overlay_analysis
 from retrolarium_core.megadrive import MegaDriveImage, M68kVector, parse_megadrive
 from retrolarium_disassembler.m68k.abstract import (
@@ -331,11 +331,12 @@ def analyze_overlay(
         if converged:
             # Emission and comparison consume only instructions in the trusted CFG.
             with artifacts.facts.open(encoding="utf-8", newline="") as stream:
-                reader = csv.DictReader(stream, delimiter="\t")
+                # Fields are copied as Ghidra escaped them.
+                reader = csv.DictReader(stream, **TSV_FORMAT)
                 fields = reader.fieldnames
                 rows = [r for r in reader if int(r["address"], 16) in trusted.facts]
             with artifacts.facts.open("w", encoding="utf-8", newline="") as stream:
-                writer = csv.DictWriter(stream, fields, delimiter="\t", lineterminator="\n")
+                writer = csv.DictWriter(stream, fields, lineterminator="\n", **TSV_FORMAT)
                 writer.writeheader()
                 writer.writerows(rows)
             return artifacts

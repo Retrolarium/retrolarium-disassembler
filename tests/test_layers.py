@@ -2,7 +2,8 @@
 
 It builds on retrolarium-core alone: only preset.py, which turns a game into a
 Studio project, reaches for Retrolarium Kit. The shared modules (facts, the
-Ghidra bridge, toolchains, verification, benchmarks) know no platform. Each
+Ghidra bridge, toolchains, container builds, verification, benchmarks) know no
+platform. Each
 platform package keeps to itself, except that the Mega Drive pipeline drives
 the 68000 passes and the Z80 dispatch. The 68000 passes take their
 instruction helpers from m68k/instructions.py; from megadrive/ they still use
@@ -17,7 +18,7 @@ import unittest
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "retrolarium_disassembler"
 PLATFORMS = {"nes", "megadrive", "m68k", "z80", "snes"}
-SHARED = {"facts", "ghidra", "toolchain", "verify", "benchmark"}
+SHARED = {"facts", "ghidra", "toolchain", "verify", "benchmark", "containers", "files"}
 ALLOWED = {("megadrive", "m68k"), ("megadrive", "z80"), ("m68k", "megadrive")}
 # What the 68000 passes may still take from megadrive/ (moving these into
 # m68k/ waits for a second 68000 platform, Sega CD or 32X, to shape them).

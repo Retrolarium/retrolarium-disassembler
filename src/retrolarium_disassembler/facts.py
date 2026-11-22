@@ -42,6 +42,26 @@ class InstructionFact:
     references: tuple[InstructionReference, ...]
 
 
+# The Ghidra scripts' clean() writes a backslash as two, a tab as \t and a
+# line feed as \n (and drops carriage returns); a field holds nothing else.
+_ESCAPES = {"\\": "\\", "t": "\t", "n": "\n"}
+_ESCAPE = re.compile(r"\\(.?)", re.S)
+# The TSV the scripts write: no quoting, a quote is an ordinary character.
+TSV_FORMAT = {"delimiter": "\t", "quoting": csv.QUOTE_NONE, "quotechar": None}
+
+
+def unescape_field(value: str) -> str:
+    """The exact inverse of the Ghidra scripts' clean()."""
+
+    def replace(match: re.Match[str]) -> str:
+        escaped = _ESCAPES.get(match.group(1))
+        if escaped is None:
+            raise FactError(f"invalid escape in Ghidra field: {value!r}")
+        return escaped
+
+    return _ESCAPE.sub(replace, value)
+
+
 def parse_address(value: str) -> int:
     match = re.search(r"(?:0x)?([0-9a-f]+)$", value.strip(), re.I)
     if match is None:
@@ -185,7 +205,7 @@ def _load_ghidra_facts(
     facts: dict[int, InstructionFact] = {}
     occupied: set[int] = set()
     with path.open("r", encoding="utf-8", newline="") as stream:
-        reader = csv.DictReader(stream, delimiter="\t")
+        reader = csv.DictReader(stream, **TSV_FORMAT)
         required = {
             "block",
             "space",
@@ -202,6 +222,9 @@ def _load_ghidra_facts(
         if reader.fieldnames is None or not required.issubset(reader.fieldnames):
             raise FactError("unsupported Ghidra instruction-fact columns")
         for row in reader:
+            if None in row or None in row.values():
+                raise FactError(f"Ghidra fact row {reader.line_num} does not have {len(reader.fieldnames)} columns")
+            row = {key: unescape_field(value) for key, value in row.items()}
             if expected_block is not None and row["block"] != expected_block:
                 raise FactError(f"unexpected Ghidra block {row['block']!r}; expected {expected_block!r}")
             cpu_address = int(row["address"], 16)

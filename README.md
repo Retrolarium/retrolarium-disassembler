@@ -110,6 +110,13 @@ pinned MIT W65C816 and SPC700 languages as `Retrolarium65816` and
 `RetrolariumSPC700`, compiles them with Ghidra's SLEIGH compiler and preserves
 their upstream licenses; it does not install the upstream SNES cartridge loader.
 
+Each installed directory records the lock entries it came from in
+`.retrolarium-installed.json`. After the lock changes, `ghidra install` builds
+the changed component beside the installed one and swaps it in only once it is
+complete. An install made before these markers existed is kept as it is;
+`ghidra install --reinstall` replaces it (and rebuilds any install). Downloads
+that send nothing for 60 seconds fail with the URL they were fetching.
+
 ### Mega Drive / Genesis
 
 ```powershell
@@ -419,6 +426,15 @@ python rldisasm.py benchmark pointers `
 python rldisasm.py preset game.nes --output build/game-studio
 python -m unittest discover -s tests
 ```
+
+The `disassemble` commands and `megadrive emit` guard their output folder: they
+refuse a ROM inside a subfolder of it, and a rerun over generated sources
+changed since the previous run unless `--replace` says to overwrite them. While
+a run writes the folder it holds `.retrolarium-run-in-progress`; a run that was
+interrupted or failed leaves it, and the next run then reports the unfinished
+run rather than edits. The `analyze` commands are not guarded: they write
+analysis artifacts (`nes analyze` its own `manifest.json`), so give them a
+folder of their own rather than a disassembly's.
 
 `nes analyze` writes one isolated `banks/bankNN/` workspace per canonical PRG
 projection plus a merged `instructions.json`. Every instruction and flow has an

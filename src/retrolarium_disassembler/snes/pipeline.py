@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
-import subprocess
 
 from retrolarium_core.contracts import validate_snes_disassembly_manifest
+from retrolarium_disassembler.containers import run_container_build
 from retrolarium_disassembler.facts import InstructionFact, load_spc700_ghidra_facts
+from retrolarium_disassembler.files import sha256_file
 from retrolarium_disassembler.ghidra import run_spc700_analysis
 from retrolarium_disassembler.verify import verify_exact
 from retrolarium_core.snes import image_manifest, load_snes
@@ -28,14 +28,6 @@ class SnesPipelineError(RuntimeError):
     """A blind SNES pipeline stage failed its declared invariant."""
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def _write_json(path: Path, document: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -47,21 +39,9 @@ def _write_json(path: Path, document: object) -> None:
 
 def build_snes_in_container(project: Path, container: str) -> Path:
     project = project.resolve()
-    command = [
-        "docker",
-        "run",
-        "--rm",
-        "--mount",
-        f"type=bind,source={project},target=/work",
-        "--workdir",
-        "/work",
-        container,
-        "make",
-        "all",
-    ]
-    result = subprocess.run(command, text=True)
-    if result.returncode:
-        raise SnesPipelineError(f"SNES ca65 container build failed with {result.returncode}")
+    returncode = run_container_build(container, project, ["make", "all"])
+    if returncode:
+        raise SnesPipelineError(f"SNES ca65 container build failed with {returncode}")
     rebuilt = project / "build" / "rebuilt.sfc"
     if not rebuilt.is_file():
         raise SnesPipelineError(f"expected rebuilt image was not produced: {rebuilt}")
@@ -71,7 +51,7 @@ def build_snes_in_container(project: Path, container: str) -> Path:
 def _emission_record(result: EmissionResult, path: Path) -> dict[str, object]:
     return {
         "path": "generated/emission.json",
-        "sha256": _sha256(path),
+        "sha256": sha256_file(path),
         "bank_units": list(result.bank_units),
         "instruction_bytes": result.instruction_bytes,
         "instruction_fallback_bytes": result.instruction_fallback_bytes,
@@ -187,7 +167,7 @@ def _extract_spc700_programs(
             "byte_order": "little",
             "language": "SPC700:LE:16:default",
             "analysis_input": relative_input,
-            "analysis_input_sha256": _sha256(analysis_input),
+            "analysis_input_sha256": sha256_file(analysis_input),
             "load_address": copy.target_start,
             "size": copy.size,
             "derived_from": copy.edge_id,
@@ -214,12 +194,12 @@ def _extract_spc700_programs(
                     "status": "analyzed",
                     "compiler": report["compiler"],
                     "raw_facts": artifacts.facts.relative_to(output).as_posix(),
-                    "raw_facts_sha256": _sha256(artifacts.facts),
+                    "raw_facts_sha256": sha256_file(artifacts.facts),
                     "instructions": instructions.relative_to(output).as_posix(),
-                    "instructions_sha256": _sha256(instructions),
+                    "instructions_sha256": sha256_file(instructions),
                     "instruction_count": len(facts),
                     "report": artifacts.report.relative_to(output).as_posix(),
-                    "report_sha256": _sha256(artifacts.report),
+                    "report_sha256": sha256_file(artifacts.report),
                 }
             )
         programs.append(program)
@@ -283,9 +263,9 @@ def disassemble_snes(
             "byte_order": "little",
             "language": "65816:LE:24:snes",
             "analysis_input": "w65c816/analysis-input.sfc",
-            "analysis_input_sha256": _sha256(w65c816_input),
+            "analysis_input_sha256": sha256_file(w65c816_input),
             "instructions": "state-analysis.json",
-            "instructions_sha256": _sha256(state_path),
+            "instructions_sha256": sha256_file(state_path),
             "instruction_count": len(analysis.instructions),
             "status": "independent-state-analysis",
         },
@@ -318,23 +298,23 @@ def disassemble_snes(
         "input": portable_input,
         "analysis": {
             "path": "analysis/analysis.json",
-            "sha256": _sha256(analysis_path),
+            "sha256": sha256_file(analysis_path),
             "program_count": len(programs),
         },
         "pointers": {
             "path": "analysis/pointers.json",
-            "sha256": _sha256(pointers_path),
+            "sha256": sha256_file(pointers_path),
             "candidate_count": len(pointers),
             "accepted_count": len(accepted_pointer_tables(pointers)),
         },
         "symbols": {
             "path": "analysis/symbols.json",
-            "sha256": _sha256(symbols_path),
+            "sha256": sha256_file(symbols_path),
             "count": len(symbols),
         },
         "cross_cpu_evidence": {
             "path": "analysis/cross-cpu-evidence.json",
-            "sha256": _sha256(evidence_path),
+            "sha256": sha256_file(evidence_path),
             "edge_count": len(edges),
         },
         "assets": {

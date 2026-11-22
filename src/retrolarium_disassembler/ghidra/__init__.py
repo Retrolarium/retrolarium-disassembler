@@ -7,6 +7,7 @@ import json
 import os
 import re
 from pathlib import Path
+import signal
 import subprocess
 import tempfile
 
@@ -28,6 +29,28 @@ class GhidraArtifacts:
 _CMD_SPECIAL = set('&|<>^%!"')
 # A Ghidra run that has not ended in this long has hung.
 LAUNCHER_TIMEOUT = 4 * 60 * 60
+# How long a stopped launcher's group gets to exit on SIGTERM before SIGKILL,
+# and how long its remaining output is read afterwards.
+_TERMINATE_GRACE = 5
+_DRAIN_TIMEOUT = 30
+
+
+def _signal_process_group(process: subprocess.Popen, signal_number: int) -> None:
+    try:
+        os.killpg(process.pid, signal_number)
+    except ProcessLookupError:
+        pass
+
+
+def _stop_process_group(process: subprocess.Popen) -> None:
+    """Stop the launcher and everything it started: a child left alive (Java
+    under analyzeHeadless) keeps the output pipe open."""
+    _signal_process_group(process, signal.SIGTERM)
+    try:
+        process.wait(timeout=_TERMINATE_GRACE)
+    except subprocess.TimeoutExpired:
+        pass
+    _signal_process_group(process, signal.SIGKILL)
 
 
 def run_launcher(command: list[str], *, cwd: Path, timeout: float = LAUNCHER_TIMEOUT) -> subprocess.CompletedProcess:
@@ -42,7 +65,15 @@ def run_launcher(command: list[str], *, cwd: Path, timeout: float = LAUNCHER_TIM
                     f"{argument}"
                 )
     process = subprocess.Popen(
-        command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace"
+        command,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+        # On POSIX the launcher leads its own process group, so the Java
+        # process it starts can be stopped with it.
+        start_new_session=os.name != "nt",
     )
     try:
         output, _ = process.communicate(timeout=timeout)
@@ -50,8 +81,11 @@ def run_launcher(command: list[str], *, cwd: Path, timeout: float = LAUNCHER_TIM
         if os.name == "nt":
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
         else:
-            process.kill()
-        process.communicate()
+            _stop_process_group(process)
+        try:
+            process.communicate(timeout=_DRAIN_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            pass
         if isinstance(exc, subprocess.TimeoutExpired):
             raise GhidraError(f"Ghidra did not finish in {int(timeout // 60)} minutes") from None
         raise
@@ -71,7 +105,11 @@ def run_nes_analysis(
     workspace: Path,
     ghidra_home: Path,
     script_directory: Path,
+    *,
+    seed_plan: Path | None = None,
 ) -> GhidraArtifacts:
+    """Analyze an NES image from its vectors and, given a seed plan (one
+    hexadecimal CPU address per line), from those entry points too."""
     return _run_analysis(
         image,
         workspace,
@@ -82,6 +120,7 @@ def run_nes_analysis(
         expected_language="6502:LE:16:default",
         import_arguments=(),
         seed_script="SeedNesVectors.java",
+        seed_arguments=(str(seed_plan.resolve()),) if seed_plan is not None else (),
         export_block=None,
     )
 

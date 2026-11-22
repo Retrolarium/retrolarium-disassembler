@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    steps:
+      # The package and its tests find the core beside the checkout, in
+      # ../retrolarium-core, as with the repositories cloned side by side.
+      - uses: actions/checkout@v4
+        with:
+          path: retrolarium-disassembler
+      - uses: actions/checkout@v4
+        with:
+          repository: Retrolarium/retrolarium-core
+          path: retrolarium-core
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      # make lint is not run: without a stop-word list (a RETROLARIUM_STOPWORDS
+      # secret) the core's stop_words fails closed when CI is set. The
+      # stop-word unit tests skip without a list and say so.
+      - name: Run the unit tests
+        working-directory: retrolarium-disassembler
+        run: python -I -B -m unittest discover -s tests

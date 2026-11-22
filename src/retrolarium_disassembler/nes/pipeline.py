@@ -6,12 +6,13 @@ from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
-import subprocess
 
+from retrolarium_disassembler.containers import run_container_build
 from retrolarium_disassembler.nes.ca65 import emit_project
 from retrolarium_core.contracts import validate_disassembly_manifest
 from retrolarium_disassembler.facts import InstructionFact, load_ghidra_facts
-from retrolarium_disassembler.ghidra import GhidraArtifacts, _run_analysis, run_nes_analysis
+from retrolarium_disassembler.files import sha256_file
+from retrolarium_disassembler.ghidra import GhidraArtifacts, run_nes_analysis
 from retrolarium_core.ines import (
     InesImage,
     PrgAnalysisTarget,
@@ -37,31 +38,11 @@ class PipelineError(RuntimeError):
     """A pipeline stage failed its explicit contract."""
 
 
-def sha256_file(path: Path) -> str:
-    checksum = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            checksum.update(block)
-    return checksum.hexdigest()
-
-
 def build_in_container(project: Path, image: str) -> Path:
     project = project.resolve()
-    command = [
-        "docker",
-        "run",
-        "--rm",
-        "--mount",
-        f"type=bind,source={project},target=/work",
-        "--workdir",
-        "/work",
-        image,
-        "make",
-        "all",
-    ]
-    result = subprocess.run(command, text=True)
-    if result.returncode:
-        raise PipelineError(f"ca65 container build failed with {result.returncode}")
+    returncode = run_container_build(image, project, ["make", "all"])
+    if returncode:
+        raise PipelineError(f"ca65 container build failed with {returncode}")
     rebuilt = project / "build" / "rebuilt.nes"
     if not rebuilt.is_file():
         raise PipelineError(f"expected rebuilt image was not produced: {rebuilt}")
@@ -172,39 +153,11 @@ def _write_instruction_facts(path: Path, image: InesImage, facts: dict[int, Inst
     )
 
 
-MAX_ENTRY_SEED_PASSES = 1
 MAX_ENTRY_SEEDS_PER_BANK = 256
 
 
 def _script_directory() -> Path:
     return Path(__file__).resolve().parents[1] / "ghidra" / "scripts"
-
-
-def _run_seeded_nes_analysis(
-    image: Path,
-    workspace: Path,
-    ghidra_home: Path,
-    script_directory: Path,
-    seed_plan: Path,
-) -> GhidraArtifacts:
-    """Rerun NES analysis with a plan of extra code entry points.
-
-    The plan is passed to the vector seed script as its first argument; one
-    hexadecimal CPU address per line.
-    """
-    return _run_analysis(
-        image,
-        workspace,
-        ghidra_home,
-        script_directory,
-        project_name="retrolarium_nes",
-        project_prefix="nes_",
-        expected_language="6502:LE:16:default",
-        import_arguments=(),
-        seed_script="SeedNesVectors.java",
-        seed_arguments=(str(seed_plan.resolve()),),
-        export_block=None,
-    )
 
 
 def _bank_record(
@@ -319,12 +272,12 @@ def _reanalyze_with_entry_seeds(
             encoding="utf-8",
             newline="\n",
         )
-        artifacts = _run_seeded_nes_analysis(
+        artifacts = run_nes_analysis(
             analysis_input,
             bank_directory,
             ghidra_home.resolve(),
             script_directory,
-            seed_plan,
+            seed_plan=seed_plan,
         )
         bank_facts = load_ghidra_facts(artifacts.facts, image, bank=bank)
         for offset in [offset for offset in combined if target.physical_start <= offset <= target.physical_end]:
@@ -358,19 +311,11 @@ def _analyze_with_dispatch_passes(
 ]:
     facts, banks, facts_path = _analyze_prg_banks(image, output, ghidra_home)
     candidates = detect_banked_pointer_candidates(image, facts)
-    attempted: set[tuple[int, int]] = set()
-    for pass_number in range(2, 2 + MAX_ENTRY_SEED_PASSES):
-        seeds = {
-            bank: tuple(address for address in addresses if (bank, address) not in attempted)
-            for bank, addresses in dispatch_entry_seeds(image, facts, candidates).items()
-        }
-        seeds = {bank: addresses for bank, addresses in seeds.items() if addresses}
-        if not seeds:
-            break
-        attempted.update((bank, address) for bank, addresses in seeds.items() for address in addresses)
-        facts, banks, facts_path = _reanalyze_with_entry_seeds(
-            image, output, ghidra_home, facts, banks, seeds, pass_number
-        )
+    # One second pass: the banks whose accepted dispatch tables name undecoded
+    # entries are analyzed again from those entries.
+    seeds = dispatch_entry_seeds(image, facts, candidates)
+    if seeds:
+        facts, banks, facts_path = _reanalyze_with_entry_seeds(image, output, ghidra_home, facts, banks, seeds, 2)
         candidates = detect_banked_pointer_candidates(image, facts)
     return facts, banks, facts_path, candidates
 

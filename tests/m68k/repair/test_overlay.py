@@ -1,4 +1,6 @@
+import contextlib
 import csv
+import io
 from pathlib import Path
 import sys
 import tempfile
@@ -12,6 +14,10 @@ from m68k.repair.builders import HEADER, row
 
 
 class OverlayTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # The overlay passes report their progress on stdout.
+        self.progress = self.enterContext(contextlib.redirect_stdout(io.StringIO()))
+
     def test_alternative_overlapping_probes_remain_hypotheses(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -36,6 +42,7 @@ class OverlayTests(unittest.TestCase):
                 )
             with result.facts.open() as stream:
                 self.assertEqual(["00001000"], [r["address"] for r in csv.DictReader(stream, delimiter="\t")])
+        self.assertIn("overlay pass 1: 1 trusted", self.progress.getvalue())
 
     def test_rejects_non_file_backed_or_unaligned_entries(self):
         for entries in [(), (0x1001,), (0x1002,), (0x200,)]:

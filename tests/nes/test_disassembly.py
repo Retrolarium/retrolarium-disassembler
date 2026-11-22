@@ -235,11 +235,10 @@ class DisassemblyTests(unittest.TestCase):
             )
             return GhidraArtifacts(facts=facts_path, report=report, log=workspace / "headless.log")
 
-        def first_pass(image_path, workspace, ghidra_home, scripts):
-            return write_artifacts(workspace, dispatch_rows)
-
-        def seeded_pass(image_path, workspace, ghidra_home, scripts, plan):
-            text = plan.read_text(encoding="utf-8")
+        def analysis(image_path, workspace, ghidra_home, scripts, *, seed_plan=None):
+            if seed_plan is None:
+                return write_artifacts(workspace, dispatch_rows)
+            text = seed_plan.read_text(encoding="utf-8")
             seed_plans.append(text)
             rows = "".join(
                 f"PRG0\tPRG0\t{line}\t1\t60\tRTS\t\t\tTERMINATOR\t\tFUN_PRG0__{line.lower()}\n" for line in text.split()
@@ -249,14 +248,13 @@ class DisassemblyTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as directory,
             mock.patch.object(pipeline, "toolchain_status"),
-            mock.patch.object(pipeline, "run_nes_analysis", side_effect=first_pass),
-            mock.patch.object(pipeline, "_run_seeded_nes_analysis", side_effect=seeded_pass) as seeded,
+            mock.patch.object(pipeline, "run_nes_analysis", side_effect=analysis) as run,
         ):
             facts, banks, _, candidates = pipeline._analyze_with_dispatch_passes(
                 image, Path(directory), Path(directory) / "ghidra"
             )
 
-        self.assertEqual(1, seeded.call_count)
+        self.assertEqual(2, run.call_count)
         self.assertEqual(["C010\nC020\nC030\nC040\n"], seed_plans)
         for offset in (0x10, 0x20, 0x30, 0x40):
             self.assertIn(offset, facts)

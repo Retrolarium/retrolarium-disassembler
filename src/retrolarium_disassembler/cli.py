@@ -7,6 +7,8 @@ not pay for loading every analysis pass.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -41,11 +43,17 @@ class OutputError(RuntimeError):
 # Sources a person may have edited in a generated project (assembler output
 # and builds are the tools' own).
 _SOURCE_SUFFIXES = {".asm", ".s", ".inc", ".cfg", ".68k", ".z80"}
+# In the output folder while a run writes it: still there, that run did not
+# finish, and the sources it rewrote are newer than the manifest.
+RUN_MARKER = ".retrolarium-run-in-progress"
 
 
 def guard_output(rom: Path, output: Path, replace: bool) -> None:
     """Refuse a run that would write over its own input ROM, or over sources
-    of an earlier run edited since (--replace overwrites them)."""
+    of an earlier run edited since (--replace overwrites them).
+
+    The analyze commands are not guarded: they write analysis artifacts only
+    (nes analyze its own manifest.json), so they get a folder of their own."""
     rom = rom.resolve()
     output = output.resolve()
     if rom.is_relative_to(output) and rom.parent != output:
@@ -63,11 +71,28 @@ def guard_output(rom: Path, output: Path, replace: bool) -> None:
         and "build" not in path.relative_to(generated).parts
         and path.stat().st_mtime > written + 1
     )
+    if edited and (output / RUN_MARKER).is_file():
+        raise OutputError(
+            f"the previous run into {output} did not finish: the {len(edited)} source file(s) in {generated} "
+            "it may have rewritten cannot be told from edits; --replace overwrites them"
+        )
     if edited:
         raise OutputError(
             f"{len(edited)} source file(s) in {generated} changed since the last run "
             f"(first: {edited[0].relative_to(generated).as_posix()}); --replace overwrites them"
         )
+
+
+@contextlib.contextmanager
+def guarded_output(rom: Path, output: Path, replace: bool) -> Iterator[None]:
+    """guard_output, then mark the output folder as being written until the
+    run ends; a run that fails or is interrupted leaves the mark."""
+    guard_output(rom, output, replace)
+    output.mkdir(parents=True, exist_ok=True)
+    marker = output / RUN_MARKER
+    marker.write_text("a run into this folder has not finished\n", encoding="utf-8")
+    yield
+    marker.unlink(missing_ok=True)
 
 
 def ghidra_home(args: argparse.Namespace) -> Path:
@@ -94,8 +119,9 @@ def command_nes_analyze(args: argparse.Namespace) -> None:
 def command_nes_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.nes.pipeline import disassemble_nes
 
-    guard_output(args.rom, args.output, args.replace)
-    print_json(disassemble_nes(args.rom, args.output, ghidra_home(args), build_container=args.build_container))
+    with guarded_output(args.rom, args.output, args.replace):
+        result = disassemble_nes(args.rom, args.output, ghidra_home(args), build_container=args.build_container)
+    print_json(result)
 
 
 # ---------------------------------------------------------------- Mega Drive
@@ -116,15 +142,17 @@ def command_megadrive_analyze(args: argparse.Namespace) -> None:
 def command_megadrive_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.megadrive.pipeline import disassemble_megadrive
 
-    guard_output(args.rom, args.output, args.replace)
-    print_json(disassemble_megadrive(args.rom, args.output, ghidra_home(args), build_container=args.build_container))
+    with guarded_output(args.rom, args.output, args.replace):
+        result = disassemble_megadrive(args.rom, args.output, ghidra_home(args), build_container=args.build_container)
+    print_json(result)
 
 
 def command_megadrive_emit(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.megadrive.pipeline import emit_analyzed_megadrive
 
-    guard_output(args.rom, args.output, args.replace)
-    print_json(emit_analyzed_megadrive(args.rom, args.output))
+    with guarded_output(args.rom, args.output, args.replace):
+        result = emit_analyzed_megadrive(args.rom, args.output)
+    print_json(result)
 
 
 # ---------------------------------------------------------------- SNES
@@ -176,10 +204,11 @@ def command_snes_analyze(args: argparse.Namespace) -> None:
 def command_snes_disassemble(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.snes.pipeline import disassemble_snes
 
-    guard_output(args.rom, args.output, args.replace)
-    print_json(
-        disassemble_snes(args.rom, args.output, ghidra_home=ghidra_home(args), build_container=args.build_container)
-    )
+    with guarded_output(args.rom, args.output, args.replace):
+        result = disassemble_snes(
+            args.rom, args.output, ghidra_home=ghidra_home(args), build_container=args.build_container
+        )
+    print_json(result)
 
 
 # ---------------------------------------------------------------- shared
@@ -200,7 +229,7 @@ def command_ghidra_status(args: argparse.Namespace) -> None:
 def command_ghidra_install(args: argparse.Namespace) -> None:
     from retrolarium_disassembler.toolchain import install_toolchain
 
-    print_json(install_toolchain(args.tool_root))
+    print_json(install_toolchain(args.tool_root, reinstall=args.reinstall))
 
 
 def command_benchmark_pointers(args: argparse.Namespace) -> None:
@@ -312,6 +341,9 @@ def parser() -> argparse.ArgumentParser:
     ghidra_commands = ghidra.add_subparsers(dest="ghidra_command", required=True)
     install = ghidra_commands.add_parser("install")
     install.add_argument("--tool-root", type=Path, default=DEFAULT_TOOL_ROOT)
+    install.add_argument(
+        "--reinstall", action="store_true", help="rebuild the install even if it predates the install markers"
+    )
     install.set_defaults(handler=command_ghidra_install)
     status = ghidra_commands.add_parser("status")
     status.add_argument("--ghidra-home", type=Path, help="default: RETROLARIUM_GHIDRA_HOME, else the tool root's")
@@ -363,6 +395,7 @@ def _expected_errors() -> tuple[type[BaseException], ...]:
         "retrolarium_disassembler": "AnalysisError",
         "retrolarium_disassembler.cli": "OutputError",
         "retrolarium_disassembler.benchmark": "BenchmarkError",
+        "retrolarium_disassembler.containers": "ContainerError",
         "retrolarium_disassembler.facts": "FactError",
         "retrolarium_disassembler.ghidra": "GhidraError",
         "retrolarium_disassembler.toolchain": "ToolchainError",

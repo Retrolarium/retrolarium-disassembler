@@ -1,6 +1,8 @@
 """Overlay repair plans use module addresses without promoting their targets."""
 
+import contextlib
 import csv
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -13,6 +15,10 @@ from m68k.repair.builders import HEADER, row
 
 
 class OverlayFallthroughTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # The overlay passes report their progress on stdout.
+        self.progress = self.enterContext(contextlib.redirect_stdout(io.StringIO()))
+
     def test_canonical_repair_drives_next_pass_at_module_load_address(self):
         plans, entries = [], []
         base = 0xFF2000
