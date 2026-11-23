@@ -22,10 +22,24 @@ def _find_core() -> None:
         return
     here = Path(__file__).resolve()
     for root in (here.parents[3], here.parents[3].parent):
-        candidate = root / "retrolarium-core" / "python"
-        if (candidate / "retrolarium_core").is_dir():
-            sys.path.append(str(candidate))
+        candidates = [root / "retrolarium-core" / "python"]
+        candidates += sorted(folder / "python" for folder in root.glob("retrolarium-core-*"))
+        available = [candidate for candidate in candidates if (candidate / "retrolarium_core/__init__.py").is_file()]
+        if len(available) > 1 and available[0] != candidates[0]:
+            raise ImportError(
+                "Multiple Core archives were found. Install the chosen checkout with "
+                "python -m pip install -e PATH_TO_CORE.",
+                name="retrolarium_core",
+            )
+        if available:
+            sys.path.append(str(available[0]))
             return
+    raise ImportError(
+        "Retrolarium Core is required. Clone https://github.com/Retrolarium/retrolarium-core "
+        "beside this checkout, or install it with python -m pip install -e PATH_TO_CORE. "
+        "See the Installation section in README.md.",
+        name="retrolarium_core",
+    )
 
 
 _find_core()

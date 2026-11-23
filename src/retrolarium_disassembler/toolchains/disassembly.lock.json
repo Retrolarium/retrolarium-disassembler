@@ -25,11 +25,18 @@
     "commit": "d33ce5dbfbc3645f00449be1c7ca1c1c65e81756",
     "license": "MIT",
     "language_id": "65816:LE:24:snes",
-    "archive": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756.zip",
-    "url": "https://github.com/joshleaves/ghidra-snes/archive/d33ce5dbfbc3645f00449be1c7ca1c1c65e81756.zip",
-    "size": 359349,
-    "sha256": "dd3721fb642d6d07a3f2da7ff19e883bb92bb34185dc80053be6a0ff8088c4b0",
-    "source_directory": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756"
+    "archive": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756-languages.zip",
+    "url": "package:toolchains/backends/ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756-languages.zip",
+    "size": 19833,
+    "sha256": "7c08b622ed84dcd75a774d13352ad38ab4bf7a5ed5cc7b579b44e88e2d6cf6dd",
+    "source_directory": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756",
+    "upstream_archive": {
+      "archive": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756.zip",
+      "url": "https://github.com/joshleaves/ghidra-snes/archive/d33ce5dbfbc3645f00449be1c7ca1c1c65e81756.zip",
+      "size": 359349,
+      "sha256": "dd3721fb642d6d07a3f2da7ff19e883bb92bb34185dc80053be6a0ff8088c4b0",
+      "source_directory": "ghidra-snes-d33ce5dbfbc3645f00449be1c7ca1c1c65e81756"
+    }
   },
   "spc700_backend": {
     "name": "RetrolariumSPC700",
@@ -38,10 +45,17 @@
     "commit": "af628ce1a8e86ae1382dcec4c03d4412e013890c",
     "license": "MIT",
     "language_id": "SPC700:LE:16:default",
-    "archive": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c.zip",
-    "url": "https://github.com/Raikaru/ghidra-spc700/archive/af628ce1a8e86ae1382dcec4c03d4412e013890c.zip",
-    "size": 21965,
-    "sha256": "b812013570d850e2cb3cf2be7ebb13a9979b97b4d145ae28ad7c5c3f5a94fffd",
-    "source_directory": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c"
+    "archive": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c-languages.zip",
+    "url": "package:toolchains/backends/ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c-languages.zip",
+    "size": 7926,
+    "sha256": "05cba109c209df51307654febe749b8b3b929fbe60eb1f5139a864845f24ceab",
+    "source_directory": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c",
+    "upstream_archive": {
+      "archive": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c.zip",
+      "url": "https://github.com/Raikaru/ghidra-spc700/archive/af628ce1a8e86ae1382dcec4c03d4412e013890c.zip",
+      "size": 21965,
+      "sha256": "b812013570d850e2cb3cf2be7ebb13a9979b97b4d145ae28ad7c5c3f5a94fffd",
+      "source_directory": "ghidra-spc700-af628ce1a8e86ae1382dcec4c03d4412e013890c"
+    }
   }
 }

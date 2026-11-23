@@ -5,13 +5,14 @@ project that rebuilds byte for byte. The NES pipeline turns a profiled iNES
 image into a ca65 project; mapper profiles describe the physical-to-logical
 projections used for independent bank analysis and source emission. Analysis
 runs headless Ghidra with pinned versions plus the disassembler's own passes,
-and the result is always verified against the original image.
+and the emitted manifest can be verified against the original image with
+`rltool project verify` (or during disassembly with `--build-container`).
 
 The Mega Drive pipeline parses cartridge headers and checksums, analyzes the
 68000 and statically recovered Z80 payloads as independent Ghidra Programs,
-emits a complete modular AS (asl) project, and proves an exact rebuild. Stable
-symbols, big-endian/relative pointer candidates and cross-CPU copy evidence are
-published through a versioned project manifest.
+emits a complete modular AS (asl) project, and supports explicit exact-rebuild
+verification. Stable symbols, big-endian/relative pointer candidates and
+cross-CPU copy evidence are published through a versioned project manifest.
 
 The SNES pipeline now reaches the same integration boundary. Its versioned image
 component parses plain LoROM/HiROM containers, optional copier headers, mirrored
@@ -34,6 +35,36 @@ launched by [Retrolarium Kit](https://github.com/Retrolarium/retrolarium-kit)
 `rldisasm preset`, which turns a recognized game into a ready-to-open Studio
 project, is the one command that needs the kit installed
 (`retrolarium-disassembler[studio]`).
+
+## Installation
+
+This is an advanced command-line tool for analyzing your own ROMs. For editing
+already supported games, start with the
+[Studio download](https://github.com/Retrolarium/retrolarium-studio/releases).
+Disassembler itself needs Python 3.11+, Git and a 64-bit JDK 21 or later (`java`
+and `javac`, with `JAVA_HOME` pointing to the JDK).
+
+On Windows or Linux, clone Core beside this checkout and install the chosen
+local sources together:
+
+```sh
+python -m pip install --no-deps -e ../retrolarium-core -e .
+rldisasm ghidra install
+rldisasm nes disassemble path/to/your-game.nes --output build/your-game
+```
+
+GitHub source archives named `retrolarium-core-main` or `retrolarium-core-<tag>`
+are also recognized by the source launcher. With multiple archives, install the
+one you intend explicitly. `RETROLARIUM_CORE` names the native `rlcore`
+executable for codecs; it does not name a Python import folder.
+
+An ordinary `pip install .` gets Core from the exact Git source commit pinned in
+`pyproject.toml`, rather than an unqualified package name on PyPI. Install Kit
+as well to build/verify generated projects or use `rldisasm preset`; its
+assemblers need prepared payloads (see Kit's installation instructions). Docker
+is optional for normal analysis, and needed only for explicit container build
+verification and building the open fixture toolchains below. On Windows,
+Ghidra's batch launcher cannot safely accept paths containing `& | < > ^ % ! "`.
 
 ## Layout
 
@@ -59,7 +90,7 @@ tools/              python -m tools.<group>.<name>, from this folder:
   reports/          HTML and Markdown source comparisons
   compiler_scan/    compiler traces in ROM sets
 fixtures/           open test games, synthetic probes and their Docker images
-docs/               pipeline contracts, corpus baselines and reviews
+docs/               pipeline and format contracts
 ```
 
 ## Current NES boundary
@@ -84,8 +115,9 @@ bank-qualified symbols.
 
 ## Quick start
 
-Run the source-checkout launcher from the repository root. Python 3.11+, Java 21
-and Docker are required for the complete verified path.
+Run the source-checkout launcher from the repository root. This example builds
+an open fixture first and therefore needs Docker; analysis of your own ROM does
+not require Docker.
 
 ```powershell
 python fixtures/scripts/build_fixtures.py toolchain nes
@@ -109,6 +141,10 @@ with `--ghidra-home` or `RETROLARIUM_GHIDRA_HOME`. The same command installs the
 pinned MIT W65C816 and SPC700 languages as `Retrolarium65816` and
 `RetrolariumSPC700`, compiles them with Ghidra's SLEIGH compiler and preserves
 their upstream licenses; it does not install the upstream SNES cartridge loader.
+Those language sources are shipped as small, verified source-only bundles in the
+Python package. They contain no upstream test ROMs. Their provenance and
+repacking recipe are in
+`src/retrolarium_disassembler/toolchains/backends/README.md`.
 
 Each installed directory records the lock entries it came from in
 `.retrolarium-installed.json`. After the lock changes, `ghidra install` builds
@@ -363,6 +399,7 @@ group links to the matching row in the HTML report.
 ### SNES / Super Famicom foundation
 
 ```powershell
+python fixtures/scripts/build_fixtures.py toolchain snes
 python fixtures/scripts/build_fixtures.py build `
   snes.lorom_probe snes.hirom_probe
 python rldisasm.py snes inspect `

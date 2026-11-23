@@ -12,7 +12,9 @@ license = { text = "GPL-3.0-or-later" }
 classifiers = [
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
 ]
-dependencies = ["retrolarium-core"]
+dependencies = [
+  "retrolarium-core @ git+https://github.com/Retrolarium/retrolarium-core@0a5402205cb2485e9fc861b970131efd7ccb38c9",
+]
 
 [project.optional-dependencies]
 # `rldisasm preset` turns a recognized game into a Studio project.
@@ -28,6 +30,8 @@ where = ["src"]
 retrolarium_disassembler = [
   "ghidra/scripts/*.java",
   "toolchains/*.json",
+  "toolchains/backends/*.zip",
+  "toolchains/backends/*.md",
 ]
 
 [tool.pytest.ini_options]

@@ -11,6 +11,8 @@ import signal
 import subprocess
 import tempfile
 
+from retrolarium_disassembler.java import JavaError, java_environment
+
 
 class GhidraError(RuntimeError):
     """The external Ghidra backend could not produce valid artifacts."""
@@ -64,12 +66,21 @@ def run_launcher(command: list[str], *, cwd: Path, timeout: float = LAUNCHER_TIM
                     f"cmd.exe cannot pass this path to Ghidra safely (it holds one of {''.join(sorted(_CMD_SPECIAL))}): "
                     f"{argument}"
                 )
+    environment = None
+    if Path(command[0]).name.lower() in {"analyzeheadless", "analyzeheadless.bat", "sleigh", "sleigh.bat"}:
+        try:
+            environment = java_environment(Path(command[0]).resolve().parent.parent)
+        except JavaError as error:
+            raise GhidraError(str(error)) from error
     process = subprocess.Popen(
         command,
         cwd=cwd,
+        env=environment,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
         errors="replace",
         # On POSIX the launcher leads its own process group, so the Java
         # process it starts can be stopped with it.

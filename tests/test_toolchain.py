@@ -27,6 +27,11 @@ from retrolarium_disassembler.toolchain import (
 
 
 class ToolchainTests(unittest.TestCase):
+    def setUp(self) -> None:
+        patcher = patch("retrolarium_disassembler.toolchain.java_environment", return_value={})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_disassembly_lock_is_complete(self) -> None:
         lock = load_lock()
         self.assertEqual("12.1.3", lock["ghidra"]["version"])
@@ -146,6 +151,9 @@ class ToolchainUpdateTests(unittest.TestCase):
     """install_toolchain against a fake lock whose archives lie in the cache."""
 
     def setUp(self) -> None:
+        java = patch("retrolarium_disassembler.toolchain.java_environment", return_value={})
+        java.start()
+        self.addCleanup(java.stop)
         self.directory = tempfile.TemporaryDirectory()
         self.root = Path(self.directory.name)
         self.tool_root = self.root / "tools"
@@ -274,6 +282,25 @@ class ToolchainUpdateTests(unittest.TestCase):
 
 
 class DownloadTests(unittest.TestCase):
+    def test_bundled_processor_sources_need_no_network_and_contain_no_roms(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for key in ("snes_backend", "spc700_backend"):
+                expected = load_lock()[key]
+                with patch("urllib.request.urlopen", side_effect=AssertionError("network was used")):
+                    archive = download(expected, Path(directory))
+                with zipfile.ZipFile(archive) as source:
+                    self.assertTrue(any(name.endswith("/LICENSE") for name in source.namelist()))
+                    for name in source.namelist():
+                        self.assertTrue(
+                            name.endswith("/LICENSE")
+                            or (
+                                "/data/languages/" in name
+                                and Path(name).suffix
+                                in {".slaspec", ".sinc", ".cspec", ".ldefs", ".pspec", ".opinion", ".md"}
+                            ),
+                            name,
+                        )
+
     def test_a_stalled_download_names_its_url(self) -> None:
         expected = {"archive": "tool.zip", "url": "https://example.invalid/tool.zip", "size": 1, "sha256": "0" * 64}
         with tempfile.TemporaryDirectory() as directory:

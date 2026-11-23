@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from importlib import resources
 import os
 from pathlib import Path
 import shutil
@@ -13,6 +14,8 @@ import urllib.request
 import zipfile
 
 from retrolarium_disassembler.files import sha256_file
+from retrolarium_disassembler.java import JavaError, java_environment
+from retrolarium_disassembler import __version__
 
 
 LOCK_PATH = Path(__file__).resolve().parent / "toolchains" / "disassembly.lock.json"
@@ -71,14 +74,36 @@ def download(expected: dict[str, object], cache: Path) -> Path:
             # A truncated or damaged download: fetched again, not kept.
             destination.unlink()
     temporary = destination.with_suffix(destination.suffix + ".part")
-    request = urllib.request.Request(str(expected["url"]), headers={"User-Agent": "retrolarium-disassembler/0.1"})
+    if str(expected["url"]).startswith("package:"):
+        relative = str(expected["url"])[len("package:") :]
+        if not relative.startswith("toolchains/backends/") or ".." in Path(relative).parts or "\\" in relative:
+            raise ToolchainError("invalid bundled processor path")
+        try:
+            source = resources.files("retrolarium_disassembler").joinpath(relative)
+            with resources.as_file(source) as path:
+                verify_archive(path, expected)
+                shutil.copyfile(path, temporary)
+            verify_archive(temporary, expected)
+            os.replace(temporary, destination)
+            return destination
+        finally:
+            temporary.unlink(missing_ok=True)
+    request = urllib.request.Request(
+        str(expected["url"]), headers={"User-Agent": f"retrolarium-disassembler/{__version__}"}
+    )
     try:
         try:
             with (
                 urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT) as response,
                 temporary.open("wb") as output,
             ):
-                shutil.copyfileobj(response, output, length=1024 * 1024)
+                total = 0
+                read = getattr(response, "read1", response.read)
+                while block := read(min(1024 * 1024, int(expected["size"]) - total + 1)):
+                    total += len(block)
+                    if total > int(expected["size"]):
+                        raise ToolchainError(f"{expected['archive']} download exceeds its pinned size")
+                    output.write(block)
         except OSError as exc:
             # URLError and TimeoutError are OSErrors: a stalled server ends here too.
             raise ToolchainError(f"cannot download {expected['url']}: {exc}") from exc
@@ -194,7 +219,10 @@ def toolchain_status(ghidra_home: Path) -> dict[str, object]:
         spc700_license,
     ):
         if not path.is_file():
-            raise ToolchainError(f"installed component not found: {path}")
+            raise ToolchainError(
+                f"Ghidra is not installed completely ({path} is missing): "
+                "run rldisasm ghidra install, or pass --ghidra-home with a complete installation"
+            )
     actual_version = property_value(application, "application.version")
     if actual_version != ghidra["version"]:
         raise ToolchainError(f"Ghidra version is {actual_version}, expected {ghidra['version']}")
@@ -352,6 +380,10 @@ def install_toolchain(tool_root: Path, *, reinstall: bool = False) -> dict[str, 
     """Install the locked toolchain under tool_root. An install made from
     another lock is rebuilt beside the old one and swapped in; one older than
     the install markers is kept unless reinstall says to rebuild it."""
+    try:
+        java_environment(tool_root / "ghidra")
+    except JavaError as error:
+        raise ToolchainError(str(error)) from error
     tool_root = tool_root.resolve()
     cache = tool_root / "cache"
     ghidra_home = tool_root / "ghidra"

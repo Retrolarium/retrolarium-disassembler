@@ -7,7 +7,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-from retrolarium_disassembler.cli import main  # noqa: E402
+try:
+    from retrolarium_disassembler.cli import main  # noqa: E402
+except ImportError as error:
+    if error.name == "retrolarium_core":
+        raise SystemExit(str(error)) from None
+    raise
 
 
 if __name__ == "__main__":

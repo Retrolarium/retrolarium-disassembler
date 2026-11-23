@@ -336,6 +336,14 @@ class GhidraBackendTests(unittest.TestCase):
 
 
 class LauncherProcessTreeTests(unittest.TestCase):
+    def test_launcher_receives_eof_without_inheriting_the_terminal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = run_launcher(
+                [sys.executable, "-c", "import sys; print(repr(sys.stdin.read()))"], cwd=Path(directory), timeout=3
+            )
+            self.assertEqual(0, result.returncode)
+            self.assertEqual("''", result.stdout.strip())
+
     def test_timeout_stops_children_that_hold_the_output_pipe(self) -> None:
         # A Python fixture runs on both hosts, without sh or sleep. On POSIX
         # its parent reaps the child after the group's SIGTERM; it never
